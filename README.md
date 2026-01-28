@@ -33,7 +33,7 @@ echo "source $(pwd)/claude-vm.sh" >> ~/.bashrc  # or bash
 claude-vm-setup
 ```
 
-Creates a VM template with dev tools, Docker, Chromium, and Claude Code pre-installed. You'll be prompted to authenticate Claude during setup.
+Creates a VM template with dev tools, Docker, Chromium, and Claude Code pre-installed. During setup, Claude will launch once for authentication. After it responds, type `/exit` to continue with the rest of the setup. (We haven't found a way to automate this step yet.)
 
 ### Run Claude in a VM
 
@@ -93,6 +93,28 @@ Ports opened inside the VM (e.g. by Docker containers) are automatically forward
 | Browser | Chromium (headless), xvfb |
 | Containers | docker |
 | AI | Claude Code, Chrome DevTools MCP server |
+
+## Why a VM?
+
+Running an AI agent with full permissions is powerful but risky. Here's how the options compare:
+
+| | No sandbox | Docker | VM (agent-vm) |
+|---|---|---|---|
+| Agent can run any command | Yes | Yes | Yes |
+| File system isolation | None | Partial (shared kernel) | Full |
+| Network isolation | None | Partial | Full |
+| Can run Docker inside | Yes | Requires DinD or socket mount | Yes (native) |
+| Kernel-level isolation | None | None (shares host kernel) | Full (separate kernel) |
+| Protection from container escapes | None | None | Yes |
+| Browser / GUI tools | Host only | Complex setup | Built-in (headless Chromium) |
+
+Docker containers share the host kernel, so a motivated agent could exploit kernel vulnerabilities or misconfigurations to escape. A VM runs its own kernel — even if the agent gains root inside the VM, it can't reach the host.
+
+A VM also avoids the practical headaches of Docker sandboxing. Docker runs natively inside the VM without Docker-in-Docker hacks or socket mounts. Headless Chromium works out of the box without fiddling with `--no-sandbox` flags or shared memory settings. Lima automatically forwards ports from the VM to your host, so if the agent starts a server on port 3000, it's immediately accessible at `localhost:3000`. The agent gets a normal Linux environment where everything just works.
+
+Finally, using a VM means you don't need Node.js, npm, Docker, or any other dev tooling installed on your host machine. The only host dependency is Lima. All the tools (and their vulnerabilities) live inside the VM.
+
+For AI agents running with `--dangerously-skip-permissions`, a VM is the only sandbox that provides meaningful security.
 
 ## License
 

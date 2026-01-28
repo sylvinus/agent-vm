@@ -73,7 +73,7 @@ claude-vm-setup() {
 
   # Authenticate Claude (saves token in template, inherited by clones)
   echo "Setting up Claude authentication..."
-  limactl shell "$CLAUDE_VM_TEMPLATE" bash -lc "claude setup-token"
+  limactl shell "$CLAUDE_VM_TEMPLATE" bash -lc "claude 'Ok I am logged in, I can exit now.'"
 
   # Configure Chrome DevTools MCP server for Claude
   echo "Configuring Chrome MCP server..."
