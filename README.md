@@ -35,6 +35,19 @@ claude-vm-setup
 
 Creates a VM template with dev tools, Docker, Chromium, and Claude Code pre-installed. During setup, Claude will launch once for authentication. After it responds, type `/exit` to continue with the rest of the setup. (We haven't found a way to automate this step yet.)
 
+Options:
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--minimal` | Only install git, curl, jq, and Claude Code. Skips Docker, Node.js, Python, Chromium, and the Chrome MCP server. | off |
+| `--disk GB` | VM disk size in GB | 20 |
+| `--memory GB` | VM memory in GB | 8 |
+
+```bash
+claude-vm-setup --minimal                  # Lightweight VM with just Claude
+claude-vm-setup --disk 50 --memory 16      # Larger VM for heavy workloads
+```
+
 ### Run Claude in a VM
 
 ```bash
@@ -99,7 +112,7 @@ Ports opened inside the VM (e.g. by Docker containers) are automatically forward
 | Node.js | Node.js 22 (via NodeSource) |
 | Search | ripgrep, fd-find |
 | Browser | Chromium (headless), xvfb |
-| Containers | docker |
+| Containers | Docker Engine, Docker Compose |
 | AI | Claude Code, Chrome DevTools MCP server |
 
 ## Why a VM?

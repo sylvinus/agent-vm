@@ -14,6 +14,52 @@
 CLAUDE_VM_TEMPLATE="claude-template"
 
 claude-vm-setup() {
+  local minimal=false
+  local disk=20
+  local memory=8
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --help|-h)
+        echo "Usage: claude-vm-setup [--minimal] [--disk GB] [--memory GB]"
+        echo ""
+        echo "Create a VM template with Claude Code pre-installed."
+        echo ""
+        echo "Options:"
+        echo "  --minimal      Only install git, curl, jq, and Claude Code"
+        echo "  --disk GB      VM disk size (default: 20)"
+        echo "  --memory GB    VM memory (default: 8)"
+        echo "  --help         Show this help"
+        return 0
+        ;;
+      --minimal)
+        minimal=true
+        shift
+        ;;
+      --disk)
+        disk="$2"
+        shift 2
+        ;;
+      --disk=*)
+        disk="${1#*=}"
+        shift
+        ;;
+      --memory)
+        memory="$2"
+        shift 2
+        ;;
+      --memory=*)
+        memory="${1#*=}"
+        shift
+        ;;
+      *)
+        echo "Unknown option: $1" >&2
+        echo "Usage: claude-vm-setup [--minimal] [--disk GB] [--memory GB]" >&2
+        return 1
+        ;;
+    esac
+  done
+
   if ! command -v limactl &>/dev/null; then
     if command -v brew &>/dev/null; then
       echo "Installing Lima..."
@@ -30,8 +76,8 @@ claude-vm-setup() {
   echo "Creating VM template..."
   limactl create --name="$CLAUDE_VM_TEMPLATE" template:debian-13 \
     --set '.mounts=[]' \
-    --disk=20 \
-    --memory=8 \
+    --disk="$disk" \
+    --memory="$memory" \
     --tty=false
   limactl start "$CLAUDE_VM_TEMPLATE"
 
@@ -41,30 +87,47 @@ claude-vm-setup() {
   echo "Installing base packages..."
   limactl shell "$CLAUDE_VM_TEMPLATE" sudo DEBIAN_FRONTEND=noninteractive apt-get update
   limactl shell "$CLAUDE_VM_TEMPLATE" sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
-    git curl wget build-essential \
-    python3 python3-pip python3-venv \
-    jq ripgrep fd-find htop \
-    unzip zip \
-    docker.io
+    git curl jq
 
-  # Add user to docker group
-  limactl shell "$CLAUDE_VM_TEMPLATE" bash -c 'sudo usermod -aG docker $(whoami)'
+  if ! $minimal; then
+    limactl shell "$CLAUDE_VM_TEMPLATE" sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
+      wget build-essential \
+      python3 python3-pip python3-venv \
+      ripgrep fd-find htop \
+      unzip zip \
+      ca-certificates
 
-  # Install Node.js 22 (needed for MCP servers)
-  echo "Installing Node.js 22..."
-  limactl shell "$CLAUDE_VM_TEMPLATE" bash -c "curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -"
-  limactl shell "$CLAUDE_VM_TEMPLATE" sudo DEBIAN_FRONTEND=noninteractive apt-get install -y nodejs
+    # Install Docker from official repo (includes docker compose)
+    echo "Installing Docker..."
+    limactl shell "$CLAUDE_VM_TEMPLATE" bash -c '
+      sudo install -m 0755 -d /etc/apt/keyrings
+      sudo curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc
+      sudo chmod a+r /etc/apt/keyrings/docker.asc
+      echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+    '
+    limactl shell "$CLAUDE_VM_TEMPLATE" sudo DEBIAN_FRONTEND=noninteractive apt-get update
+    limactl shell "$CLAUDE_VM_TEMPLATE" sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
+      docker-ce docker-ce-cli containerd.io docker-compose-plugin
 
-  # Install Chromium and dependencies for headless browsing
-  echo "Installing Chromium..."
-  limactl shell "$CLAUDE_VM_TEMPLATE" sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
-    chromium \
-    fonts-liberation \
-    xvfb
-  # Symlink so tools looking for google-chrome find Chromium
-  limactl shell "$CLAUDE_VM_TEMPLATE" sudo ln -sf /usr/bin/chromium /usr/bin/google-chrome
-  limactl shell "$CLAUDE_VM_TEMPLATE" sudo ln -sf /usr/bin/chromium /usr/bin/google-chrome-stable
-  limactl shell "$CLAUDE_VM_TEMPLATE" bash -c 'sudo mkdir -p /opt/google/chrome && sudo ln -sf /usr/bin/chromium /opt/google/chrome/chrome'
+    # Add user to docker group
+    limactl shell "$CLAUDE_VM_TEMPLATE" bash -c 'sudo usermod -aG docker $(whoami)'
+
+    # Install Node.js 22 (needed for MCP servers)
+    echo "Installing Node.js 22..."
+    limactl shell "$CLAUDE_VM_TEMPLATE" bash -c "curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -"
+    limactl shell "$CLAUDE_VM_TEMPLATE" sudo DEBIAN_FRONTEND=noninteractive apt-get install -y nodejs
+
+    # Install Chromium and dependencies for headless browsing
+    echo "Installing Chromium..."
+    limactl shell "$CLAUDE_VM_TEMPLATE" sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
+      chromium \
+      fonts-liberation \
+      xvfb
+    # Symlink so tools looking for google-chrome find Chromium
+    limactl shell "$CLAUDE_VM_TEMPLATE" sudo ln -sf /usr/bin/chromium /usr/bin/google-chrome
+    limactl shell "$CLAUDE_VM_TEMPLATE" sudo ln -sf /usr/bin/chromium /usr/bin/google-chrome-stable
+    limactl shell "$CLAUDE_VM_TEMPLATE" bash -c 'sudo mkdir -p /opt/google/chrome && sudo ln -sf /usr/bin/chromium /opt/google/chrome/chrome'
+  fi
 
   # Install Claude Code
   echo "Installing Claude Code..."
@@ -75,9 +138,10 @@ claude-vm-setup() {
   echo "Setting up Claude authentication..."
   limactl shell "$CLAUDE_VM_TEMPLATE" bash -lc "claude 'Ok I am logged in, I can exit now.'"
 
-  # Configure Chrome DevTools MCP server for Claude
-  echo "Configuring Chrome MCP server..."
-  limactl shell "$CLAUDE_VM_TEMPLATE" bash << 'VMEOF'
+  if ! $minimal; then
+    # Configure Chrome DevTools MCP server for Claude
+    echo "Configuring Chrome MCP server..."
+    limactl shell "$CLAUDE_VM_TEMPLATE" bash << 'VMEOF'
 CONFIG="$HOME/.claude.json"
 if [ -f "$CONFIG" ]; then
   jq '.mcpServers["chrome-devtools"] = {
@@ -97,6 +161,7 @@ else
 JSON
 fi
 VMEOF
+  fi
 
   # Run user's custom setup script if it exists
   local user_setup="$HOME/.claude-vm.setup.sh"
