@@ -8,7 +8,7 @@
 #
 # Functions:
 #   claude-vm-setup  - Create the VM template (run once)
-#   claude-vm        - Run Claude in a fresh VM with cwd mounted
+#   claude-vm [args] - Run Claude in a fresh VM with cwd mounted (args forwarded to claude)
 #   claude-vm-shell  - Open a debug shell in a fresh VM
 
 CLAUDE_VM_TEMPLATE="claude-template"
@@ -111,6 +111,7 @@ VMEOF
 }
 
 claude-vm() {
+  local args=("$@")
   local vm_name="claude-$(basename "$(pwd)" | tr -cs 'a-zA-Z0-9' '-' | sed 's/^-//;s/-$//')-$$"
   local host_dir="$(pwd)"
 
@@ -139,7 +140,7 @@ claude-vm() {
     limactl shell --workdir "$host_dir" "$vm_name" bash -l < "${host_dir}/.claude-vm.runtime.sh"
   fi
 
-  limactl shell --workdir "$host_dir" "$vm_name" claude --dangerously-skip-permissions
+  limactl shell --workdir "$host_dir" "$vm_name" claude --dangerously-skip-permissions "${args[@]}"
 
   _claude_vm_cleanup
   trap - EXIT INT TERM

@@ -44,6 +44,14 @@ claude-vm
 
 Clones the template into a fresh VM, mounts your current directory, and runs `claude --dangerously-skip-permissions`. The VM is deleted when Claude exits.
 
+Any arguments passed to `claude-vm` are forwarded to the `claude` command:
+
+```bash
+claude-vm -p "fix all lint errors"        # Run with a prompt
+claude-vm --resume                         # Resume previous session
+claude-vm -c "explain this codebase"       # Continue conversation
+```
+
 ### Debug shell
 
 ```bash
@@ -77,7 +85,7 @@ docker compose up -d
 ## How it works
 
 1. **`claude-vm-setup`** creates a Debian 13 VM with Lima, installs dev tools + Chrome + Claude Code, and stops it as a reusable template
-2. **`claude-vm`** clones the template, mounts your working directory read-write, runs optional `.claude-vm.runtime.sh`, then launches Claude with full permissions
+2. **`claude-vm [args]`** clones the template, mounts your working directory read-write, runs optional `.claude-vm.runtime.sh`, then launches Claude with full permissions (forwarding any arguments to the `claude` command)
 3. On exit, the cloned VM is stopped and deleted. The template persists for reuse
 
 Ports opened inside the VM (e.g. by Docker containers) are automatically forwarded to your host by Lima.
