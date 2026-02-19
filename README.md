@@ -8,7 +8,7 @@ Supports [Claude Code](https://claude.ai/code), [OpenCode](https://github.com/an
 
 Never install attack vectors such as npm, claude or even Docker on your host machine again!
 
-Feedbacks welcome!
+Feedback welcome!
 
 ## Prerequisites
 
@@ -43,9 +43,10 @@ Options:
 |------|-------------|---------|
 | `--disk GB` | VM disk size in GB | 20 |
 | `--memory GB` | VM memory in GB | 8 |
+| `--cpus N` | Number of CPUs | 4 |
 
 ```bash
-agent-vm setup --disk 50 --memory 16      # Larger VM for heavy workloads
+agent-vm setup --disk 50 --memory 16 --cpus 8   # Larger VM for heavy workloads
 ```
 
 ### Run an agent in a VM
@@ -57,7 +58,7 @@ agent-vm opencode              # OpenCode
 agent-vm codex                 # Codex CLI
 ```
 
-Creates a persistent VM for the current directory (or reuses it if one already exists), mounts your working directory, and runs the agent with full permissions. The VM persists after the agent exits so you can reconnect later.
+Creates a persistent VM for the current directory (or reuses it if one already exists), mounts your working directory, and runs the agent with full permissions. The VM persists after the agent exits so you can reconnect later. Ports opened inside the VM (e.g. by Docker containers or dev servers) are automatically forwarded to your host by Lima.
 
 Each agent runs with its respective auto-approve flag:
 - `claude` runs with `--dangerously-skip-permissions`
@@ -73,29 +74,30 @@ agent-vm opencode -p "refactor auth module"      # OpenCode with a prompt
 agent-vm codex -q "explain this codebase"        # Codex with a query
 ```
 
-### Shell access
+### Shell access and running commands
 
 ```bash
-agent-vm shell
+agent-vm shell                         # Open a zsh shell in the VM
+agent-vm run npm install               # Run a one-off command in the VM
+agent-vm run docker compose up -d      # Start services
 ```
-
-Opens a zsh shell in the same persistent VM for the current directory. Useful for debugging, running commands alongside an agent, or using agents not built in.
 
 ### VM lifecycle
 
 Each directory gets its own persistent VM. You can manage it with:
 
 ```bash
-agent-vm status     # Show VM status for the current directory
-agent-vm stop       # Stop the VM (can be restarted later)
-agent-vm destroy    # Stop and permanently delete the VM
+agent-vm status      # Show VM status for the current directory
+agent-vm stop        # Stop the VM (can be restarted later)
+agent-vm destroy     # Stop and permanently delete the VM
+agent-vm destroy-all # Stop and delete all agent-vm VMs
 ```
 
 To resize an existing VM's disk or memory, just pass `--disk` or `--memory` again — the VM will be stopped, reconfigured, and restarted automatically:
 
 ```bash
 agent-vm --disk 50 claude              # Grow disk to 50GB, then run Claude
-agent-vm --memory 16 shell             # Increase memory to 16GB, then open shell
+agent-vm --memory 16 --cpus 8 shell    # Increase memory and CPUs, then open shell
 ```
 
 Note: disk can only be grown, not shrunk.
@@ -103,8 +105,20 @@ Note: disk can only be grown, not shrunk.
 Running `agent-vm setup` again updates the base template but does **not** update existing VMs. You'll see a warning when using a VM cloned from an older base. Use `--reset` to re-clone:
 
 ```bash
-agent-vm --reset claude                   # Destroy and re-clone VM, then run Claude
+agent-vm --reset claude                # Destroy and re-clone VM, then run Claude
 ```
+
+### Offline mode and read-only mounts
+
+```bash
+agent-vm --offline claude              # Block outbound internet access
+agent-vm --readonly shell              # Mount project directory as read-only
+agent-vm --offline --readonly claude   # Both
+```
+
+`--offline` blocks outbound internet from the VM using iptables while preserving host/VM communication (mounts, port forwarding). Useful for ensuring agents don't phone home or download unexpected packages.
+
+`--readonly` remounts the project directory as read-only. Useful for code review or audit tasks where the agent shouldn't modify files. Both flags are per-session and reset when the VM restarts.
 
 ## Customization
 
@@ -141,7 +155,7 @@ docker compose up -d
 
 The base VM comes with [Chrome DevTools MCP](https://github.com/ChromeDevTools/chrome-devtools-mcp) pre-configured for Claude, giving the agent headless browser access.
 
-To add more MCP servers, add them to `~/.claude.json` in your `~/.agent-vm.setup.sh`, or edit the file directly inside a VM via `agent-vm shell`. Add entries to the `mcpServers` object:
+To add more MCP servers, add them to `~/.claude.json` in your `~/.agent-vm/setup.sh`, or edit the file directly inside a VM via `agent-vm shell`. Add entries to the `mcpServers` object:
 
 ```json
 {
@@ -158,22 +172,14 @@ To add more MCP servers, add them to `~/.claude.json` in your `~/.agent-vm.setup
 }
 ```
 
-## Shared configuration
-
-The VM mounts your host's `~/.claude/` directory. Login credentials, skills, user-level `CLAUDE.md`, conversation history, and settings all persist across VMs automatically.
-
-On first use, you'll need to authenticate. Credentials are stored in `~/.claude/.credentials.json` and reused by all subsequent VMs.
-
-This also means the configuration is shared with any Claude Code installation on the host — though we recommend running Claude exclusively in VMs for security.
-
 ## How it works
 
 1. **`agent-vm setup`** creates a Debian 13 VM with Lima, runs `agent-vm.setup.sh` inside it to install dev tools + Chrome + agents, and stops it as a reusable base template
-2. **`agent-vm claude|opencode|codex [args]`** clones the base template into a persistent per-directory VM, mounts your working directory and `~/.claude/`, runs optional `.agent-vm.runtime.sh`, then launches the agent with full permissions
+2. **`agent-vm claude|opencode|codex [args]`** clones the base template into a persistent per-directory VM, mounts your working directory, runs optional runtime scripts (`~/.agent-vm/runtime.sh` then `.agent-vm.runtime.sh`), then launches the agent with full permissions
 3. The VM persists after exit. Running any agent command or `agent-vm shell` in the same directory reuses the same VM
 4. Use `agent-vm stop` to stop the VM or `agent-vm destroy` to delete it
 
-Ports opened inside the VM (e.g. by Docker containers) are automatically forwarded to your host by Lima.
+Each VM is fully isolated — agents must authenticate independently inside their VM (e.g. `claude login`). Credentials persist within the VM across restarts but are not shared between VMs or with the host.
 
 ## Project structure
 
@@ -203,14 +209,9 @@ This is not a theoretical risk. The [Shai-Hulud](https://unit42.paloaltonetworks
 
 An AI agent running with `--dangerously-skip-permissions` on your host would give such an attack full access to everything: your SSH keys, your cloud credentials, your browser sessions, your entire filesystem.
 
-**agent-vm keeps your credentials on the host and runs all code inside the VM.** The VM only has access to:
+**agent-vm runs all code inside the VM.** The VM only has access to your project directory (read-write mount, or read-only with `--readonly`). It has **no access** to your SSH keys, npm tokens, cloud credentials, git config, browser sessions, or anything else on your host. If a supply chain attack executes inside the VM, it finds nothing to steal (except your source code) and nowhere to spread. Use `--offline` to block internet access entirely.
 
-- Your project directory (read-write mount)
-- `~/.claude/` for agent credentials and settings
-
-It has **no access** to your SSH keys, npm tokens, cloud credentials, git config, browser sessions, or anything else on your host. If a supply chain attack executes inside the VM, it finds nothing to steal (except your source code) and nowhere to spread.
-
-Meanwhile, your host machine stays clean. You don't need Node.js, Docker, or any dev tooling installed locally. The only host dependency is Lima. Your SSH keys and signing credentials never enter the VM as we recommend running `git commit` on the host yourself.
+Meanwhile, your host machine stays clean. You don't need Node.js, Docker, or any dev tooling installed locally. The only host dependency is Lima. Your SSH keys and signing credentials never enter the VM — we recommend running `git commit` on the host yourself.
 
 ### Why not Docker?
 
@@ -218,7 +219,7 @@ Meanwhile, your host machine stays clean. You don't need Node.js, Docker, or any
 |---|---|---|---|
 | Agent can run any command | Yes | Yes | Yes |
 | File system isolation | None | Partial (shared kernel) | Full |
-| Network isolation | None | Partial | Full |
+| Network isolation | None | Partial | Optional (`--offline`) |
 | Can run Docker inside | Yes | Requires DinD or socket mount | Yes (native) |
 | Kernel-level isolation | None | None (shares host kernel) | Full (separate kernel) |
 | Protection from container escapes | None | None | Yes |

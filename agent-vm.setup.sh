@@ -22,7 +22,8 @@ sudo apt-get install -y \
   python3 python3-pip python3-venv \
   ripgrep fd-find htop \
   unzip zip \
-  ca-certificates
+  ca-certificates \
+  iptables
 
 # Set zsh as default shell
 sudo chsh -s /usr/bin/zsh "$(whoami)"
