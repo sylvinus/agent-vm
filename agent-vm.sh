@@ -122,6 +122,12 @@ _agent_vm_ensure_running() {
     limactl start "$vm_name" &>/dev/null
   fi
 
+  # Run per-user runtime script if it exists
+  if [ -f "$AGENT_VM_STATE_DIR/runtime.sh" ]; then
+    echo "Running user runtime setup..."
+    limactl shell --workdir "$host_dir" "$vm_name" zsh -l < "$AGENT_VM_STATE_DIR/runtime.sh"
+  fi
+
   # Run project-specific runtime script if it exists
   if [ -f "${host_dir}/.agent-vm.runtime.sh" ]; then
     echo "Running project runtime setup..."
@@ -226,8 +232,9 @@ VMs are persistent and unique per directory. Running "agent-vm shell" or
 "agent-vm claude" in the same directory will reuse the same VM.
 
 Customization:
-  ~/.agent-vm.setup.sh              Per-user setup (runs during "agent-vm setup")
-  <project>/.agent-vm.runtime.sh    Per-project setup (runs on each VM start)
+  ~/.agent-vm/setup.sh              Per-user setup (runs during "agent-vm setup")
+  ~/.agent-vm/runtime.sh            Per-user runtime (runs on each VM start)
+  <project>/.agent-vm.runtime.sh    Per-project runtime (runs on each VM start)
 
 More info: https://github.com/sylvinus/agent-vm
 EOF
@@ -300,7 +307,7 @@ _agent_vm_setup() {
   limactl shell "$AGENT_VM_TEMPLATE" bash -l < "${AGENT_VM_SCRIPT_DIR}/agent-vm.setup.sh" || { echo "Error: Setup script failed." >&2; return 1; }
 
   # Run user's custom setup script if it exists
-  local user_setup="$HOME/.agent-vm.setup.sh"
+  local user_setup="$AGENT_VM_STATE_DIR/setup.sh"
   if [ -f "$user_setup" ]; then
     echo "Running custom setup from $user_setup..."
     limactl shell "$AGENT_VM_TEMPLATE" zsh -l < "$user_setup" || { echo "Error: Custom setup script failed." >&2; return 1; }

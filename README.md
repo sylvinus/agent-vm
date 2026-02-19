@@ -108,14 +108,23 @@ agent-vm --reset claude                   # Destroy and re-clone VM, then run Cl
 
 ## Customization
 
-### Per-user: `~/.agent-vm.setup.sh`
+### Per-user setup: `~/.agent-vm/setup.sh`
 
-Create this file in your home directory to install extra tools into the base VM template. It runs once during `agent-vm setup`, as the default VM user (with sudo available):
+Create this file to install extra tools into the base VM template. It runs once during `agent-vm setup`, as the default VM user (with sudo available):
 
 ```bash
-# ~/.agent-vm.setup.sh
+# ~/.agent-vm/setup.sh
 sudo apt-get install -y postgresql-client
 pip install pandas numpy
+```
+
+### Per-user runtime: `~/.agent-vm/runtime.sh`
+
+Create this file to run commands inside every VM on each start. Runs before the per-project runtime script:
+
+```bash
+# ~/.agent-vm/runtime.sh
+export MY_API_KEY="..."
 ```
 
 ### Per-project: `.agent-vm.runtime.sh`
