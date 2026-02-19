@@ -67,7 +67,7 @@ echo 'export PS1="vm:%1~%% "' >> ~/.zshrc
 
 # Install OpenCode
 echo "Installing OpenCode..."
-curl -fsSL https://raw.githubusercontent.com/opencode-ai/opencode/refs/heads/main/install | bash
+curl -fsSL https://opencode.ai/install | bash
 echo 'export PATH=$HOME/.opencode/bin:$PATH' >> ~/.zshrc
 
 # Add PATH to .zshenv so non-interactive shells (limactl shell vmname cmd) also find the tools

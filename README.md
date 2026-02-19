@@ -4,7 +4,7 @@ Run AI coding agents inside sandboxed Linux VMs. The agent gets full autonomy wh
 
 Uses [Lima](https://lima-vm.io/) to create lightweight Debian VMs on macOS and Linux. Ships with dev tools, Docker, and a headless Chrome browser with [Chrome DevTools MCP](https://github.com/ChromeDevTools/chrome-devtools-mcp) pre-configured.
 
-Supports [Claude Code](https://claude.ai/code), [OpenCode](https://github.com/opencode-ai/opencode), and [Codex CLI](https://github.com/openai/codex) out of the box. Other agents can be run via `agent-vm shell`.
+Supports [Claude Code](https://claude.ai/code), [OpenCode](https://github.com/anomalyco/opencode), and [Codex CLI](https://github.com/openai/codex) out of the box. Other agents can be run via `agent-vm shell`.
 
 Never install attack vectors such as npm, claude or even Docker on your host machine again!
 
@@ -61,7 +61,7 @@ Creates a persistent VM for the current directory (or reuses it if one already e
 
 Each agent runs with its respective auto-approve flag:
 - `claude` runs with `--dangerously-skip-permissions`
-- `opencode` runs with `--dangerously-skip-permissions`
+- `opencode` does not yet have an auto-approve flag (waiting on [this PR](https://github.com/anomalyco/opencode/pull/11833))
 - `codex` runs with `--full-auto`
 
 Any extra arguments are forwarded to the agent command:
