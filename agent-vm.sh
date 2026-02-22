@@ -53,7 +53,7 @@ _agent_vm_ensure_running() {
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --disk)     disk="$2"; shift 2 ;;
-      --memory)   memory="$2"; shift 2 ;;
+      --memory|--ram)   memory="$2"; shift 2 ;;
       --cpus)     cpus="$2"; shift 2 ;;
       --reset)    reset=1; shift ;;
       --offline)  offline=1; shift ;;
@@ -93,6 +93,7 @@ _agent_vm_ensure_running() {
   elif [[ -n "$disk" || -n "$memory" || -n "$cpus" ]]; then
     # Auto-resize existing VM if --disk, --memory, or --cpus changed
     local edit_args=()
+    edit_args+=(--set ".mounts=[{\"location\":\"${host_dir}\",\"writable\":true}]")
     [[ -n "$disk" ]]   && edit_args+=(--set ".disk=\"${disk}GiB\"")
     [[ -n "$memory" ]] && edit_args+=(--set ".memory=\"${memory}GiB\"")
     [[ -n "$cpus" ]]   && edit_args+=(--set ".cpus=${cpus}")
@@ -109,7 +110,12 @@ _agent_vm_ensure_running() {
       limactl stop "$vm_name" &>/dev/null
     fi
     echo "Updating VM resources..."
-    limactl edit "$vm_name" "${edit_args[@]}" &>/dev/null
+    local edit_output
+    if ! edit_output=$(cd /tmp && limactl edit "$vm_name" "${edit_args[@]}" 2>&1); then
+      echo "Error: Failed to update VM resources:" >&2
+      echo "$edit_output" >&2
+      return 1
+    fi
   fi
 
   # Warn if this VM was cloned from an older base
@@ -162,9 +168,9 @@ agent-vm() {
         vm_opts+=(--disk "$2"); shift 2 ;;
       --disk=*)
         vm_opts+=(--disk "${1#*=}"); shift ;;
-      --memory)
+      --memory|--ram)
         vm_opts+=(--memory "$2"); shift 2 ;;
-      --memory=*)
+      --memory=*|--ram=*)
         vm_opts+=(--memory "${1#*=}"); shift ;;
       --cpus)
         vm_opts+=(--cpus "$2"); shift 2 ;;
@@ -307,11 +313,11 @@ _agent_vm_setup() {
         disk="${1#*=}"
         shift
         ;;
-      --memory)
+      --memory|--ram)
         memory="$2"
         shift 2
         ;;
-      --memory=*)
+      --memory=*|--ram=*)
         memory="${1#*=}"
         shift
         ;;
@@ -386,7 +392,7 @@ _agent_vm_claude() {
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --disk)     vm_opts+=(--disk "$2"); shift 2 ;;
-      --memory)   vm_opts+=(--memory "$2"); shift 2 ;;
+      --memory|--ram)   vm_opts+=(--memory "$2"); shift 2 ;;
       --cpus)     vm_opts+=(--cpus "$2"); shift 2 ;;
       --reset)    vm_opts+=(--reset); shift ;;
       --offline)  vm_opts+=(--offline); shift ;;
@@ -410,7 +416,7 @@ _agent_vm_opencode() {
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --disk)     vm_opts+=(--disk "$2"); shift 2 ;;
-      --memory)   vm_opts+=(--memory "$2"); shift 2 ;;
+      --memory|--ram)   vm_opts+=(--memory "$2"); shift 2 ;;
       --cpus)     vm_opts+=(--cpus "$2"); shift 2 ;;
       --reset)    vm_opts+=(--reset); shift ;;
       --offline)  vm_opts+=(--offline); shift ;;
@@ -436,7 +442,7 @@ _agent_vm_codex() {
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --disk)     vm_opts+=(--disk "$2"); shift 2 ;;
-      --memory)   vm_opts+=(--memory "$2"); shift 2 ;;
+      --memory|--ram)   vm_opts+=(--memory "$2"); shift 2 ;;
       --cpus)     vm_opts+=(--cpus "$2"); shift 2 ;;
       --reset)    vm_opts+=(--reset); shift ;;
       --offline)  vm_opts+=(--offline); shift ;;
@@ -459,7 +465,7 @@ _agent_vm_shell() {
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --disk)     vm_opts+=(--disk "$2"); shift 2 ;;
-      --memory)   vm_opts+=(--memory "$2"); shift 2 ;;
+      --memory|--ram)   vm_opts+=(--memory "$2"); shift 2 ;;
       --cpus)     vm_opts+=(--cpus "$2"); shift 2 ;;
       --reset)    vm_opts+=(--reset); shift ;;
       --offline)  vm_opts+=(--offline); shift ;;
@@ -485,7 +491,7 @@ _agent_vm_run() {
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --disk)     vm_opts+=(--disk "$2"); shift 2 ;;
-      --memory)   vm_opts+=(--memory "$2"); shift 2 ;;
+      --memory|--ram)   vm_opts+=(--memory "$2"); shift 2 ;;
       --cpus)     vm_opts+=(--cpus "$2"); shift 2 ;;
       --reset)    vm_opts+=(--reset); shift ;;
       --offline)  vm_opts+=(--offline); shift ;;

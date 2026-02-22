@@ -79,7 +79,7 @@ echo "Installing Codex CLI..."
 sudo npm i -g @openai/codex
 
 # Configure Chrome DevTools MCP server for Claude
-echo "Configuring Chrome MCP server..."
+echo "Configuring Chrome MCP server for Claude..."
 CONFIG="$HOME/.claude.json"
 if [ -f "$CONFIG" ]; then
   jq '.mcpServers["chrome-devtools"] = {
@@ -93,6 +93,32 @@ else
     "chrome-devtools": {
       "command": "npx",
       "args": ["-y", "chrome-devtools-mcp@latest", "--headless=true", "--isolated=true"]
+    }
+  }
+}
+JSON
+fi
+
+# Configure Chrome DevTools MCP server for OpenCode
+echo "Configuring Chrome MCP server for OpenCode..."
+OPENCODE_CONFIG_DIR="$HOME/.config/opencode"
+mkdir -p "$OPENCODE_CONFIG_DIR"
+OPENCODE_CONFIG="$OPENCODE_CONFIG_DIR/opencode.json"
+if [ -f "$OPENCODE_CONFIG" ]; then
+  jq '.mcp["chrome-devtools"] = {
+    "type": "local",
+    "command": ["npx", "-y", "chrome-devtools-mcp@latest", "--headless=true", "--isolated=true"],
+    "enabled": true
+  }' "$OPENCODE_CONFIG" > "$OPENCODE_CONFIG.tmp" && mv "$OPENCODE_CONFIG.tmp" "$OPENCODE_CONFIG"
+else
+  cat > "$OPENCODE_CONFIG" << 'JSON'
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "chrome-devtools": {
+      "type": "local",
+      "command": ["npx", "-y", "chrome-devtools-mcp@latest", "--headless=true", "--isolated=true"],
+      "enabled": true
     }
   }
 }
