@@ -87,7 +87,7 @@ agent-vm run docker compose up -d      # Start services
 Each directory gets its own persistent VM. You can manage it with:
 
 ```bash
-agent-vm status      # Show VM status for the current directory
+agent-vm status      # Show status of all VMs (current dir marked with >)
 agent-vm stop        # Stop the VM (can be restarted later)
 agent-vm destroy     # Stop and permanently delete the VM
 agent-vm destroy-all # Stop and delete all agent-vm VMs

@@ -15,7 +15,7 @@
 #   agent-vm stop     - Stop the VM for cwd
 #   agent-vm destroy  - Stop and delete the VM for cwd
 #   agent-vm list     - List all agent-vm VMs
-#   agent-vm status   - Show VM status for cwd
+#   agent-vm status   - Show status of all VMs (current dir marked with >)
 #   agent-vm help     - Show help
 #
 
@@ -250,7 +250,7 @@ Commands:
   destroy            Stop and delete the VM for the current directory
   destroy-all        Stop and delete all agent-vm VMs
   list               List all agent-vm VMs
-  status             Show VM status for the current directory
+  status             Show status of all VMs (current dir marked with >)
   help               Show this help
 
 VM options (for claude, opencode, codex, shell, run):
@@ -580,16 +580,22 @@ _agent_vm_list() {
 _agent_vm_status() {
   local host_dir
   host_dir="$(pwd)"
-  local vm_name
-  vm_name="$(_agent_vm_name "$host_dir")"
+  local current_vm_name
+  current_vm_name="$(_agent_vm_name "$host_dir")"
 
-  if ! _agent_vm_exists "$vm_name"; then
-    echo "No VM for this directory."
-    echo "VM name: $vm_name"
-    return 0
-  fi
+  local header
+  header=$(limactl list | head -1)
 
-  echo "VM name: $vm_name"
-  limactl list | head -1
-  limactl list | grep "$vm_name"
+  echo "VMs (current directory: $host_dir):"
+  echo ""
+  echo "$header" | sed 's/^/  /'
+  limactl list | grep "^agent-vm-" | while read -r line; do
+    local vm_name
+    vm_name=$(echo "$line" | awk '{print $1}')
+    if [[ "$vm_name" == "$current_vm_name" ]]; then
+      echo "$line" | sed 's/^/> /'
+    else
+      echo "$line" | sed 's/^/  /'
+    fi
+  done || echo "  (no VMs)"
 }
