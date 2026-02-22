@@ -367,7 +367,7 @@ _agent_vm_opencode() {
 
   # TODO: add --dangerously-skip-permissions once released
   # (waiting on https://github.com/anomalyco/opencode/pull/11833)
-  limactl shell --workdir "$host_dir" "$vm_name" opencode "${args[@]}"
+  limactl shell --tty --workdir "$host_dir" "$vm_name" opencode "${args[@]}"
 }
 
 _agent_vm_codex() {
