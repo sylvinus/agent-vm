@@ -13,7 +13,7 @@
 #   agent-vm codex    - Run Codex CLI in a persistent VM for cwd
 #   agent-vm shell    - Open a shell in the persistent VM for cwd
 #   agent-vm stop     - Stop the VM for cwd
-#   agent-vm destroy  - Stop and delete the VM for cwd
+#   agent-vm rm       - Stop and delete the VM for cwd
 #   agent-vm list     - List all agent-vm VMs
 #   agent-vm status   - Show status of all VMs (current dir marked with >)
 #   agent-vm help     - Show help
@@ -198,6 +198,8 @@ agent-vm() {
         vm_opts+=(--offline); shift ;;
       --readonly)
         vm_opts+=(--readonly); shift ;;
+      --rm)
+        vm_opts+=(--rm); shift ;;
       *)
         break ;;
     esac
@@ -228,7 +230,7 @@ agent-vm() {
     stop)
       _agent_vm_stop "$@"
       ;;
-    destroy)
+    rm|destroy)
       _agent_vm_destroy "$@"
       ;;
     destroy-all)
@@ -263,7 +265,7 @@ Commands:
   shell              Open a shell in the VM for the current directory
   run <cmd> [args]   Run a command in the VM for the current directory
   stop               Stop the VM for the current directory
-  destroy            Stop and delete the VM for the current directory
+  rm                 Stop and delete the VM for the current directory
   destroy-all        Stop and delete all agent-vm VMs
   list               List all agent-vm VMs
   status             Show status of all VMs (current dir marked with >)
@@ -276,6 +278,7 @@ VM options (for claude, opencode, codex, shell, run):
   --reset            Destroy and re-clone the VM from the base template
   --offline          Block outbound internet (keeps host/VM communication)
   --readonly         Mount the project directory as read-only
+  --rm               Automatically destroy the VM after the command exits
 
 Examples:
   agent-vm setup                             # Create base VM
@@ -284,6 +287,7 @@ Examples:
   agent-vm codex                             # Run Codex in a VM
   agent-vm --disk 50 --memory 16 --cpus 8 claude  # Custom resources
   agent-vm --reset claude                    # Fresh VM from base template
+  agent-vm --rm claude                       # Destroy VM after Claude exits
   agent-vm --offline claude                  # No internet access
   agent-vm --readonly shell                  # Read-only project mount
   agent-vm shell                             # Shell into the VM
@@ -405,6 +409,7 @@ _agent_vm_setup() {
 _agent_vm_claude() {
   local vm_opts=()
   local args=()
+  local rm=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --disk)     vm_opts+=(--disk "$2"); shift 2 ;;
@@ -413,6 +418,7 @@ _agent_vm_claude() {
       --reset)    vm_opts+=(--reset); shift ;;
       --offline)  vm_opts+=(--offline); shift ;;
       --readonly) vm_opts+=(--readonly); shift ;;
+      --rm)       rm=1; shift ;;
       *)          args+=("$1"); shift ;;
     esac
   done
@@ -424,12 +430,17 @@ _agent_vm_claude() {
   _agent_vm_ensure_running "$vm_name" "$host_dir" "${vm_opts[@]}" || return 1
   _agent_vm_print_resources "$vm_name"
 
+  local exit_code=0
   limactl shell --workdir "$host_dir" "$vm_name" claude --dangerously-skip-permissions "${args[@]}"
+  exit_code=$?
+  [[ -n "$rm" ]] && { echo "Removing VM..."; _agent_vm_destroy; }
+  return $exit_code
 }
 
 _agent_vm_opencode() {
   local vm_opts=()
   local args=()
+  local rm=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --disk)     vm_opts+=(--disk "$2"); shift 2 ;;
@@ -438,6 +449,7 @@ _agent_vm_opencode() {
       --reset)    vm_opts+=(--reset); shift ;;
       --offline)  vm_opts+=(--offline); shift ;;
       --readonly) vm_opts+=(--readonly); shift ;;
+      --rm)       rm=1; shift ;;
       *)          args+=("$1"); shift ;;
     esac
   done
@@ -451,12 +463,17 @@ _agent_vm_opencode() {
 
   # TODO: add --dangerously-skip-permissions once released
   # (waiting on https://github.com/anomalyco/opencode/pull/11833)
+  local exit_code=0
   limactl shell --tty --workdir "$host_dir" "$vm_name" opencode "${args[@]}"
+  exit_code=$?
+  [[ -n "$rm" ]] && { echo "Removing VM..."; _agent_vm_destroy; }
+  return $exit_code
 }
 
 _agent_vm_codex() {
   local vm_opts=()
   local args=()
+  local rm=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --disk)     vm_opts+=(--disk "$2"); shift 2 ;;
@@ -465,6 +482,7 @@ _agent_vm_codex() {
       --reset)    vm_opts+=(--reset); shift ;;
       --offline)  vm_opts+=(--offline); shift ;;
       --readonly) vm_opts+=(--readonly); shift ;;
+      --rm)       rm=1; shift ;;
       *)          args+=("$1"); shift ;;
     esac
   done
@@ -476,11 +494,16 @@ _agent_vm_codex() {
   _agent_vm_ensure_running "$vm_name" "$host_dir" "${vm_opts[@]}" || return 1
   _agent_vm_print_resources "$vm_name"
 
+  local exit_code=0
   limactl shell --workdir "$host_dir" "$vm_name" codex --full-auto "${args[@]}"
+  exit_code=$?
+  [[ -n "$rm" ]] && { echo "Removing VM..."; _agent_vm_destroy; }
+  return $exit_code
 }
 
 _agent_vm_shell() {
   local vm_opts=()
+  local rm=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --disk)     vm_opts+=(--disk "$2"); shift 2 ;;
@@ -489,6 +512,7 @@ _agent_vm_shell() {
       --reset)    vm_opts+=(--reset); shift ;;
       --offline)  vm_opts+=(--offline); shift ;;
       --readonly) vm_opts+=(--readonly); shift ;;
+      --rm)       rm=1; shift ;;
       *)          shift ;;
     esac
   done
@@ -501,13 +525,22 @@ _agent_vm_shell() {
   _agent_vm_print_resources "$vm_name"
 
   echo "VM: $vm_name | Dir: $host_dir"
-  echo "Type 'exit' to leave (VM keeps running). Use 'agent-vm stop' to stop it."
+  if [[ -n "$rm" ]]; then
+    echo "Type 'exit' to leave. VM will be destroyed after exit."
+  else
+    echo "Type 'exit' to leave (VM keeps running). Use 'agent-vm stop' to stop it."
+  fi
+  local exit_code=0
   limactl shell --workdir "$host_dir" "$vm_name" zsh -l
+  exit_code=$?
+  [[ -n "$rm" ]] && { echo "Removing VM..."; _agent_vm_destroy; }
+  return $exit_code
 }
 
 _agent_vm_run() {
   local vm_opts=()
   local args=()
+  local rm=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --disk)     vm_opts+=(--disk "$2"); shift 2 ;;
@@ -516,6 +549,7 @@ _agent_vm_run() {
       --reset)    vm_opts+=(--reset); shift ;;
       --offline)  vm_opts+=(--offline); shift ;;
       --readonly) vm_opts+=(--readonly); shift ;;
+      --rm)       rm=1; shift ;;
       *)          args+=("$1"); shift ;;
     esac
   done
@@ -531,7 +565,11 @@ _agent_vm_run() {
   _agent_vm_ensure_running "$vm_name" "$host_dir" "${vm_opts[@]}" || return 1
   _agent_vm_print_resources "$vm_name"
 
+  local exit_code=0
   limactl shell --workdir "$host_dir" "$vm_name" "${args[@]}"
+  exit_code=$?
+  [[ -n "$rm" ]] && { echo "Removing VM..."; _agent_vm_destroy; }
+  return $exit_code
 }
 
 _agent_vm_stop() {

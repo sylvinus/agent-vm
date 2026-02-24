@@ -89,8 +89,15 @@ Each directory gets its own persistent VM. You can manage it with:
 ```bash
 agent-vm status      # Show status of all VMs (current dir marked with >)
 agent-vm stop        # Stop the VM (can be restarted later)
-agent-vm destroy     # Stop and permanently delete the VM
+agent-vm rm          # Stop and permanently delete the VM
 agent-vm destroy-all # Stop and delete all agent-vm VMs
+```
+
+To automatically destroy a VM after the agent exits (like `docker run --rm`):
+
+```bash
+agent-vm --rm claude                   # Run Claude, then destroy the VM
+agent-vm --rm run npm test             # Run tests, then destroy the VM
 ```
 
 To resize an existing VM's disk or memory, just pass `--disk` or `--memory` again — the VM will be stopped, reconfigured, and restarted automatically:
@@ -177,7 +184,7 @@ To add more MCP servers, add them to `~/.claude.json` in your `~/.agent-vm/setup
 1. **`agent-vm setup`** creates a Debian 13 VM with Lima, runs `agent-vm.setup.sh` inside it to install dev tools + Chrome + agents, and stops it as a reusable base template
 2. **`agent-vm claude|opencode|codex [args]`** clones the base template into a persistent per-directory VM, mounts your working directory, runs optional runtime scripts (`~/.agent-vm/runtime.sh` then `.agent-vm.runtime.sh`), then launches the agent with full permissions
 3. The VM persists after exit. Running any agent command or `agent-vm shell` in the same directory reuses the same VM
-4. Use `agent-vm stop` to stop the VM or `agent-vm destroy` to delete it
+4. Use `agent-vm stop` to stop the VM or `agent-vm rm` to delete it. Use `--rm` to auto-delete after the command exits
 
 Each VM is fully isolated — agents must authenticate independently inside their VM (e.g. `claude login`). Credentials persist within the VM across restarts but are not shared between VMs or with the host.
 
