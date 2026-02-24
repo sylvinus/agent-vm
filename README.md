@@ -41,9 +41,9 @@ Options:
 
 | Flag | Description | Default |
 |------|-------------|---------|
-| `--disk GB` | VM disk size in GB | 20 |
-| `--memory GB` | VM memory in GB | 8 |
-| `--cpus N` | Number of CPUs | 4 |
+| `--disk GB` | VM disk size in GB | 4 |
+| `--memory GB` | VM memory in GB | 1 |
+| `--cpus N` | Number of CPUs | 1 |
 
 ```bash
 agent-vm setup --disk 50 --memory 16 --cpus 8   # Larger VM for heavy workloads
