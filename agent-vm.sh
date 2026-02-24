@@ -43,6 +43,20 @@ _agent_vm_running() {
   limactl list --format '{{.Name}} {{.Status}}' 2>/dev/null | grep -q "^${1} Running$"
 }
 
+# Print VM resource details (CPUs, memory, disk)
+_agent_vm_print_resources() {
+  local vm_name="$1"
+  local info
+  info=$(limactl list --format '{{.Name}}|{{.CPUs}}|{{.Memory}}|{{.Disk}}' 2>/dev/null | grep "^${vm_name}|" | head -1)
+  if [[ -n "$info" ]]; then
+    local cpus mem_bytes disk_bytes
+    IFS='|' read -r _ cpus mem_bytes disk_bytes <<< "$info"
+    local mem_gib=$((mem_bytes / 1073741824))
+    local disk_gib=$((disk_bytes / 1073741824))
+    echo "  Resources: CPUs: ${cpus}, Memory: ${mem_gib} GiB, Disk: ${disk_gib} GiB"
+  fi
+}
+
 # Ensure the VM for cwd exists and is running, creating/starting as needed
 # Usage: _agent_vm_ensure_running <vm_name> <host_dir> [--disk GB] [--memory GB] [--reset]
 _agent_vm_ensure_running() {
@@ -85,6 +99,7 @@ _agent_vm_ensure_running() {
     [[ -n "$memory" ]] && clone_args+=(--set ".memory=\"${memory}GiB\"")
     [[ -n "$cpus" ]]   && clone_args+=(--set ".cpus=${cpus}")
     limactl clone "$AGENT_VM_TEMPLATE" "$vm_name" "${clone_args[@]}" &>/dev/null
+    _agent_vm_print_resources "$vm_name"
     # Record which base version this VM was cloned from
     local base_ver="$AGENT_VM_STATE_DIR/.agent-vm-base-version"
     if [[ -f "$base_ver" ]]; then
@@ -116,6 +131,7 @@ _agent_vm_ensure_running() {
       echo "$edit_output" >&2
       return 1
     fi
+    _agent_vm_print_resources "$vm_name"
   fi
 
   # Warn if this VM was cloned from an older base
@@ -254,9 +270,9 @@ Commands:
   help               Show this help
 
 VM options (for claude, opencode, codex, shell, run):
-  --disk GB          VM disk size (default: 20)
-  --memory GB        VM memory (default: 8)
-  --cpus N           Number of CPUs (default: 4)
+  --disk GB          VM disk size (default: 4)
+  --memory GB        VM memory (default: 1)
+  --cpus N           Number of CPUs (default: 1)
   --reset            Destroy and re-clone the VM from the base template
   --offline          Block outbound internet (keeps host/VM communication)
   --readonly         Mount the project directory as read-only
@@ -287,9 +303,9 @@ EOF
 }
 
 _agent_vm_setup() {
-  local disk=20
-  local memory=8
-  local cpus=""
+  local disk=4
+  local memory=1
+  local cpus=1
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -406,6 +422,7 @@ _agent_vm_claude() {
   vm_name="$(_agent_vm_name "$host_dir")"
 
   _agent_vm_ensure_running "$vm_name" "$host_dir" "${vm_opts[@]}" || return 1
+  _agent_vm_print_resources "$vm_name"
 
   limactl shell --workdir "$host_dir" "$vm_name" claude --dangerously-skip-permissions "${args[@]}"
 }
@@ -430,6 +447,7 @@ _agent_vm_opencode() {
   vm_name="$(_agent_vm_name "$host_dir")"
 
   _agent_vm_ensure_running "$vm_name" "$host_dir" "${vm_opts[@]}" || return 1
+  _agent_vm_print_resources "$vm_name"
 
   # TODO: add --dangerously-skip-permissions once released
   # (waiting on https://github.com/anomalyco/opencode/pull/11833)
@@ -456,6 +474,7 @@ _agent_vm_codex() {
   vm_name="$(_agent_vm_name "$host_dir")"
 
   _agent_vm_ensure_running "$vm_name" "$host_dir" "${vm_opts[@]}" || return 1
+  _agent_vm_print_resources "$vm_name"
 
   limactl shell --workdir "$host_dir" "$vm_name" codex --full-auto "${args[@]}"
 }
@@ -479,6 +498,7 @@ _agent_vm_shell() {
   vm_name="$(_agent_vm_name "$host_dir")"
 
   _agent_vm_ensure_running "$vm_name" "$host_dir" "${vm_opts[@]}" || return 1
+  _agent_vm_print_resources "$vm_name"
 
   echo "VM: $vm_name | Dir: $host_dir"
   echo "Type 'exit' to leave (VM keeps running). Use 'agent-vm stop' to stop it."
@@ -509,6 +529,7 @@ _agent_vm_run() {
   vm_name="$(_agent_vm_name "$host_dir")"
 
   _agent_vm_ensure_running "$vm_name" "$host_dir" "${vm_opts[@]}" || return 1
+  _agent_vm_print_resources "$vm_name"
 
   limactl shell --workdir "$host_dir" "$vm_name" "${args[@]}"
 }
