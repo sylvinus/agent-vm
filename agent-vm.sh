@@ -91,14 +91,20 @@ _agent_vm_ensure_running() {
 
   if ! _agent_vm_exists "$vm_name"; then
     echo "Creating VM '$vm_name'..."
-    local clone_args=(
-      --set ".mounts=[{\"location\":\"${host_dir}\",\"writable\":true}]"
-      --tty=false
-    )
-    [[ -n "$disk" ]]   && clone_args+=(--set ".disk=\"${disk}GiB\"")
-    [[ -n "$memory" ]] && clone_args+=(--set ".memory=\"${memory}GiB\"")
-    [[ -n "$cpus" ]]   && clone_args+=(--set ".cpus=${cpus}")
-    limactl clone "$AGENT_VM_TEMPLATE" "$vm_name" "${clone_args[@]}" &>/dev/null
+    limactl clone "$AGENT_VM_TEMPLATE" "$vm_name" --tty=false &>/dev/null
+    # Apply mount and resource settings via edit after clone
+    # Mount and memory/cpus are applied separately from disk, because
+    # Lima rejects the entire edit if disk shrinking is attempted.
+    local edit_args=()
+    edit_args+=(--set ".mounts = [{\"location\": \"${host_dir}\", \"writable\": true}]")
+    [[ -n "$memory" ]] && edit_args+=(--memory "$memory")
+    [[ -n "$cpus" ]]   && edit_args+=(--cpus "$cpus")
+    (cd /tmp && limactl edit "$vm_name" "${edit_args[@]}") &>/dev/null
+    if [[ -n "$disk" ]]; then
+      if ! (cd /tmp && limactl edit "$vm_name" --disk "$disk") &>/dev/null; then
+        echo "Warning: Cannot set disk to ${disk} GiB (shrinking is not supported). Re-run 'agent-vm setup --disk ${disk}' for a smaller base." >&2
+      fi
+    fi
     _agent_vm_print_resources "$vm_name"
     # Record which base version this VM was cloned from
     local base_ver="$AGENT_VM_STATE_DIR/.agent-vm-base-version"
@@ -107,11 +113,6 @@ _agent_vm_ensure_running() {
     fi
   elif [[ -n "$disk" || -n "$memory" || -n "$cpus" ]]; then
     # Auto-resize existing VM if --disk, --memory, or --cpus changed
-    local edit_args=()
-    edit_args+=(--set ".mounts=[{\"location\":\"${host_dir}\",\"writable\":true}]")
-    [[ -n "$disk" ]]   && edit_args+=(--set ".disk=\"${disk}GiB\"")
-    [[ -n "$memory" ]] && edit_args+=(--set ".memory=\"${memory}GiB\"")
-    [[ -n "$cpus" ]]   && edit_args+=(--set ".cpus=${cpus}")
     if _agent_vm_running "$vm_name"; then
       echo "VM '$vm_name' is currently running. It must be stopped to apply new resource settings."
       printf "Stop the VM and apply changes? [y/N] "
@@ -125,11 +126,20 @@ _agent_vm_ensure_running() {
       limactl stop "$vm_name" &>/dev/null
     fi
     echo "Updating VM resources..."
+    local edit_args=()
+    edit_args+=(--set ".mounts = [{\"location\": \"${host_dir}\", \"writable\": true}]")
+    [[ -n "$memory" ]] && edit_args+=(--memory "$memory")
+    [[ -n "$cpus" ]]   && edit_args+=(--cpus "$cpus")
     local edit_output
     if ! edit_output=$(cd /tmp && limactl edit "$vm_name" "${edit_args[@]}" 2>&1); then
       echo "Error: Failed to update VM resources:" >&2
       echo "$edit_output" >&2
       return 1
+    fi
+    if [[ -n "$disk" ]]; then
+      if ! edit_output=$(cd /tmp && limactl edit "$vm_name" --disk "$disk" 2>&1); then
+        echo "Warning: Cannot set disk to ${disk} GiB (shrinking is not supported). Re-run 'agent-vm setup --disk ${disk}' for a smaller base." >&2
+      fi
     fi
     _agent_vm_print_resources "$vm_name"
   fi
@@ -272,8 +282,8 @@ Commands:
   help               Show this help
 
 VM options (for claude, opencode, codex, shell, run):
-  --disk GB          VM disk size (default: 4)
-  --memory GB        VM memory (default: 1)
+  --disk GB          VM disk size (default: 10)
+  --memory GB        VM memory (default: 2)
   --cpus N           Number of CPUs (default: 1)
   --reset            Destroy and re-clone the VM from the base template
   --offline          Block outbound internet (keeps host/VM communication)
@@ -307,8 +317,8 @@ EOF
 }
 
 _agent_vm_setup() {
-  local disk=4
-  local memory=1
+  local disk=10
+  local memory=2
   local cpus=1
 
   while [[ $# -gt 0 ]]; do
@@ -319,9 +329,9 @@ _agent_vm_setup() {
         echo "Create a base VM template with dev tools and agents pre-installed."
         echo ""
         echo "Options:"
-        echo "  --disk GB      VM disk size (default: 20)"
-        echo "  --memory GB    VM memory (default: 8)"
-        echo "  --cpus N       Number of CPUs (default: 4)"
+        echo "  --disk GB      VM disk size (default: 10)"
+        echo "  --memory GB    VM memory (default: 2)"
+        echo "  --cpus N       Number of CPUs (default: 1)"
         echo "  --help         Show this help"
         return 0
         ;;
@@ -382,6 +392,9 @@ _agent_vm_setup() {
   [[ -n "$cpus" ]] && create_args+=(--cpus="$cpus")
   limactl create --name="$AGENT_VM_TEMPLATE" template:debian-13 \
     "${create_args[@]}" &>/dev/null || { echo "Error: Failed to create base VM." >&2; return 1; }
+
+  _agent_vm_print_resources "$AGENT_VM_TEMPLATE"
+
   limactl start "$AGENT_VM_TEMPLATE" &>/dev/null || { echo "Error: Failed to start base VM." >&2; return 1; }
 
   # Run the setup script inside the VM

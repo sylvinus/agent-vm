@@ -41,8 +41,8 @@ Options:
 
 | Flag | Description | Default |
 |------|-------------|---------|
-| `--disk GB` | VM disk size in GB | 4 |
-| `--memory GB` | VM memory in GB | 1 |
+| `--disk GB` | VM disk size in GB | 10 |
+| `--memory GB` | VM memory in GB | 2 |
 | `--cpus N` | Number of CPUs | 1 |
 
 ```bash
