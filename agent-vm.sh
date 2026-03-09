@@ -63,7 +63,7 @@ _agent_vm_ensure_running() {
   local vm_name="$1"
   local host_dir="$2"
   shift 2
-  local disk="" memory="" cpus="" reset="" offline="" rdonly="" git_ro=""
+  local disk="" memory="" cpus="" reset="" offline="" rdonly="" git_ro="" portforward=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --disk)     disk="$2"; shift 2 ;;
@@ -73,6 +73,7 @@ _agent_vm_ensure_running() {
       --offline)  offline=1; shift ;;
       --readonly) rdonly=1; shift ;;
       --git-read-only|--git-ro) git_ro=1; shift ;;
+      --port-forward) portforward="$2"; shift 2 ;;
       *)          shift ;;
     esac
   done
@@ -112,7 +113,7 @@ _agent_vm_ensure_running() {
     if [[ -f "$base_ver" ]]; then
       cp "$base_ver" "$AGENT_VM_STATE_DIR/.agent-vm-version-${vm_name}"
     fi
-  elif [[ -n "$disk" || -n "$memory" || -n "$cpus" ]]; then
+  elif [[ -n "$disk" || -n "$memory" || -n "$cpus" || -n "$portforward" ]]; then
     # Auto-resize existing VM if --disk, --memory, or --cpus changed
     if _agent_vm_running "$vm_name"; then
       echo "VM '$vm_name' is currently running. It must be stopped to apply new resource settings."
@@ -154,7 +155,9 @@ _agent_vm_ensure_running() {
 
   if ! _agent_vm_running "$vm_name"; then
     echo "Starting VM '$vm_name'..."
-    limactl start "$vm_name" &>/dev/null
+    local start_args=("$vm_name")
+    [[ -n "$portforward" ]] && start_args+=(--port-forward "$portforward")
+    limactl start "${start_args[@]}" &>/dev/null
   fi
 
   # Run per-user runtime script if it exists
@@ -219,6 +222,12 @@ agent-vm() {
         vm_opts+=(--git-read-only); shift ;;
       --rm)
         vm_opts+=(--rm); shift ;;
+      --port-forward)
+        vm_opts+=(--port-forward "$2"); shift 2 ;;
+      --port-forward=*)
+        vm_opts+=(--port-forward "${1#*=}"); shift ;;
+      --background)
+        vm_opts+=(--background); shift ;;
       *)
         break ;;
     esac
@@ -299,6 +308,8 @@ VM options (for claude, opencode, codex, shell, run):
   --readonly         Mount the project directory as read-only
   --git-read-only    Mount .git directory as read-only (allows git diff/log but not commit/stash)
   --rm               Automatically destroy the VM after the command exits
+  --port-forward     Enable port forwarding (hostfwd)
+  --background          Run in background (detached from terminal)
 
 Examples:
   agent-vm setup                             # Create base VM
@@ -311,6 +322,8 @@ Examples:
   agent-vm --offline claude                  # No internet access
   agent-vm --readonly shell                  # Read-only project mount
   agent-vm --git-ro claude                   # Protect .git from writes
+  agent-vm --port-forward '3000:3000' opencode serve --port 3000  # Forward vm ports to the host
+  agent-vm --background opencode serve --port 3000  # Run in background
   agent-vm shell                             # Shell into the VM
   agent-vm run npm install                   # Run a command in the VM
   agent-vm claude -p "fix lint errors"       # Pass args to claude
@@ -331,11 +344,12 @@ _agent_vm_setup() {
   local disk=10
   local memory=2
   local cpus=1
+  local portforward=""
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --help|-h)
-        echo "Usage: agent-vm setup [--disk GB] [--memory GB] [--cpus N]"
+        echo "Usage: agent-vm setup [--disk GB] [--memory GB] [--cpus N] [--port-forward]"
         echo ""
         echo "Create a base VM template with dev tools and agents pre-installed."
         echo ""
@@ -343,6 +357,7 @@ _agent_vm_setup() {
         echo "  --disk GB      VM disk size (default: 10)"
         echo "  --memory GB    VM memory (default: 2)"
         echo "  --cpus N       Number of CPUs (default: 1)"
+        echo "  --port-forward Enable port forwarding (hostfwd)"
         echo "  --help         Show this help"
         return 0
         ;;
@@ -372,6 +387,14 @@ _agent_vm_setup() {
         ;;
       --reset|--offline|--readonly|--git-read-only|--git-ro)
         shift ;;
+      --port-forward)
+        portforward="$2"
+        shift 2
+        ;;
+      --port-forward=*)
+        portforward="${1#*=}"
+        shift
+        ;;
       *)
         echo "Unknown option: $1" >&2
         echo "Usage: agent-vm setup [--disk GB] [--memory GB] [--cpus N]" >&2
@@ -401,6 +424,7 @@ _agent_vm_setup() {
     --tty=false
   )
   [[ -n "$cpus" ]] && create_args+=(--cpus="$cpus")
+  [[ -n "$portforward" ]] && create_args+=(--port-forward="$portforward")
   limactl create --name="$AGENT_VM_TEMPLATE" template:debian-13 \
     "${create_args[@]}" &>/dev/null || { echo "Error: Failed to create base VM." >&2; return 1; }
 
@@ -434,6 +458,7 @@ _agent_vm_claude() {
   local vm_opts=()
   local args=()
   local rm=""
+  local background=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --disk)     vm_opts+=(--disk "$2"); shift 2 ;;
@@ -444,9 +469,17 @@ _agent_vm_claude() {
       --readonly) vm_opts+=(--readonly); shift ;;
       --git-read-only|--git-ro) vm_opts+=(--git-read-only); shift ;;
       --rm)       rm=1; shift ;;
+      --port-forward) vm_opts+=(--port-forward "$2"); shift 2 ;;
+      --background)   background=1; shift ;;
       *)          args+=("$1"); shift ;;
     esac
   done
+
+  if [[ -n "$background" && -n "$rm" ]]; then
+    echo "Error: --background and --rm cannot be used together" >&2
+    return 1
+  fi
+
   local host_dir
   host_dir="$(pwd)"
   local vm_name
@@ -455,17 +488,27 @@ _agent_vm_claude() {
   _agent_vm_ensure_running "$vm_name" "$host_dir" "${vm_opts[@]}" || return 1
   _agent_vm_print_resources "$vm_name"
 
-  local exit_code=0
-  limactl shell --workdir "$host_dir" "$vm_name" claude --dangerously-skip-permissions "${args[@]}"
-  exit_code=$?
-  [[ -n "$rm" ]] && { echo "Removing VM..."; _agent_vm_destroy; }
-  return $exit_code
+  if [[ -n "$background" ]]; then
+    ( limactl shell --tty=false --workdir "$host_dir" "$vm_name" claude --dangerously-skip-permissions "${args[@]}" &>/dev/null & )
+    echo "Started claude in background"
+    return 0
+  elif [[ -n "$rm" ]]; then
+    limactl shell --workdir "$host_dir" "$vm_name" claude --dangerously-skip-permissions "${args[@]}"
+    exit_code=$?
+    echo "Removing VM..."
+    _agent_vm_destroy
+    return $exit_code
+  else
+    limactl shell --workdir "$host_dir" "$vm_name" claude --dangerously-skip-permissions "${args[@]}"
+    return $?
+  fi
 }
 
 _agent_vm_opencode() {
   local vm_opts=()
   local args=()
   local rm=""
+  local background=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --disk)     vm_opts+=(--disk "$2"); shift 2 ;;
@@ -476,9 +519,17 @@ _agent_vm_opencode() {
       --readonly) vm_opts+=(--readonly); shift ;;
       --git-read-only|--git-ro) vm_opts+=(--git-read-only); shift ;;
       --rm)       rm=1; shift ;;
+      --port-forward) vm_opts+=(--port-forward "$2"); shift 2 ;;
+      --background)   background=1; shift ;;
       *)          args+=("$1"); shift ;;
     esac
   done
+
+  if [[ -n "$background" && -n "$rm" ]]; then
+    echo "Error: --background and --rm cannot be used together" >&2
+    return 1
+  fi
+
   local host_dir
   host_dir="$(pwd)"
   local vm_name
@@ -489,17 +540,27 @@ _agent_vm_opencode() {
 
   # TODO: add --dangerously-skip-permissions once released
   # (waiting on https://github.com/anomalyco/opencode/pull/11833)
-  local exit_code=0
-  limactl shell --tty --workdir "$host_dir" "$vm_name" opencode "${args[@]}"
-  exit_code=$?
-  [[ -n "$rm" ]] && { echo "Removing VM..."; _agent_vm_destroy; }
-  return $exit_code
+  if [[ -n "$background" ]]; then
+    ( limactl shell --tty=false --workdir "$host_dir" "$vm_name" opencode "${args[@]}" &>/dev/null & )
+    echo "Started opencode in background"
+    return 0
+  elif [[ -n "$rm" ]]; then
+    limactl shell --tty --workdir "$host_dir" "$vm_name" opencode "${args[@]}"
+    exit_code=$?
+    echo "Removing VM..."
+    _agent_vm_destroy
+    return $exit_code
+  else
+    limactl shell --tty --workdir "$host_dir" "$vm_name" opencode "${args[@]}"
+    return $?
+  fi
 }
 
 _agent_vm_codex() {
   local vm_opts=()
   local args=()
   local rm=""
+  local background=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --disk)     vm_opts+=(--disk "$2"); shift 2 ;;
@@ -510,9 +571,17 @@ _agent_vm_codex() {
       --readonly) vm_opts+=(--readonly); shift ;;
       --git-read-only|--git-ro) vm_opts+=(--git-read-only); shift ;;
       --rm)       rm=1; shift ;;
+      --port-forward) vm_opts+=(--port-forward "$2"); shift 2 ;;
+      --background)   background=1; shift ;;
       *)          args+=("$1"); shift ;;
     esac
   done
+
+  if [[ -n "$background" && -n "$rm" ]]; then
+    echo "Error: --background and --rm cannot be used together" >&2
+    return 1
+  fi
+
   local host_dir
   host_dir="$(pwd)"
   local vm_name
@@ -521,11 +590,20 @@ _agent_vm_codex() {
   _agent_vm_ensure_running "$vm_name" "$host_dir" "${vm_opts[@]}" || return 1
   _agent_vm_print_resources "$vm_name"
 
-  local exit_code=0
-  limactl shell --workdir "$host_dir" "$vm_name" codex --full-auto "${args[@]}"
-  exit_code=$?
-  [[ -n "$rm" ]] && { echo "Removing VM..."; _agent_vm_destroy; }
-  return $exit_code
+  if [[ -n "$background" ]]; then
+    ( limactl shell --tty=false --workdir "$host_dir" "$vm_name" codex --full-auto "${args[@]}" &>/dev/null & )
+    echo "Started codex in background"
+    return 0
+  elif [[ -n "$rm" ]]; then
+    limactl shell --workdir "$host_dir" "$vm_name" codex --full-auto "${args[@]}"
+    exit_code=$?
+    echo "Removing VM..."
+    _agent_vm_destroy
+    return $exit_code
+  else
+    limactl shell --workdir "$host_dir" "$vm_name" codex --full-auto "${args[@]}"
+    return $?
+  fi
 }
 
 _agent_vm_shell() {
@@ -540,6 +618,7 @@ _agent_vm_shell() {
       --offline)  vm_opts+=(--offline); shift ;;
       --readonly) vm_opts+=(--readonly); shift ;;
       --git-read-only|--git-ro) vm_opts+=(--git-read-only); shift ;;
+      --port-forward) vm_opts+=(--port-forward "$2"); shift 2 ;;
       --rm)       rm=1; shift ;;
       *)          shift ;;
     esac
@@ -569,6 +648,7 @@ _agent_vm_run() {
   local vm_opts=()
   local args=()
   local rm=""
+  local background=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --disk)     vm_opts+=(--disk "$2"); shift 2 ;;
@@ -579,9 +659,16 @@ _agent_vm_run() {
       --readonly) vm_opts+=(--readonly); shift ;;
       --git-read-only|--git-ro) vm_opts+=(--git-read-only); shift ;;
       --rm)       rm=1; shift ;;
+      --port-forward) vm_opts+=(--port-forward "$2"); shift 2 ;;
+      --background)   background=1; shift ;;
       *)          args+=("$1"); shift ;;
     esac
   done
+  if [[ -n "$background" && -n "$rm" ]]; then
+    echo "Error: --background and --rm cannot be used together" >&2
+    return 1
+  fi
+
   if [[ ${#args[@]} -eq 0 ]]; then
     echo "Usage: agent-vm run <command> [args]" >&2
     return 1
@@ -594,11 +681,20 @@ _agent_vm_run() {
   _agent_vm_ensure_running "$vm_name" "$host_dir" "${vm_opts[@]}" || return 1
   _agent_vm_print_resources "$vm_name"
 
-  local exit_code=0
-  limactl shell --workdir "$host_dir" "$vm_name" "${args[@]}"
-  exit_code=$?
-  [[ -n "$rm" ]] && { echo "Removing VM..."; _agent_vm_destroy; }
-  return $exit_code
+  if [[ -n "$background" ]]; then
+    ( limactl shell --tty=false --workdir "$host_dir" "$vm_name" "${args[@]}" &>/dev/null & )
+    echo "Started '${args[*]}' in background"
+    return 0
+  elif [[ -n "$rm" ]]; then
+    limactl shell --workdir "$host_dir" "$vm_name" "${args[@]}"
+    exit_code=$?
+    echo "Removing VM..."
+    _agent_vm_destroy
+    return $exit_code
+  else
+    limactl shell --workdir "$host_dir" "$vm_name" "${args[@]}"
+    return $?
+  fi
 }
 
 _agent_vm_stop() {
