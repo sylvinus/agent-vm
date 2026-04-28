@@ -192,6 +192,56 @@ _agent_vm_ensure_running() {
   fi
 }
 
+# Resolve launch flags for a tool, with user/project overrides.
+# Reads ~/.agent-vm/flags then <project>/.agent-vm.flags as DATA (not shell);
+# project entries override user entries override built-in defaults. A line
+# matching the tool replaces the default flags entirely (a bare tool line
+# yields an empty flag list). Prints flags one per line.
+# Usage: _agent_vm_load_flags <tool> <host_dir> [default_flag ...]
+_agent_vm_load_flags() {
+  local tool="$1"
+  local host_dir="$2"
+  shift 2
+  local defaults=("$@")
+
+  local defined=""
+  local out=()
+  local file
+  for file in "$AGENT_VM_STATE_DIR/flags" "$host_dir/.agent-vm.flags"; do
+    [[ -f "$file" ]] || continue
+    local marker=""
+    local parsed=()
+    local line
+    while IFS= read -r line; do
+      if [[ -z "$marker" ]]; then
+        marker="$line"
+      else
+        parsed+=("$line")
+      fi
+    done < <(awk -v t="$tool" '
+      /^[[:space:]]*#/ { next }
+      /^[[:space:]]*$/ { next }
+      $1 == t {
+        found = 1
+        for (i = 2; i <= NF; i++) flags[++n] = $i
+      }
+      END {
+        if (found) {
+          print "1"
+          for (i = 1; i <= n; i++) print flags[i]
+        }
+      }
+    ' "$file")
+    if [[ "$marker" == "1" ]]; then
+      defined=1
+      out=("${parsed[@]}")
+    fi
+  done
+
+  [[ -z "$defined" ]] && out=("${defaults[@]}")
+  [[ ${#out[@]} -gt 0 ]] && printf '%s\n' "${out[@]}"
+}
+
 agent-vm() {
   local vm_opts=()
   # Parse global options before the subcommand
@@ -321,7 +371,9 @@ VMs are persistent and unique per directory. Running "agent-vm shell" or
 Customization:
   ~/.agent-vm/setup.sh              Per-user setup (runs during "agent-vm setup")
   ~/.agent-vm/runtime.sh            Per-user runtime (runs on each VM start)
+  ~/.agent-vm/flags                 Per-user agent launch flags overrides
   <project>/.agent-vm.runtime.sh    Per-project runtime (runs on each VM start)
+  <project>/.agent-vm.flags         Per-project agent launch flags overrides
 
 More info: https://github.com/sylvinus/agent-vm
 EOF
@@ -455,8 +507,11 @@ _agent_vm_claude() {
   _agent_vm_ensure_running "$vm_name" "$host_dir" "${vm_opts[@]}" || return 1
   _agent_vm_print_resources "$vm_name"
 
+  local flags=()
+  while IFS= read -r line; do flags+=("$line"); done < <(_agent_vm_load_flags claude "$host_dir" --dangerously-skip-permissions)
+
   local exit_code=0
-  limactl shell --workdir "$host_dir" "$vm_name" claude --dangerously-skip-permissions "${args[@]}"
+  limactl shell --workdir "$host_dir" "$vm_name" claude "${flags[@]}" "${args[@]}"
   exit_code=$?
   [[ -n "$rm" ]] && { echo "Removing VM..."; _agent_vm_destroy; }
   return $exit_code
@@ -489,8 +544,11 @@ _agent_vm_opencode() {
 
   # TODO: add --dangerously-skip-permissions once released
   # (waiting on https://github.com/anomalyco/opencode/pull/11833)
+  local flags=()
+  while IFS= read -r line; do flags+=("$line"); done < <(_agent_vm_load_flags opencode "$host_dir")
+
   local exit_code=0
-  limactl shell --tty --workdir "$host_dir" "$vm_name" opencode "${args[@]}"
+  limactl shell --tty --workdir "$host_dir" "$vm_name" opencode "${flags[@]}" "${args[@]}"
   exit_code=$?
   [[ -n "$rm" ]] && { echo "Removing VM..."; _agent_vm_destroy; }
   return $exit_code
@@ -521,8 +579,11 @@ _agent_vm_codex() {
   _agent_vm_ensure_running "$vm_name" "$host_dir" "${vm_opts[@]}" || return 1
   _agent_vm_print_resources "$vm_name"
 
+  local flags=()
+  while IFS= read -r line; do flags+=("$line"); done < <(_agent_vm_load_flags codex "$host_dir" --full-auto)
+
   local exit_code=0
-  limactl shell --workdir "$host_dir" "$vm_name" codex --full-auto "${args[@]}"
+  limactl shell --workdir "$host_dir" "$vm_name" codex "${flags[@]}" "${args[@]}"
   exit_code=$?
   [[ -n "$rm" ]] && { echo "Removing VM..."; _agent_vm_destroy; }
   return $exit_code

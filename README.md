@@ -201,6 +201,28 @@ mise install
 bundle install
 ```
 
+### Agent launch flags: `~/.agent-vm/flags` / `.agent-vm.flags`
+
+By default `agent-vm` launches the agents with sane permissive flags
+(`claude --dangerously-skip-permissions`, `codex --full-auto`). If those
+defaults conflict with your setup — for example a `.agent-vm.runtime.sh` that
+wires up DB access which `codex --full-auto` then refuses — override them per
+tool:
+
+```
+# ~/.agent-vm/flags or <project>/.agent-vm.flags
+codex --dangerously-bypass-approvals-and-sandbox
+claude --dangerously-skip-permissions
+opencode
+```
+
+These files are parsed as **data**, not sourced as shell — a repo can't run
+code on your host through them. One line per tool: `<tool> [flag ...]`.
+Comments (`#`) and blank lines are ignored. Listing a tool replaces its
+defaults entirely (a bare tool name launches it with no flags). Per-project
+file overrides per-user. Args passed on the command line are still appended
+after these flags. See [`flags.example`](flags.example).
+
 ### MCP servers
 
 The base VM comes with [Chrome DevTools MCP](https://github.com/ChromeDevTools/chrome-devtools-mcp) pre-configured for Claude, giving the agent headless browser access.

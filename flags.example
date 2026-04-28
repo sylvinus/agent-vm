@@ -1,0 +1,29 @@
+# agent-vm launch flags overrides
+#
+# Copy to one of:
+#   ~/.agent-vm/flags             (per-user, applies to every VM)
+#   <project>/.agent-vm.flags     (per-project, overrides the user file)
+#
+# This file is parsed as DATA — never sourced as shell — so a malicious
+# repository cannot run code on the host through it.
+#
+# Format: one line per agent (claude, codex, opencode):
+#   <tool> [flag ...]
+# Lines starting with # and blank lines are ignored.
+#
+# Listing a tool REPLACES the default launch flags for it. A bare tool name
+# (no flags) launches it with no flags. Omit a tool entirely to keep the
+# built-in defaults below:
+#   claude    --dangerously-skip-permissions
+#   codex     --full-auto
+#   opencode  (none)
+#
+# Args passed on the command line (e.g. `agent-vm codex -p "..."`) are still
+# appended after these flags.
+#
+# Example: bypass codex sandbox/approvals so a project runtime that wires up
+# DB access or other system tweaks isn't blocked by --full-auto.
+# codex --dangerously-bypass-approvals-and-sandbox
+
+# claude --dangerously-skip-permissions
+# opencode
