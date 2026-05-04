@@ -23,8 +23,9 @@ git clone https://github.com/sylvinus/agent-vm.git
 cd agent-vm
 
 # Add to your shell config
-echo "source $(pwd)/agent-vm.sh" >> ~/.zshrc   # zsh
-echo "source $(pwd)/agent-vm.sh" >> ~/.bashrc  # or bash
+echo "source $(pwd)/agent-vm.sh" >> ~/.zshrc          # zsh
+echo "source $(pwd)/agent-vm.sh" >> ~/.bashrc         # bash
+echo "source $(pwd)/agent-vm.fish" >> ~/.config/fish/config.fish  # fish
 ```
 
 ## Usage
@@ -235,7 +236,8 @@ Each VM is fully isolated — agents must authenticate independently inside thei
 
 | File | Description |
 |------|-------------|
-| `agent-vm.sh` | Main script — source this in your shell config |
+| `agent-vm.sh` | Main script — source this in bash/zsh config |
+| `agent-vm.fish` | Fish shell wrapper — source this in Fish config |
 | `agent-vm.setup.sh` | Package installation script that runs inside the base VM during setup |
 
 ## What's in the VM by default
