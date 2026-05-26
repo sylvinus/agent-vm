@@ -88,6 +88,7 @@ _agent_vm_ensure_running() {
     limactl stop "$vm_name" &>/dev/null
     limactl delete "$vm_name" --force &>/dev/null
     rm -f "$AGENT_VM_STATE_DIR/.agent-vm-version-${vm_name}"
+    rm -f "$AGENT_VM_STATE_DIR/.agent-vm-term-${vm_name}"
   fi
 
   if ! _agent_vm_exists "$vm_name"; then
@@ -155,6 +156,20 @@ _agent_vm_ensure_running() {
   if ! _agent_vm_running "$vm_name"; then
     echo "Starting VM '$vm_name'..."
     limactl start "$vm_name" &>/dev/null
+  fi
+
+  # Install the host's terminfo entry inside the VM so non-standard terminals
+  # (xterm-ghostty, xterm-kitty, …) work correctly. Without this, zsh/ZLE
+  # can't decode keys → broken backspace, arrows, etc. Cached per-VM so we only
+  # pay the limactl shell roundtrip when $TERM actually changes.
+  local term_cache="$AGENT_VM_STATE_DIR/.agent-vm-term-${vm_name}"
+  if [[ -n "${TERM:-}" ]] && [[ "$(cat "$term_cache" 2>/dev/null)" != "$TERM" ]] \
+     && infocmp -x "$TERM" &>/dev/null; then
+    if infocmp -x "$TERM" | limactl shell "$vm_name" sudo tic -x - &>/dev/null; then
+      echo "$TERM" > "$term_cache"
+    else
+      echo "Warning: failed to install '$TERM' terminfo inside VM." >&2
+    fi
   fi
 
   # Run per-user runtime script if it exists
@@ -632,6 +647,7 @@ _agent_vm_destroy() {
   limactl stop "$vm_name" &>/dev/null
   limactl delete "$vm_name" --force &>/dev/null
   rm -f "$AGENT_VM_STATE_DIR/.agent-vm-version-${vm_name}"
+  rm -f "$AGENT_VM_STATE_DIR/.agent-vm-term-${vm_name}"
   echo "VM destroyed."
 }
 
@@ -656,6 +672,7 @@ _agent_vm_destroy_all() {
     limactl stop "$vm" &>/dev/null
     limactl delete "$vm" --force &>/dev/null
     rm -f "$AGENT_VM_STATE_DIR/.agent-vm-version-${vm}"
+    rm -f "$AGENT_VM_STATE_DIR/.agent-vm-term-${vm}"
   done
   echo "All VMs destroyed."
 }
