@@ -85,9 +85,12 @@ echo 'export PATH=$HOME/.local/bin:$HOME/.claude/local/bin:$HOME/.opencode/bin:$
 echo "Installing Codex CLI..."
 sudo npm i -g @openai/codex
 
-# Install Mistral Vibe (installs uv and the `vibe`/`vibe-acp` commands into ~/.local/bin,
-# which is already on PATH via the lines added above)
+# Install Mistral Vibe (installs uv and the `vibe`/`vibe-acp` commands into ~/.local/bin).
+# This setup script runs under bash, but the PATH export lives in ~/.zshrc/~/.zshenv, so
+# ~/.local/bin isn't on PATH here yet. The Vibe installer exits non-zero (aborting setup
+# under `set -e`) if it can't find its install dir on PATH, so export it for this session.
 echo "Installing Mistral Vibe..."
+export PATH="$HOME/.local/bin:$PATH"
 curl -LsSf https://mistral.ai/vibe/install.sh | bash
 
 # Configure Chrome DevTools MCP server for Claude
