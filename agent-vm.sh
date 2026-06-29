@@ -77,6 +77,17 @@ _agent_vm_ensure_running() {
     esac
   done
 
+  # Lima's host mount cannot share a path containing whitespace: the mount
+  # fails silently and the VM starts with a bare, root-owned mountpoint, so
+  # every write into the project (e.g. creating .claude) fails with
+  # "Permission denied". Fail fast with an actionable message instead.
+  if [[ "$host_dir" == *[[:space:]]* ]]; then
+    echo "Error: project path contains whitespace, which Lima cannot mount:" >&2
+    echo "  $host_dir" >&2
+    echo "Rename the directory to remove spaces (e.g. with '-'), then retry." >&2
+    return 1
+  fi
+
   if ! limactl list -q 2>/dev/null | grep -q "^${AGENT_VM_TEMPLATE}$"; then
     echo "Error: Base VM not found. Run 'agent-vm setup' first." >&2
     return 1
@@ -156,6 +167,32 @@ _agent_vm_ensure_running() {
   if ! _agent_vm_running "$vm_name"; then
     echo "Starting VM '$vm_name'..."
     limactl start "$vm_name" &>/dev/null
+  fi
+
+  # Sanity-check that the project directory is actually shared and writable.
+  # A silently-failed or stale mount leaves a bare, root-owned mountpoint;
+  # without this check every later write (runtime scripts, the agent itself)
+  # fails with a confusing cascade of "Permission denied" instead of one clear
+  # error. Runs before the optional --readonly remount below, so it reflects
+  # the mount itself, not the requested read-only restriction.
+  #
+  # If the mount is broken, try to self-heal once: re-apply the mount config
+  # (Lima only allows editing a stopped VM) and restart. This repairs a stale
+  # or silently-missing mount without forcing a full --reset, and adds no
+  # overhead on the common path where the mount is already healthy.
+  if ! limactl shell "$vm_name" test -w "$host_dir" &>/dev/null; then
+    echo "Project mount is not writable; repairing..." >&2
+    limactl stop "$vm_name" &>/dev/null
+    (cd /tmp && limactl edit "$vm_name" \
+      --set ".mounts = [{\"location\": \"${host_dir}\", \"writable\": true}]") &>/dev/null
+    limactl start "$vm_name" &>/dev/null
+    if ! limactl shell "$vm_name" test -w "$host_dir" &>/dev/null; then
+      echo "Error: project directory is still not writable inside the VM:" >&2
+      echo "  $host_dir" >&2
+      echo "The host mount failed to attach. Try 'agent-vm --reset <command>'" >&2
+      echo "to re-clone the VM from the base template." >&2
+      return 1
+    fi
   fi
 
   # Install the host's terminfo entry inside the VM so non-standard terminals
@@ -242,6 +279,19 @@ agent-vm() {
   local cmd="${1:-help}"
   shift 2>/dev/null || true
 
+  # Every command except help/setup needs limactl present. (setup installs it
+  # itself; help needs nothing.) Without this, stop/list/status/etc. would fail
+  # with confusing empty output instead of a clear, actionable message.
+  case "$cmd" in
+    help|--help|-h|setup) ;;
+    *)
+      if ! command -v limactl &>/dev/null; then
+        echo "Error: limactl (Lima) not found. Run 'agent-vm setup' first, or install" >&2
+        echo "it from https://lima-vm.io/docs/installation/" >&2
+        return 1
+      fi ;;
+  esac
+
   case "$cmd" in
     setup)
       _agent_vm_setup "${vm_opts[@]}" "$@"
@@ -307,7 +357,7 @@ Commands:
 
 VM options (for claude, opencode, codex, shell, run):
   --disk GB          VM disk size (default: 10)
-  --memory GB        VM memory (default: 2)
+  --memory GB        VM memory (default: 3)
   --cpus N           Number of CPUs (default: 1)
   --reset            Destroy and re-clone the VM from the base template
   --offline          Block outbound internet (keeps host/VM communication)
@@ -356,7 +406,7 @@ _agent_vm_setup() {
         echo ""
         echo "Options:"
         echo "  --disk GB      VM disk size (default: 10)"
-        echo "  --memory GB    VM memory (default: 2)"
+        echo "  --memory GB    VM memory (default: 3)"
         echo "  --cpus N       Number of CPUs (default: 1)"
         echo "  --help         Show this help"
         return 0
