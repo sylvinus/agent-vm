@@ -85,6 +85,14 @@ echo 'export PATH=$HOME/.local/bin:$HOME/.claude/local/bin:$HOME/.opencode/bin:$
 echo "Installing Codex CLI..."
 sudo npm i -g @openai/codex
 
+# Install Mistral Vibe (installs uv and the `vibe`/`vibe-acp` commands into ~/.local/bin).
+# This setup script runs under bash, but the PATH export lives in ~/.zshrc/~/.zshenv, so
+# ~/.local/bin isn't on PATH here yet. The Vibe installer exits non-zero (aborting setup
+# under `set -e`) if it can't find its install dir on PATH, so export it for this session.
+echo "Installing Mistral Vibe..."
+export PATH="$HOME/.local/bin:$PATH"
+curl -LsSf https://mistral.ai/vibe/install.sh | bash
+
 # Configure Chrome DevTools MCP server for Claude
 echo "Configuring Chrome MCP server for Claude..."
 CONFIG="$HOME/.claude.json"
@@ -130,6 +138,24 @@ else
   }
 }
 JSON
+fi
+
+# Configure Chrome DevTools MCP server for Vibe
+# Vibe uses TOML; append an array-of-tables entry (valid even if the wizard later
+# writes to the same file). Guard against duplicates on repeated setup runs.
+echo "Configuring Chrome MCP server for Vibe..."
+VIBE_CONFIG_DIR="$HOME/.vibe"
+mkdir -p "$VIBE_CONFIG_DIR"
+VIBE_CONFIG="$VIBE_CONFIG_DIR/config.toml"
+if ! grep -q 'name = "chrome-devtools"' "$VIBE_CONFIG" 2>/dev/null; then
+  cat >> "$VIBE_CONFIG" << 'TOML'
+
+[[mcp_servers]]
+name = "chrome-devtools"
+transport = "stdio"
+command = "npx"
+args = ["-y", "chrome-devtools-mcp@latest", "--headless=true", "--isolated=true"]
+TOML
 fi
 
 echo "VM setup complete."

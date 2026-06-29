@@ -4,7 +4,7 @@ Run AI coding agents inside sandboxed Linux VMs. The agent gets full autonomy wh
 
 Uses [Lima](https://lima-vm.io/) to create lightweight Debian VMs on macOS and Linux. Ships with dev tools, Docker, and a headless Chrome browser with [Chrome DevTools MCP](https://github.com/ChromeDevTools/chrome-devtools-mcp) pre-configured.
 
-Supports [Claude Code](https://claude.ai/code), [OpenCode](https://github.com/anomalyco/opencode), and [Codex CLI](https://github.com/openai/codex) out of the box. Other agents can be run via `agent-vm shell`.
+Supports [Claude Code](https://claude.ai/code), [OpenCode](https://github.com/anomalyco/opencode), [Codex CLI](https://github.com/openai/codex), and [Mistral Vibe](https://docs.mistral.ai/vibe/code/cli/install-setup) out of the box. Other agents can be run via `agent-vm shell`.
 
 Never install attack vectors such as npm, claude or even Docker on your host machine again!
 
@@ -56,6 +56,7 @@ cd your-project
 agent-vm claude                # Claude Code
 agent-vm opencode              # OpenCode
 agent-vm codex                 # Codex CLI
+agent-vm vibe                  # Mistral Vibe
 ```
 
 Creates a persistent VM for the current directory (or reuses it if one already exists), mounts your working directory, and runs the agent with full permissions. The VM persists after the agent exits so you can reconnect later. Ports opened inside the VM (e.g. by Docker containers or dev servers) are automatically forwarded to your host by Lima.
@@ -64,6 +65,7 @@ Each agent runs with its respective auto-approve flag:
 - `claude` runs with `--dangerously-skip-permissions`
 - `opencode` does not yet have an auto-approve flag (waiting on [this PR](https://github.com/anomalyco/opencode/pull/11833))
 - `codex` runs with `--dangerously-bypass-approvals-and-sandbox`
+- `vibe` runs with `--agent auto-approve`
 
 Any extra arguments are forwarded to the agent command:
 
@@ -72,6 +74,7 @@ agent-vm claude -p "fix all lint errors"        # Run with a prompt
 agent-vm claude --resume                         # Resume previous session
 agent-vm opencode -p "refactor auth module"      # OpenCode with a prompt
 agent-vm codex -q "explain this codebase"        # Codex with a query
+agent-vm vibe -p "fix all lint errors"           # Mistral Vibe with a prompt
 ```
 
 ### Shell access and running commands

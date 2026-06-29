@@ -11,6 +11,7 @@
 #   agent-vm claude   - Run Claude Code in a persistent VM for cwd
 #   agent-vm opencode - Run OpenCode in a persistent VM for cwd
 #   agent-vm codex    - Run Codex CLI in a persistent VM for cwd
+#   agent-vm vibe     - Run Mistral Vibe in a persistent VM for cwd
 #   agent-vm shell    - Open a shell in the persistent VM for cwd
 #   agent-vm stop     - Stop the VM for cwd
 #   agent-vm rm       - Stop and delete the VM for cwd
@@ -305,6 +306,9 @@ agent-vm() {
     codex)
       _agent_vm_codex "${vm_opts[@]}" "$@"
       ;;
+    vibe)
+      _agent_vm_vibe "${vm_opts[@]}" "$@"
+      ;;
     shell)
       _agent_vm_shell "${vm_opts[@]}" "$@"
       ;;
@@ -346,6 +350,7 @@ Commands:
   claude [args]      Run Claude Code in the VM for the current directory
   opencode [args]    Run OpenCode in the VM for the current directory
   codex [args]       Run Codex CLI in the VM for the current directory
+  vibe [args]        Run Mistral Vibe in the VM for the current directory
   shell              Open a shell in the VM for the current directory
   run <cmd> [args]   Run a command in the VM for the current directory
   stop               Stop the VM for the current directory
@@ -355,7 +360,7 @@ Commands:
   status             Show status of all VMs (current dir marked with >)
   help               Show this help
 
-VM options (for claude, opencode, codex, shell, run):
+VM options (for claude, opencode, codex, vibe, shell, run):
   --disk GB          VM disk size (default: 10)
   --memory GB        VM memory (default: 3)
   --cpus N           Number of CPUs (default: 1)
@@ -370,6 +375,7 @@ Examples:
   agent-vm claude                            # Run Claude in a VM
   agent-vm opencode                          # Run OpenCode in a VM
   agent-vm codex                             # Run Codex in a VM
+  agent-vm vibe                              # Run Mistral Vibe in a VM
   agent-vm --disk 50 --memory 16 --cpus 8 claude  # Custom resources
   agent-vm --reset claude                    # Fresh VM from base template
   agent-vm --rm claude                       # Destroy VM after Claude exits
@@ -491,7 +497,7 @@ _agent_vm_setup() {
   date +%s > "$AGENT_VM_STATE_DIR/.agent-vm-base-version"
 
   echo ""
-  echo "Base VM ready. Run 'agent-vm shell', 'agent-vm claude', 'agent-vm opencode', or 'agent-vm codex' in any project directory."
+  echo "Base VM ready. Run 'agent-vm shell', 'agent-vm claude', 'agent-vm opencode', 'agent-vm codex', or 'agent-vm vibe' in any project directory."
   echo "Note: Existing VMs were not updated. Use --reset to re-clone them from the new base."
 }
 
@@ -588,6 +594,40 @@ _agent_vm_codex() {
 
   local exit_code=0
   limactl shell --workdir "$host_dir" "$vm_name" codex --dangerously-bypass-approvals-and-sandbox "${args[@]}"
+  exit_code=$?
+  [[ -n "$rm" ]] && { echo "Removing VM..."; _agent_vm_destroy; }
+  return $exit_code
+}
+
+_agent_vm_vibe() {
+  local vm_opts=()
+  local args=()
+  local rm=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --disk)     vm_opts+=(--disk "$2"); shift 2 ;;
+      --memory|--ram)   vm_opts+=(--memory "$2"); shift 2 ;;
+      --cpus)     vm_opts+=(--cpus "$2"); shift 2 ;;
+      --reset)    vm_opts+=(--reset); shift ;;
+      --offline)  vm_opts+=(--offline); shift ;;
+      --readonly) vm_opts+=(--readonly); shift ;;
+      --git-read-only|--git-ro) vm_opts+=(--git-read-only); shift ;;
+      --rm)       rm=1; shift ;;
+      *)          args+=("$1"); shift ;;
+    esac
+  done
+  local host_dir
+  host_dir="$(pwd)"
+  local vm_name
+  vm_name="$(_agent_vm_name "$host_dir")"
+
+  _agent_vm_ensure_running "$vm_name" "$host_dir" "${vm_opts[@]}" || return 1
+  _agent_vm_print_resources "$vm_name"
+
+  # Vibe is a full-screen TUI, so allocate a tty (like opencode).
+  # --agent auto-approve gives full autonomy (safe inside the sandbox).
+  local exit_code=0
+  limactl shell --tty --workdir "$host_dir" "$vm_name" vibe --agent auto-approve "${args[@]}"
   exit_code=$?
   [[ -n "$rm" ]] && { echo "Removing VM..."; _agent_vm_destroy; }
   return $exit_code
