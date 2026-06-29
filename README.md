@@ -27,6 +27,8 @@ echo "source $(pwd)/agent-vm.sh" >> ~/.zshrc   # zsh
 echo "source $(pwd)/agent-vm.sh" >> ~/.bashrc  # or bash
 ```
 
+Sourcing puts `agent-vm` in your shell as a function. You can also invoke the script directly (`./agent-vm.sh setup`) without sourcing — useful for one-off runs.
+
 ## Usage
 
 ### One-time setup
@@ -35,18 +37,25 @@ echo "source $(pwd)/agent-vm.sh" >> ~/.bashrc  # or bash
 agent-vm setup
 ```
 
-Creates a base VM template with dev tools, Docker, Chromium, and AI coding agents pre-installed.
+Creates a base VM template with dev tools, Docker, Chromium, and AI coding agents pre-installed. Run interactively to open the wizard; its first prompt offers a one-tap "default install" (everything except the opt-in languages Ruby, Rust, Go), answer `n` for per-component prompts. Pass `--preinstall=...` to skip the wizard. When stdin is not a terminal (CI), the wizard is auto-skipped and the default set is installed.
 
 Options:
 
 | Flag | Description | Default |
 |------|-------------|---------|
 | `--disk GB` | VM disk size in GB | 10 |
-| `--memory GB` | VM memory in GB | 2 |
+| `--memory GB` | VM memory in GB | 3 |
 | `--cpus N` | Number of CPUs | 1 |
+| `--preinstall=LIST` | Preinstall only this comma-separated subset in the base image (skips the wizard) | — |
+
+Names are lowercase: `python`, `node`, `ruby`, `rust`, `golang`, `docker`, `chromium`, `gh`, `claude`, `opencode`, `codex`, `vibe`. Use `default` for the default set (everything except Ruby/Rust/Go), `all` for everything, or `none` for nothing. Selecting `codex`, or `chromium` with any AI agent, also installs `node` because those paths require `npm`/`npx`.
 
 ```bash
-agent-vm setup --disk 50 --memory 16 --cpus 8   # Larger VM for heavy workloads
+agent-vm setup                                       # Interactive wizard
+agent-vm setup --preinstall=default                  # Default set, no prompts
+agent-vm setup --preinstall=default,rust             # Default set plus Rust
+agent-vm setup --preinstall=python,docker,claude     # Minimal Claude-only setup
+agent-vm setup --disk 50 --memory 16 --cpus 8        # Larger VM for heavy workloads
 ```
 
 ### Run an agent in a VM
@@ -131,6 +140,46 @@ agent-vm --offline --readonly claude   # Both
 `--readonly` remounts the project directory as read-only. Useful for code review or audit tasks where the agent shouldn't modify files. Both flags are per-session and reset when the VM restarts.
 
 ## Customization
+
+### Sharing tokens across VMs: `~/.agent-vm/env`
+
+Put environment variables (API tokens, secrets, etc.) in this file as plain `KEY=value` lines — no `export` prefix, `#` for comments. They're auto-loaded into every shell in every VM:
+
+```bash
+# ~/.agent-vm/env
+GH_TOKEN=github_pat_xxxxxxxxxxxxxxxxxxxxxxxx
+ANTHROPIC_API_KEY=sk-ant-xxxxxxxxxxxxxxxxxxxxxxxx
+OPENAI_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxx
+MISTRAL_API_KEY=xxxxxxxxxxxxxxxxxxxxxxxx
+```
+
+These are picked up automatically by the tools that look for them: `gh` reads `GH_TOKEN`, Claude Code uses `ANTHROPIC_API_KEY` when not signed in, Codex uses `OPENAI_API_KEY`, Vibe uses `MISTRAL_API_KEY`, etc. The file is pushed into the VM at `~/.agent-vm.env` (mode 0600) on every `agent-vm` invocation, so edits propagate without `--reset`.
+
+For subscription-based auth (where you've already run `claude login` / `gh auth login` on the host), share the host's credentials directory via [`~/.agent-vm/volumes`](#extra-host-mounts-agent-vmvolumes) instead.
+
+### Extra host mounts: `~/.agent-vm/volumes`
+
+List host files or directories to mount inside every VM. One path per line, `~` is expanded, `#` starts a comment. Uses Docker Compose-style `source[:destination][:mode]` syntax, where `mode` is `ro` (default) or `rw`:
+
+```bash
+# ~/.agent-vm/volumes
+
+# Mount at the same path in the VM (read-only)
+~/.gitconfig
+~/.gitignore
+
+# Mount at a different path in the VM (read-only)
+~/.claude:/home/$USER.linux/.claude
+
+# Writable directory
+~/.cache/shared:/home/$USER.linux/.cache/shared:rw
+```
+
+When no destination is specified, the path is mounted at the same location inside the VM. Non-existent paths are skipped with a warning. Changes to this file take effect on new VMs (use `--reset` to re-apply to existing ones).
+
+`rw` is only supported for **directories**. Files are always read-only: with the hardlink/staging strategy used below, writable file mounts would silently desync on cross-filesystem setups. If you need a writable single file, mount its parent directory as `rw` instead. A destination literally named `ro` or `rw` is treated as a mode keyword — append an explicit `:ro`/`:rw` to disambiguate.
+
+Individual files are supported without exposing their parent directory: agent-vm hardlinks the source into a per-VM staging dir under `~/.agent-vm/file-mounts/<vm>/`, then bind-mounts it at the final destination on each VM start. If the source sits on a different filesystem (hardlink impossible), it falls back to a copy and live host changes won't propagate until the next VM restart. The staged hardlink is refreshed on each `agent-vm` invocation, so atomic-rename edits (common in editors) are picked up at the next VM (re)start.
 
 ### Per-user setup: `~/.agent-vm/setup.sh`
 
@@ -241,19 +290,25 @@ Each VM is fully isolated — agents must authenticate independently inside thei
 | `agent-vm.sh` | Main script — source this in your shell config |
 | `agent-vm.setup.sh` | Package installation script that runs inside the base VM during setup |
 
-## What's in the VM by default
+## What's in the VM
 
-| Category | Packages |
-|----------|----------|
-| Core | git, curl, wget, jq, build-essential, unzip, zip |
-| Python | python3, pip, venv |
-| Version manager | [mise](https://mise.jdx.dev/) (Ruby, Python, Node, etc.) |
-| Node.js | Node.js 24 LTS (via NodeSource) |
-| Search | ripgrep, fd-find |
-| Utilities | htop, GitHub CLI (gh) |
-| Browser | Chromium (headless), xvfb |
-| Containers | Docker Engine, Docker Compose |
-| AI | Claude Code, OpenCode, Codex CLI, Chrome DevTools MCP server |
+The wizard's "default install" and `--preinstall=default` produce the same set: everything in the table below except the opt-in languages (Ruby, Rust, Go). Pass a different `--preinstall=` to install a different subset.
+
+| Category | Packages | Name | Installed by default? |
+|----------|----------|------|----------------------|
+| Core | git, curl, wget, jq, build-essential, unzip, zip, ripgrep, fd-find, htop, iptables | (always) | always |
+| Build libs | libssl-dev, libreadline-dev, zlib1g-dev, libyaml-dev, libffi-dev | (always) | always |
+| Version manager | [mise](https://mise.jdx.dev/) | (always) | always |
+| Python | python3, pip, venv | `python` | yes |
+| Node.js | Node.js 24 LTS (via NodeSource) | `node` | yes |
+| Ruby | ruby-full | `ruby` | no |
+| Rust | rustup (stable toolchain) | `rust` | no |
+| Go | golang-go | `golang` | no |
+| GitHub CLI | gh | `gh` | yes |
+| Browser | Chromium (headless), xvfb | `chromium` | yes |
+| Containers | Docker Engine, Docker Compose | `docker` | yes |
+| AI agents | Claude Code, OpenCode, Codex CLI, Mistral Vibe | `claude`, `opencode`, `codex`, `vibe` | yes |
+| MCP | Chrome DevTools MCP (Claude/OpenCode/Codex/Vibe) | — | auto, when Node.js + Chromium + agent installed |
 
 ## Security model
 

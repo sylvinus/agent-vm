@@ -47,6 +47,8 @@
 # =============================================================================
 #
 # Required for creating PRs, commenting on issues, etc. from inside the VM.
+# (If you only need `gh` for CLI calls, setting GH_TOKEN in ~/.agent-vm/env is
+# simpler — see "Sharing tokens" in the README.)
 #
 #   To create a token: https://github.com/settings/tokens
 #   Scopes needed: repo, read:org
