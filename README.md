@@ -34,9 +34,14 @@ launch.
 ```bash
 npm install -g @wirenboard/agent-vm        # or: npx @wirenboard/agent-vm <cmd>
 
+curl -fsSL https://claude.ai/install.sh | bash        #install claude client
+
+claude        #run for login in claud.io, more details https://github.com/wirenboard/agent-vm#credentials
+
 agent-vm setup            # pulls the latest image from ghcr.io and verifies it boots
 
 cd ~/your-project
+
 agent-vm claude           # or codex / opencode / shell
 ```
 
