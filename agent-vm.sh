@@ -1106,7 +1106,7 @@ _agent_vm_claude() {
   _agent_vm_print_resources "$vm_name"
 
   local exit_code=0
-  limactl shell --workdir "$host_dir" "$vm_name" claude --dangerously-skip-permissions "${args[@]}"
+  limactl shell --workdir "$host_dir" "$vm_name" -- claude --dangerously-skip-permissions "${args[@]}"
   exit_code=$?
   [[ -n "$rm" ]] && { echo "Removing VM..."; _agent_vm_destroy; }
   return $exit_code
