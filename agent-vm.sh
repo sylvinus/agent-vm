@@ -475,7 +475,7 @@ _agent_vm_ensure_running() {
   # the contents stay a plain KEY=value file (no `export` needed). `umask 077`
   # creates the file mode-600 since it usually holds secrets.
   if [ -f "$AGENT_VM_STATE_DIR/env" ]; then
-    if ! limactl shell "$vm_name" sh -c 'umask 077 && cat > "$HOME/.agent-vm.env"' \
+    if ! limactl shell "$vm_name" sh -c 'umask 077 && rm -f "$HOME/.agent-vm.env" && cat > "$HOME/.agent-vm.env"' \
          < "$AGENT_VM_STATE_DIR/env" 2>/dev/null; then
       echo "Warning: failed to push ~/.agent-vm/env into VM '$vm_name'." >&2
     fi
@@ -511,37 +511,48 @@ _agent_vm_ensure_running() {
     # directory first so we have a plain Linux bind-mount layer to remount,
     # which works regardless of what's underneath.
     echo "Mounting project directory as read-only..."
-    limactl shell "$vm_name" sudo mount --bind "$host_dir" "$host_dir"
-    limactl shell "$vm_name" sudo mount -o remount,ro,bind "$host_dir"
+    if ! limactl shell "$vm_name" sudo mount --bind "$host_dir" "$host_dir" \
+       || ! limactl shell "$vm_name" sudo mount -o remount,ro,bind "$host_dir"; then
+      echo "Error: Failed to mount project directory as read-only." >&2
+      return 1
+    fi
   fi
 
   if [[ -n "$git_ro" ]] && [[ -d "$host_dir/.git" ]]; then
     echo "Mounting .git directory as read-only..."
-    limactl shell "$vm_name" sudo mount --bind "$host_dir/.git" "$host_dir/.git"
-    limactl shell "$vm_name" sudo mount -o remount,ro,bind "$host_dir/.git"
+    if ! limactl shell "$vm_name" sudo mount --bind "$host_dir/.git" "$host_dir/.git" \
+       || ! limactl shell "$vm_name" sudo mount -o remount,ro,bind "$host_dir/.git"; then
+      echo "Error: Failed to mount .git directory as read-only." >&2
+      return 1
+    fi
   fi
 
-  # Load file mount entries from the cache for existing VMs. (New VMs already
-  # populated file_mount_entries and created their hardlinks above, via
-  # _agent_vm_build_mounts_json.)
-  if [[ -z "$is_new_vm" ]] && [[ -f "$file_mounts_cache" ]]; then
+  # Load file mount entries from the cache. _agent_vm_build_mounts_json writes
+  # them there (from its own local scope) for both new and existing VMs, so we
+  # always read them back here to drive the inside-VM bind mounts below.
+  if [[ -f "$file_mounts_cache" ]]; then
+    local entry
     while IFS= read -r entry; do
       [[ -n "$entry" ]] && file_mount_entries+=("$entry")
     done < "$file_mounts_cache"
 
-    # Refresh host-side hardlinks so atomic-rename edits on the host propagate
-    # after a VM restart (ln/cp against the cached staging path).
-    local entry host_src host_staging _bind_src _bind_dst
-    for entry in "${file_mount_entries[@]}"; do
-      IFS='|' read -r host_src host_staging _bind_src _bind_dst <<< "$entry"
-      [[ -z "$host_staging" ]] && continue
-      if [[ ! -e "$host_src" ]]; then
-        echo "Warning: Mount source '${host_src}' no longer exists; VM will see the last-staged copy." >&2
-        continue
-      fi
-      _agent_vm_stage_file "$host_src" "$host_staging" \
-        || echo "Warning: Failed to refresh staged '${host_src}'; VM may see stale content." >&2
-    done
+    # For existing VMs, refresh host-side hardlinks so atomic-rename edits on the
+    # host propagate after a VM restart (ln/cp against the cached staging path).
+    # New VMs just staged fresh copies in _agent_vm_build_mounts_json, so there
+    # is nothing to refresh.
+    if [[ -z "$is_new_vm" ]]; then
+      local host_src host_staging _bind_src _bind_dst
+      for entry in "${file_mount_entries[@]}"; do
+        IFS='|' read -r host_src host_staging _bind_src _bind_dst <<< "$entry"
+        [[ -z "$host_staging" ]] && continue
+        if [[ ! -e "$host_src" ]]; then
+          echo "Warning: Mount source '${host_src}' no longer exists; VM will see the last-staged copy." >&2
+          continue
+        fi
+        _agent_vm_stage_file "$host_src" "$host_staging" \
+          || echo "Warning: Failed to refresh staged '${host_src}'; VM may see stale content." >&2
+      done
+    fi
   fi
 
   # Apply inside-VM bind mounts so each staged file appears at its final path.
@@ -1040,6 +1051,10 @@ EOF
   # so invoking the in-VM script standalone — without these exports — still
   # produces the same default install.
   echo "Installing packages inside VM..."
+  if [[ ! -r "${AGENT_VM_SCRIPT_DIR}/agent-vm.setup.sh" ]]; then
+    echo "Error: Setup script not found at ${AGENT_VM_SCRIPT_DIR}/agent-vm.setup.sh" >&2
+    return 1
+  fi
   {
     printf 'export AGENT_VM_INSTALL_PYTHON=%s\n'    "$install_python"
     printf 'export AGENT_VM_INSTALL_NODE=%s\n'      "$install_node"
@@ -1226,7 +1241,12 @@ _agent_vm_shell() {
       --readonly) vm_opts+=(--readonly); shift ;;
       --git-read-only|--git-ro) vm_opts+=(--git-read-only); shift ;;
       --rm)       rm=1; shift ;;
-      -c|--command) cmd_string="$2"; shift 2 ;;
+      -c|--command)
+        if [[ $# -lt 2 || -z "$2" ]]; then
+          echo "Error: -c/--command requires a command string." >&2
+          return 1
+        fi
+        cmd_string="$2"; shift 2 ;;
       *)          shift ;;
     esac
   done

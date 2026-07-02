@@ -169,10 +169,13 @@ List host files or directories to mount inside every VM. One path per line, `~` 
 ~/.gitignore
 
 # Mount at a different path in the VM (read-only)
-~/.claude:/home/$USER.linux/.claude
+# Note: the destination is used verbatim (no shell expansion) — replace
+# $USER with your actual username. Only the source (left) side expands a
+# leading ~.
+~/.claude:/home/youruser.linux/.claude
 
 # Writable directory
-~/.cache/shared:/home/$USER.linux/.cache/shared:rw
+~/.cache/shared:/home/youruser.linux/.cache/shared:rw
 ```
 
 When no destination is specified, the path is mounted at the same location inside the VM. Non-existent paths are skipped with a warning. Changes to this file take effect on new VMs (use `--reset` to re-apply to existing ones).
@@ -296,7 +299,7 @@ The wizard's "default install" and `--preinstall=default` produce the same set: 
 
 | Category | Packages | Name | Installed by default? |
 |----------|----------|------|----------------------|
-| Core | git, curl, wget, jq, build-essential, unzip, zip, ripgrep, fd-find, htop, iptables | (always) | always |
+| Core | git, curl, wget, jq, zsh, ca-certificates, build-essential, unzip, zip, ripgrep, fd-find, htop, iptables | (always) | always |
 | Build libs | libssl-dev, libreadline-dev, zlib1g-dev, libyaml-dev, libffi-dev | (always) | always |
 | Version manager | [mise](https://mise.jdx.dev/) | (always) | always |
 | Python | python3, pip, venv | `python` | yes |
