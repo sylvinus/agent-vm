@@ -831,9 +831,17 @@ EOF
         _agent_vm_validate_int --cpus "$cpus" || return 1
         ;;
       --preinstall)
-        preinstall="$2"
         preinstall_seen=1
-        shift 2
+        # Only consume the next argument as the value when it is an actual
+        # value, not another option. Bare `--preinstall` falls back to the
+        # default set (handled below) without swallowing e.g. a following
+        # `--disk`.
+        if [[ -n "$2" && "$2" != -* ]]; then
+          preinstall="$2"
+          shift 2
+        else
+          shift
+        fi
         ;;
       --preinstall=*)
         preinstall="${1#*=}"
