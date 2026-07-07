@@ -1160,10 +1160,11 @@ _agent_vm_opencode() {
   _agent_vm_ensure_running "$vm_name" "$host_dir" "${vm_opts[@]}" || return 1
   _agent_vm_print_resources "$vm_name"
 
-  # TODO: add --dangerously-skip-permissions once released
-  # (waiting on https://github.com/anomalyco/opencode/pull/11833)
+  # --auto auto-approves permission prompts that aren't explicitly denied,
+  # giving full autonomy (safe inside the sandbox). This is OpenCode's shipped
+  # equivalent of a "yolo" mode; the proposed --yolo flag was never merged.
   local exit_code=0
-  limactl shell --tty --workdir "$host_dir" "$vm_name" opencode "${args[@]}"
+  limactl shell --tty --workdir "$host_dir" "$vm_name" opencode --auto "${args[@]}"
   exit_code=$?
   [[ -n "$rm" ]] && { echo "Removing VM..."; _agent_vm_destroy; }
   return $exit_code

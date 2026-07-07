@@ -71,8 +71,8 @@ agent-vm vibe                  # Mistral Vibe
 Creates a persistent VM for the current directory (or reuses it if one already exists), mounts your working directory, and runs the agent with full permissions. The VM persists after the agent exits so you can reconnect later. Ports opened inside the VM (e.g. by Docker containers or dev servers) are automatically forwarded to your host by Lima.
 
 Each agent runs with its respective auto-approve flag:
-- `claude` runs with `--dangerously-skip-permissions`
-- `opencode` does not yet have an auto-approve flag (waiting on [this PR](https://github.com/anomalyco/opencode/pull/11833))
+- `claude` runs with `--dangerously-skip-permissions`, and the VM also enforces bypass mode via managed settings (`/etc/claude-code/managed-settings.json`) so autonomy survives Claude Code's self-update/fullscreen relaunches — which otherwise drop the CLI flag ([#72479](https://github.com/anthropics/claude-code/issues/72479))
+- `opencode` runs with `--auto` (auto-approves permission prompts that aren't explicitly denied)
 - `codex` runs with `--dangerously-bypass-approvals-and-sandbox`
 - `vibe` runs with `--agent auto-approve`
 

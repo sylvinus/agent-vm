@@ -144,6 +144,26 @@ if [[ "$INSTALL_CLAUDE" == "1" ]]; then
   curl -fsSL https://claude.ai/install.sh | bash
   echo 'export PATH=$HOME/.claude/local/bin:$PATH' >> ~/.zshrc
   echo 'export PATH=$HOME/.claude/local/bin:$PATH' >> ~/.zshenv
+
+  # Enforce full autonomy via *managed* settings (highest precedence), not the
+  # user's ~/.claude/. A user can bind-mount or overwrite their own ~/.claude/
+  # dir freely; this system-level policy is untouched and always wins.
+  #
+  # Why not just rely on the `claude --dangerously-skip-permissions` launch flag:
+  # Claude Code relaunches itself in-process on self-update and on the first-run
+  # fullscreen-TUI opt-in, and the relaunched process drops the CLI flag (see
+  # https://github.com/anthropics/claude-code/issues/72479), reverting to the
+  # "ask" permission mode. Settings are re-read on every (re)launch, so encoding
+  # the policy here makes it survive those relaunches. `tui: fullscreen` also
+  # pins fullscreen from the first launch, so the opt-in relaunch never fires.
+  echo "Configuring Claude managed settings (bypass permissions + fullscreen)..."
+  sudo mkdir -p /etc/claude-code
+  cat << 'JSON' | sudo tee /etc/claude-code/managed-settings.json > /dev/null
+{
+  "permissions": { "defaultMode": "bypassPermissions" },
+  "tui": "fullscreen"
+}
+JSON
 fi
 
 if [[ "$INSTALL_OPENCODE" == "1" ]]; then
