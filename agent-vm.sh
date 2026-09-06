@@ -1103,6 +1103,29 @@ EOF
   echo "Note: Existing VMs were not updated. Use --reset to re-clone them from the new base."
 }
 
+# Run a command in the VM through a login zsh.
+#
+# `limactl shell VM cmd` runs cmd under the shell configured for the instance,
+# and Lima >= 2.2.0 defaults that to /bin/bash whatever the guest login shell
+# is (lima-vm/lima#5194); older versions used "$SHELL", i.e. the login shell
+# `agent-vm.setup.sh` sets with chsh. Agent PATH entries and the
+# ~/.agent-vm.env sourcing both live in ~/.zshenv, so under bash the agents are
+# not found and anything that is found starts without its API keys. Forcing
+# `zsh -l -c` here works on every Lima version.
+#
+# The command and its arguments are passed as positional parameters, so the
+# guest shell never re-parses them; `env` runs the command and keeps leading
+# VAR=value assignments working.
+#
+# Usage: _agent_vm_lima_run <vm_name> <host_dir> <tty:1|""> <command> [args...]
+_agent_vm_lima_run() {
+  local vm_name="$1" host_dir="$2" want_tty="$3"
+  shift 3
+  local shell_opts=(--workdir "$host_dir")
+  [[ -n "$want_tty" ]] && shell_opts+=(--tty)
+  limactl shell "${shell_opts[@]}" "$vm_name" -- zsh -l -c 'exec env "$@"' agent-vm "$@"
+}
+
 _agent_vm_claude() {
   local vm_opts=()
   local args=()
@@ -1129,7 +1152,7 @@ _agent_vm_claude() {
   _agent_vm_print_resources "$vm_name"
 
   local exit_code=0
-  limactl shell --workdir "$host_dir" "$vm_name" -- claude --dangerously-skip-permissions "${args[@]}"
+  _agent_vm_lima_run "$vm_name" "$host_dir" "" claude --dangerously-skip-permissions "${args[@]}"
   exit_code=$?
   [[ -n "$rm" ]] && { echo "Removing VM..."; _agent_vm_destroy; }
   return $exit_code
@@ -1164,7 +1187,7 @@ _agent_vm_opencode() {
   # giving full autonomy (safe inside the sandbox). This is OpenCode's shipped
   # equivalent of a "yolo" mode; the proposed --yolo flag was never merged.
   local exit_code=0
-  limactl shell --tty --workdir "$host_dir" "$vm_name" opencode --auto "${args[@]}"
+  _agent_vm_lima_run "$vm_name" "$host_dir" 1 opencode --auto "${args[@]}"
   exit_code=$?
   [[ -n "$rm" ]] && { echo "Removing VM..."; _agent_vm_destroy; }
   return $exit_code
@@ -1196,7 +1219,7 @@ _agent_vm_codex() {
   _agent_vm_print_resources "$vm_name"
 
   local exit_code=0
-  limactl shell --workdir "$host_dir" "$vm_name" codex --dangerously-bypass-approvals-and-sandbox "${args[@]}"
+  _agent_vm_lima_run "$vm_name" "$host_dir" "" codex --dangerously-bypass-approvals-and-sandbox "${args[@]}"
   exit_code=$?
   [[ -n "$rm" ]] && { echo "Removing VM..."; _agent_vm_destroy; }
   return $exit_code
@@ -1230,7 +1253,7 @@ _agent_vm_vibe() {
   # Vibe is a full-screen TUI, so allocate a tty (like opencode).
   # --agent auto-approve gives full autonomy (safe inside the sandbox).
   local exit_code=0
-  limactl shell --tty --workdir "$host_dir" "$vm_name" vibe --agent auto-approve "${args[@]}"
+  _agent_vm_lima_run "$vm_name" "$host_dir" 1 vibe --agent auto-approve "${args[@]}"
   exit_code=$?
   [[ -n "$rm" ]] && { echo "Removing VM..."; _agent_vm_destroy; }
   return $exit_code
@@ -1322,11 +1345,8 @@ _agent_vm_run() {
   # full-screen TUIs (opencode, vibe, htop, …) need to render correctly when
   # invoked through `agent-vm run`. Without it, line-mode tools work fine but
   # ncurses-style UIs break.
-  local shell_opts=(--workdir "$host_dir")
-  [[ -n "$tty_flag" ]] && shell_opts+=(--tty)
-
   local exit_code=0
-  limactl shell "${shell_opts[@]}" "$vm_name" "${args[@]}"
+  _agent_vm_lima_run "$vm_name" "$host_dir" "$tty_flag" "${args[@]}"
   exit_code=$?
   [[ -n "$rm" ]] && { echo "Removing VM..."; _agent_vm_destroy; }
   return $exit_code
