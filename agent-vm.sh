@@ -52,8 +52,8 @@ _agent_vm_script_dir() {
     dir="$(CDPATH= cd -P -- "$(dirname "$src")" >/dev/null && pwd)"
     src="$(readlink "$src")"
     case "$src" in
-      /*) ;;                  # absolu : tel quel
-      *) src="$dir/$src" ;;   # relatif : au dossier du lien
+      /*) ;;                  # absolute: use as-is
+      *) src="$dir/$src" ;;   # relative: to the link's directory
     esac
   done
   (CDPATH= cd -P -- "$(dirname "$src")" >/dev/null && pwd)
