@@ -18,12 +18,47 @@
 #   agent-vm rm       - Stop and delete the VM for cwd
 #   agent-vm list     - List all agent-vm VMs
 #   agent-vm status   - Show status of all VMs (current dir marked with >)
+#   agent-vm name     - Print the VM name for cwd
+#   agent-vm info     - Print machine-readable state (key=value)
+#   agent-vm version  - Print the agent-vm version
 #   agent-vm help     - Show help
 #
 
+# Semantic version of this file. Bumped by hand on release. Integrators gate on
+# it via `agent-vm version`; a build with no `version` command predates it.
+AGENT_VM_VERSION="0.1.0"
+
 AGENT_VM_TEMPLATE="agent-vm-base"
 AGENT_VM_STATE_DIR="${HOME}/.agent-vm"
-AGENT_VM_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+
+# Directory holding the real agent-vm.sh, symlinks followed.
+#
+# ./install.sh puts a symlink on PATH (~/.local/bin/agent-vm -> <repo>/agent-vm.sh)
+# so `agent-vm` works as an ordinary command. Without resolving the link, this
+# would point at ~/.local/bin and `agent-vm setup` would fail to find
+# agent-vm.setup.sh, which lives next to the real file.
+#
+# `readlink -f` would do it in one call but is GNU-only — macOS ships a readlink
+# without it — so walk the chain by hand.
+#
+# `CDPATH=` because `dirname` can yield a bare relative path (running
+# `bash sub/agent-vm.sh`). With CDPATH set, `cd <relative>` searches it before
+# the current directory and prints where it landed, so without clearing it this
+# would resolve the wrong directory and capture a stray line — leaving
+# `agent-vm setup` unable to find agent-vm.setup.sh next to the real file.
+_agent_vm_script_dir() {
+  local src="${BASH_SOURCE[0]:-$0}" dir
+  while [ -L "$src" ]; do
+    dir="$(CDPATH= cd -P -- "$(dirname "$src")" >/dev/null && pwd)"
+    src="$(readlink "$src")"
+    case "$src" in
+      /*) ;;                  # absolute: use as-is
+      *) src="$dir/$src" ;;   # relative: to the link's directory
+    esac
+  done
+  (CDPATH= cd -P -- "$(dirname "$src")" >/dev/null && pwd)
+}
+AGENT_VM_SCRIPT_DIR="$(_agent_vm_script_dir)"
 
 # Prompt for a value with a default. Reads from /dev/tty so this still works
 # when called inside command substitution. Writes the prompt to stderr and the
@@ -106,7 +141,9 @@ _agent_vm_check_linux_prereqs() {
     errs=1
   elif [[ ! -r /dev/kvm || ! -w /dev/kvm ]]; then
     echo "Error: /dev/kvm exists but you don't have read/write access." >&2
-    if ! id -nG 2>/dev/null | grep -qw kvm; then
+    local groups
+    groups="$(id -nG 2>/dev/null || true)"
+    if [[ " $groups " != *" kvm "* ]]; then
       echo "  Fix: sudo usermod -aG kvm \"\$USER\"" >&2
       echo "  Then log out and back in (or run 'newgrp kvm') so the new" >&2
       echo "  group membership takes effect." >&2
@@ -133,6 +170,33 @@ _agent_vm_clean_partial_state() {
   fi
 }
 
+# Resolve a user-supplied directory argument to the same absolute form the
+# VM-running commands use.
+#
+# Those commands all derive the name from `$(pwd)`, so they never see a relative
+# or trailing-slash path. `name` and `info` do take a directory argument, and the
+# name is a hash of that *string*: without this, `agent-vm name /tmp` and
+# `agent-vm name /tmp/` return two different VMs for one directory, and neither
+# need match what `cd /tmp && agent-vm opencode` produces.
+#
+# Logical pwd (no `-P`), to agree with the `$(pwd)` the other commands use.
+# A directory that does not exist is rejected rather than hashed: a name derived
+# from an unresolvable path is wrong in a way nothing downstream would catch.
+#
+# `CDPATH=` is not cosmetic. With CDPATH set in the environment, `cd <relative>`
+# searches it *before* the current directory and prints where it landed — so
+# this would both emit a stray line into the captured value and resolve a
+# DIFFERENT directory than the `-d` test above just validated. Clearing it keeps
+# the argument meaning "relative to cwd", like every other path-taking tool.
+_agent_vm_abs_dir() {
+  local dir="${1:-$(pwd)}"
+  if [[ ! -d "$dir" ]]; then
+    echo "Error: no such directory: $dir" >&2
+    return 1
+  fi
+  (CDPATH= cd -- "$dir" >/dev/null && pwd)
+}
+
 # Generate a deterministic VM name for a directory
 _agent_vm_name() {
   local dir="${1:-$(pwd)}"
@@ -143,14 +207,71 @@ _agent_vm_name() {
   echo "agent-vm-${base}-${hash}"
 }
 
-# Check if a VM exists (any state)
-_agent_vm_exists() {
-  limactl list -q 2>/dev/null | grep -q "^${1}$"
+# Exact-line match against an already-captured string, with no pipe.
+#
+# `cmd | grep -q needle` is unsafe for anyone who sources this file from a
+# script running under `set -o pipefail`: grep -q closes the pipe as soon as it
+# matches, limactl takes a SIGPIPE and exits 141, and pipefail fails the whole
+# pipeline. The result is an intermittent false negative that depends on how
+# much limactl still had to write — it looks like "the VM doesn't exist". So
+# capture the output first, then match it in the shell.
+_agent_vm_has_line() {
+  case $'\n'"$1"$'\n' in
+    *$'\n'"$2"$'\n'*) return 0 ;;
+    *) return 1 ;;
+  esac
 }
 
-# Check if a VM is running
+# Check if a VM exists (any state).
+# 0 = yes · 1 = no · 2 = could not ask (limactl itself failed).
+# The third status matters: an empty answer from a failed query is otherwise
+# indistinguishable from "no such VM", and `info` would report a confident 0.
+_agent_vm_exists() {
+  local list
+  list="$(limactl list -q 2>/dev/null)" || return 2
+  _agent_vm_has_line "$list" "$1"
+}
+
+# Check if a VM is running. Same three statuses as _agent_vm_exists.
 _agent_vm_running() {
-  limactl list --format '{{.Name}} {{.Status}}' 2>/dev/null | grep -q "^${1} Running$"
+  local list
+  list="$(limactl list --format '{{.Name}} {{.Status}}' 2>/dev/null)" || return 2
+  _agent_vm_has_line "$list" "$1 Running"
+}
+
+# Check if the base VM template exists. Kept as a named helper so integrators
+# don't have to hardcode the template name to answer "do I need to run setup?".
+# Same three statuses as _agent_vm_exists.
+_agent_vm_base_exists() {
+  _agent_vm_exists "$AGENT_VM_TEMPLATE"
+}
+
+# Turn one of those exit statuses into the value `info` publishes.
+_agent_vm_tristate() {
+  case "$1" in
+    0) echo 1 ;;
+    1) echo 0 ;;
+    *) echo unknown ;;
+  esac
+}
+
+# Was <vm_name> cloned from an older base than the current one?
+# Prints 1 (stale), 0 (up to date), or "unknown" when there is nothing recorded
+# to compare against — never guess from a missing file. A VM with no version
+# marker but a known base predates the marker, which makes it stale.
+_agent_vm_stale_state() {
+  local vm_name="$1"
+  local base_ver="$AGENT_VM_STATE_DIR/.agent-vm-base-version"
+  local vm_ver="$AGENT_VM_STATE_DIR/.agent-vm-version-${vm_name}"
+  if [[ ! -f "$base_ver" ]]; then
+    echo unknown
+  elif [[ ! -f "$vm_ver" ]]; then
+    echo 1
+  elif [[ "$(cat "$base_ver" 2>/dev/null)" != "$(cat "$vm_ver" 2>/dev/null)" ]]; then
+    echo 1
+  else
+    echo 0
+  fi
 }
 
 # Stage a single host file at <dst> via hardlink, falling back to copy if the
@@ -279,18 +400,61 @@ _agent_vm_build_mounts_json() {
   printf '%s' "$mounts_json"
 }
 
+# Current resources of <vm_name> as "cpus|memory_gib|disk_gib".
+# Prints nothing (and returns 1) when the VM is unknown to Lima. No pipe into
+# grep/head: see _agent_vm_has_line for why that is unsafe under pipefail.
+_agent_vm_resources() {
+  local vm_name="$1" all line
+  all="$(limactl list --format '{{.Name}}|{{.CPUs}}|{{.Memory}}|{{.Disk}}' 2>/dev/null || true)"
+  while IFS= read -r line; do
+    case "$line" in
+      "${vm_name}|"*)
+        local cpus mem_bytes disk_bytes
+        IFS='|' read -r _ cpus mem_bytes disk_bytes <<< "$line"
+        printf '%s|%s|%s\n' "$cpus" "$((mem_bytes / 1073741824))" "$((disk_bytes / 1073741824))"
+        return 0 ;;
+    esac
+  done <<< "$all"
+  return 1
+}
+
 # Print VM resource details (CPUs, memory, disk)
 _agent_vm_print_resources() {
-  local vm_name="$1"
-  local info
-  info=$(limactl list --format '{{.Name}}|{{.CPUs}}|{{.Memory}}|{{.Disk}}' 2>/dev/null | grep "^${vm_name}|" | head -1)
-  if [[ -n "$info" ]]; then
-    local cpus mem_bytes disk_bytes
-    IFS='|' read -r _ cpus mem_bytes disk_bytes <<< "$info"
-    local mem_gib=$((mem_bytes / 1073741824))
-    local disk_gib=$((disk_bytes / 1073741824))
+  local res cpus mem_gib disk_gib
+  if res="$(_agent_vm_resources "$1")"; then
+    IFS='|' read -r cpus mem_gib disk_gib <<< "$res"
     echo "  Resources: CPUs: ${cpus}, Memory: ${mem_gib} GiB, Disk: ${disk_gib} GiB"
   fi
+}
+
+# Would the requested resources actually change anything on <vm_name>?
+# Empty request fields mean "not specified". Returns 0 when something differs
+# (or when the current values can't be read — never claim "no change" from
+# missing information), 1 when the VM already matches the request.
+#
+# Disk is compared one-way on purpose: Lima can grow a disk but not shrink it,
+# so a request below the current size is not a change that stopping could apply.
+#
+# Both sides are integer GiB, so a VM whose memory is not a whole number of GiB
+# can still compare unequal every time. That is the pre-existing behaviour
+# (prompt on every call), not a new failure mode.
+_agent_vm_resources_differ() {
+  local vm_name="$1" want_cpus="$2" want_mem="$3" want_disk="$4"
+  local cur cur_cpus cur_mem cur_disk
+  if ! cur="$(_agent_vm_resources "$vm_name")"; then
+    return 0
+  fi
+  IFS='|' read -r cur_cpus cur_mem cur_disk <<< "$cur"
+  if [[ -n "$want_cpus" && "$want_cpus" != "$cur_cpus" ]]; then
+    return 0
+  fi
+  if [[ -n "$want_mem" && "$want_mem" != "$cur_mem" ]]; then
+    return 0
+  fi
+  if [[ -n "$want_disk" && "$want_disk" -gt "$cur_disk" ]]; then
+    return 0
+  fi
+  return 1
 }
 
 # Ensure the VM for cwd exists and is running, creating/starting as needed
@@ -329,7 +493,7 @@ _agent_vm_ensure_running() {
   # cryptic "no such file or directory".
   _agent_vm_clean_partial_state "$vm_name"
 
-  if ! limactl list -q 2>/dev/null | grep -q "^${AGENT_VM_TEMPLATE}$"; then
+  if ! _agent_vm_base_exists; then
     echo "Error: Base VM not found. Run 'agent-vm setup' first." >&2
     return 1
   fi
@@ -359,7 +523,7 @@ _agent_vm_ensure_running() {
     edit_args+=(--set ".mounts = ${mounts_json}")
     [[ -n "$memory" ]] && edit_args+=(--memory "$memory")
     [[ -n "$cpus" ]]   && edit_args+=(--cpus "$cpus")
-    (cd /tmp && limactl edit "$vm_name" "${edit_args[@]}") &>/dev/null
+    (cd /tmp && limactl edit "$vm_name" ${edit_args[@]+"${edit_args[@]}"}) &>/dev/null
     if [[ -n "$disk" ]]; then
       if ! (cd /tmp && limactl edit "$vm_name" --disk "$disk") &>/dev/null; then
         echo "Warning: Cannot set disk to ${disk} GiB (shrinking is not supported). Re-run 'agent-vm setup --disk ${disk}' for a smaller base." >&2
@@ -371,8 +535,12 @@ _agent_vm_ensure_running() {
     if [[ -f "$base_ver" ]]; then
       cp "$base_ver" "$AGENT_VM_STATE_DIR/.agent-vm-version-${vm_name}"
     fi
-  elif [[ -n "$disk" || -n "$memory" || -n "$cpus" ]]; then
-    # Auto-resize existing VM if --disk, --memory, or --cpus changed
+  elif [[ -n "$disk" || -n "$memory" || -n "$cpus" ]] \
+       && _agent_vm_resources_differ "$vm_name" "$cpus" "$memory" "$disk"; then
+    # Resize the existing VM, but only when the request actually differs from
+    # what the VM already has. Prompting on the mere *presence* of a resource
+    # flag means every caller that passes its defaults on each invocation gets
+    # "Stop the VM and apply changes?" forever, for a no-op.
     if _agent_vm_running "$vm_name"; then
       echo "VM '$vm_name' is currently running. It must be stopped to apply new resource settings."
       printf "Stop the VM and apply changes? [y/N] " >&2
@@ -391,11 +559,16 @@ _agent_vm_ensure_running() {
     local edit_args=()
     [[ -n "$memory" ]] && edit_args+=(--memory "$memory")
     [[ -n "$cpus" ]]   && edit_args+=(--cpus "$cpus")
-    local edit_output
-    if ! edit_output=$(cd /tmp && limactl edit "$vm_name" "${edit_args[@]}" 2>&1); then
-      echo "Error: Failed to update VM resources:" >&2
-      echo "$edit_output" >&2
-      return 1
+    # Only call limactl when there is something to set: `limactl edit <vm>` with
+    # no flags drops into $EDITOR, which would hang a non-interactive caller
+    # that passed --disk on its own.
+    if [[ ${#edit_args[@]} -gt 0 ]]; then
+      local edit_output
+      if ! edit_output=$(cd /tmp && limactl edit "$vm_name" "${edit_args[@]}" 2>&1); then
+        echo "Error: Failed to update VM resources:" >&2
+        echo "$edit_output" >&2
+        return 1
+      fi
     fi
     if [[ -n "$disk" ]]; then
       if ! edit_output=$(cd /tmp && limactl edit "$vm_name" --disk "$disk" 2>&1); then
@@ -405,10 +578,10 @@ _agent_vm_ensure_running() {
     _agent_vm_print_resources "$vm_name"
   fi
 
-  # Warn if this VM was cloned from an older base
-  local base_ver="$AGENT_VM_STATE_DIR/.agent-vm-base-version"
-  local vm_ver="$AGENT_VM_STATE_DIR/.agent-vm-version-${vm_name}"
-  if [[ -f "$base_ver" ]] && { [[ ! -f "$vm_ver" ]] || [[ "$(cat "$base_ver")" != "$(cat "$vm_ver")" ]]; }; then
+  # Warn if this VM was cloned from an older base. `agent-vm info` exposes the
+  # same verdict as vm_stale= so integrators can ask before starting instead of
+  # reading this warning after the fact.
+  if [[ "$(_agent_vm_stale_state "$vm_name")" == "1" ]]; then
     echo "Warning: Base VM has been updated since this VM was cloned. Use --reset to re-clone from the new base." >&2
   fi
 
@@ -540,7 +713,7 @@ _agent_vm_ensure_running() {
     # host propagate after a VM restart (ln/cp against the cached staging path).
     # New VMs just staged fresh copies in _agent_vm_build_mounts_json, so there
     # is nothing to refresh.
-    if [[ -z "$is_new_vm" ]]; then
+    if [[ -z "$is_new_vm" ]] && [[ ${#file_mount_entries[@]} -gt 0 ]]; then
       local host_src host_staging _bind_src _bind_dst
       for entry in "${file_mount_entries[@]}"; do
         IFS='|' read -r host_src host_staging _bind_src _bind_dst <<< "$entry"
@@ -588,20 +761,31 @@ _agent_vm_ensure_running() {
 
 agent-vm() {
   local vm_opts=()
-  # Parse global options before the subcommand
+  # Parse global options before the subcommand.
+  #
+  # Resource values are validated here, as `setup` already does for its own
+  # flags. Without it a typo like `--disk 10G` travels all the way into the
+  # resource comparison and surfaces as a raw bash diagnostic
+  # ("[[: 10G: value too great for base") before anything actionable is said.
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --disk)
+        _agent_vm_validate_int --disk "$2" || return 1
         vm_opts+=(--disk "$2"); shift 2 ;;
       --disk=*)
+        _agent_vm_validate_int --disk "${1#*=}" || return 1
         vm_opts+=(--disk "${1#*=}"); shift ;;
       --memory|--ram)
+        _agent_vm_validate_int --memory "$2" || return 1
         vm_opts+=(--memory "$2"); shift 2 ;;
       --memory=*|--ram=*)
+        _agent_vm_validate_int --memory "${1#*=}" || return 1
         vm_opts+=(--memory "${1#*=}"); shift ;;
       --cpus)
+        _agent_vm_validate_int --cpus "$2" || return 1
         vm_opts+=(--cpus "$2"); shift 2 ;;
       --cpus=*)
+        _agent_vm_validate_int --cpus "${1#*=}" || return 1
         vm_opts+=(--cpus "${1#*=}"); shift ;;
       --reset)
         vm_opts+=(--reset); shift ;;
@@ -625,7 +809,7 @@ agent-vm() {
   # itself; help needs nothing.) Without this, stop/list/status/etc. would fail
   # with confusing empty output instead of a clear, actionable message.
   case "$cmd" in
-    help|--help|-h|setup) ;;
+    help|--help|-h|setup|version|--version|-V|name|info|env) ;;
     *)
       if ! command -v limactl &>/dev/null; then
         echo "Error: limactl (Lima) not found. Run 'agent-vm setup' first, or install" >&2
@@ -636,25 +820,25 @@ agent-vm() {
 
   case "$cmd" in
     setup)
-      _agent_vm_setup "${vm_opts[@]}" "$@"
+      _agent_vm_setup ${vm_opts[@]+"${vm_opts[@]}"} "$@"
       ;;
     claude)
-      _agent_vm_claude "${vm_opts[@]}" "$@"
+      _agent_vm_claude ${vm_opts[@]+"${vm_opts[@]}"} "$@"
       ;;
     opencode)
-      _agent_vm_opencode "${vm_opts[@]}" "$@"
+      _agent_vm_opencode ${vm_opts[@]+"${vm_opts[@]}"} "$@"
       ;;
     codex)
-      _agent_vm_codex "${vm_opts[@]}" "$@"
+      _agent_vm_codex ${vm_opts[@]+"${vm_opts[@]}"} "$@"
       ;;
     vibe)
-      _agent_vm_vibe "${vm_opts[@]}" "$@"
+      _agent_vm_vibe ${vm_opts[@]+"${vm_opts[@]}"} "$@"
       ;;
     shell|sh)
-      _agent_vm_shell "${vm_opts[@]}" "$@"
+      _agent_vm_shell ${vm_opts[@]+"${vm_opts[@]}"} "$@"
       ;;
     run)
-      _agent_vm_run "${vm_opts[@]}" "$@"
+      _agent_vm_run ${vm_opts[@]+"${vm_opts[@]}"} "$@"
       ;;
     stop)
       _agent_vm_stop "$@"
@@ -671,6 +855,22 @@ agent-vm() {
     status)
       _agent_vm_status "$@"
       ;;
+    name)
+      local name_dir
+      name_dir="$(_agent_vm_abs_dir "${1:-}")" || return 1
+      _agent_vm_name "$name_dir"
+      ;;
+    info)
+      local info_dir
+      info_dir="$(_agent_vm_abs_dir "${1:-}")" || return 1
+      _agent_vm_info "$info_dir"
+      ;;
+    env)
+      _agent_vm_env "$@"
+      ;;
+    version|--version|-V)
+      echo "$AGENT_VM_VERSION"
+      ;;
     help|--help|-h)
       _agent_vm_help
       ;;
@@ -679,6 +879,180 @@ agent-vm() {
       echo "Run 'agent-vm help' for usage." >&2
       return 1
       ;;
+  esac
+}
+
+# Machine-readable state, one key=value per line. This is the supported way for
+# another tool to ask what agent-vm knows, instead of reverse-engineering VM
+# naming, the template name, or the state-dir version markers — all of which
+# are internal and free to change.
+#
+# Keys: version, template, state_dir, dir, vm_name, base_exists, vm_exists,
+# vm_running, vm_stale. Booleans are 1/0; anything that cannot be determined is
+# "unknown" rather than a guess.
+_agent_vm_info() {
+  local dir="${1:-$(pwd)}"
+  local vm_name
+  vm_name="$(_agent_vm_name "$dir")"
+
+  echo "version=$AGENT_VM_VERSION"
+  echo "template=$AGENT_VM_TEMPLATE"
+  echo "state_dir=$AGENT_VM_STATE_DIR"
+  echo "dir=$dir"
+  echo "vm_name=$vm_name"
+
+  if ! command -v limactl &>/dev/null; then
+    # Still useful without Lima: the static keys above answer "what would this
+    # VM be called", which is all a caller needs before setup has ever run.
+    echo "base_exists=unknown"
+    echo "vm_exists=unknown"
+    echo "vm_running=unknown"
+    echo "vm_stale=unknown"
+    return 0
+  fi
+
+  # Keep the three-way answer from the query helpers: a failed query reports
+  # `unknown`, never a confident 0. A caller told `base_exists=0` when the truth
+  # was "could not ask" would offer to build a base VM that already exists.
+  local base_exists vm_exists vm_running
+  _agent_vm_base_exists;        base_exists="$(_agent_vm_tristate $?)"
+  _agent_vm_exists "$vm_name";  vm_exists="$(_agent_vm_tristate $?)"
+  _agent_vm_running "$vm_name"; vm_running="$(_agent_vm_tristate $?)"
+  echo "base_exists=$base_exists"
+  echo "vm_exists=$vm_exists"
+  echo "vm_running=$vm_running"
+  # Staleness compares this VM against the base it was cloned from; with no VM
+  # (or no way to tell) there is nothing to compare.
+  if [[ "$vm_exists" == "1" ]]; then
+    echo "vm_stale=$(_agent_vm_stale_state "$vm_name")"
+  else
+    echo "vm_stale=unknown"
+  fi
+}
+
+# Escape a value for a single-quoted shell literal: ' becomes '"'"'.
+#
+# Via sed, NOT `${v//\'/\'\"\'\"\'}`: bash 3.2 — what macOS ships — keeps the
+# backslashes in the replacement half of that substitution and emits
+# `O\'"\'"\'Brien`. The resulting line is a syntax error, and a shell sourcing
+# ~/.agent-vm.env then abandons the WHOLE file, losing every secret in it, not
+# just the one with the quote.
+_agent_vm_sq_escape() {
+  printf '%s' "$1" | sed "s/'/'\"'\"'/g"
+}
+
+# Read, write and delete entries in ~/.agent-vm/env — the dotenv file pushed
+# into every VM on each start and auto-sourced there.
+#
+# Exists so integrators don't hand-roll the quoting: the file is *sourced* by a
+# shell, so one bad escape costs every secret in it (see _agent_vm_sq_escape).
+#
+#   agent-vm env set KEY VALUE   replace or add KEY (value never echoed)
+#   agent-vm env get KEY         print KEY's value
+#   agent-vm env has KEY         exit 0 if KEY is set, 1 otherwise (no output)
+#   agent-vm env unset KEY       remove KEY
+#   agent-vm env list            print the key NAMES only, never the values
+#
+# Writes are atomic (temp file then mv) and the file is kept mode 600. Lines
+# this command does not manage are preserved untouched.
+_agent_vm_env() {
+  local action="${1:-list}"
+  local key="${2:-}"
+  local file="$AGENT_VM_STATE_DIR/env"
+
+  case "$action" in
+    set|get|has|unset)
+      if [[ -z "$key" ]]; then
+        echo "Error: 'agent-vm env $action' needs a KEY." >&2
+        return 1
+      fi
+      # A key must be a shell-assignable name: anything else would produce a
+      # line that breaks the file for every reader.
+      if [[ ! "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+        echo "Error: '$key' is not a valid environment variable name." >&2
+        return 1
+      fi ;;
+  esac
+
+  case "$action" in
+    set)
+      if [[ $# -lt 3 ]]; then
+        echo "Error: 'agent-vm env set' needs a VALUE." >&2
+        return 1
+      fi
+      local value="$3" tmp line
+      mkdir -p "$AGENT_VM_STATE_DIR"
+      tmp="$(mktemp "${file}.XXXXXX")"
+      chmod 600 "$tmp"
+      if [[ -f "$file" ]]; then
+        while IFS= read -r line || [[ -n "$line" ]]; do
+          case "$line" in
+            "${key}="*) : ;;
+            *) printf '%s\n' "$line" >> "$tmp" ;;
+          esac
+        done < "$file"
+      fi
+      printf "%s='%s'\n" "$key" "$(_agent_vm_sq_escape "$value")" >> "$tmp"
+      # A silently-dropped write here means the caller is told the secret was
+      # stored when it was not — the worst possible failure for this file.
+      if ! mv "$tmp" "$file"; then
+        rm -f "$tmp"
+        echo "Error: could not write $file" >&2
+        return 1
+      fi
+      chmod 600 "$file"
+      ;;
+    unset)
+      [[ -f "$file" ]] || return 0
+      local tmp line
+      tmp="$(mktemp "${file}.XXXXXX")"
+      chmod 600 "$tmp"
+      while IFS= read -r line || [[ -n "$line" ]]; do
+        case "$line" in
+          "${key}="*) : ;;
+          *) printf '%s\n' "$line" >> "$tmp" ;;
+        esac
+      done < "$file"
+      if ! mv "$tmp" "$file"; then
+        rm -f "$tmp"
+        echo "Error: could not write $file" >&2
+        return 1
+      fi
+      chmod 600 "$file"
+      ;;
+    get|has)
+      [[ -f "$file" ]] || return 1
+      # Source in a subshell rather than parse: the file is shell, so this is
+      # the only reading that agrees with how the VM will interpret it.
+      #
+      # `unset` first: the subshell inherits this shell's environment, so
+      # without it a variable that merely happens to be exported here would be
+      # reported as stored in the file. An integrator asking "is GH_TOKEN
+      # saved?" would get a false yes — and the caller of agent-vm is very
+      # often a VM that already has these very variables in its environment.
+      #
+      # Presence travels as the exit status and the value as stdout, tested with
+      # ${key+x}. Comparing the value against a sentinel string instead would
+      # report a variable whose stored value happens to equal that sentinel as
+      # absent.
+      local value
+      if ! value="$(unset "$key"
+                    set -a; . "$file" >/dev/null 2>&1; set +a
+                    eval "[ \"\${${key}+x}\" = x ] || exit 1
+                          printf '%s' \"\${${key}}\"")"; then
+        return 1
+      fi
+      [[ "$action" == "has" ]] && return 0
+      printf '%s\n' "$value"
+      ;;
+    list)
+      [[ -f "$file" ]] || return 0
+      # Names only — never values, so this stays safe to paste into an issue.
+      sed -n 's/^\([A-Za-z_][A-Za-z0-9_]*\)=.*/\1/p' "$file"
+      ;;
+    *)
+      echo "Usage: agent-vm env {set KEY VALUE|get KEY|has KEY|unset KEY|list}" >&2
+      return 1 ;;
   esac
 }
 
@@ -702,6 +1076,18 @@ Commands:
   destroy-all        Stop and delete all agent-vm VMs
   list               List all agent-vm VMs
   status             Show status of all VMs (current dir marked with >)
+  name [dir]         Print the VM name for a directory (default: cwd)
+  info [dir]         Print machine-readable state as key=value lines
+                     (version, template, state_dir, dir, vm_name,
+                     base_exists, vm_exists, vm_running, vm_stale).
+                     Use this from scripts instead of parsing the output
+                     of the human-facing commands.
+  env <sub> [args]   Read/write ~/.agent-vm/env, the secrets pushed into every
+                     VM. Subcommands: set KEY VALUE, get KEY, has KEY (exit
+                     status only), unset KEY, list (key names, never values).
+                     Use this rather than editing the file: it is sourced by a
+                     shell, so one bad quote costs every secret in it.
+  version            Print the agent-vm version
   help               Show this help
 
 VM options (for claude, opencode, codex, vibe, shell, run):
@@ -763,6 +1149,15 @@ _agent_vm_setup() {
   local install_ruby=0 install_rust=0 install_golang=0
   local install_docker=1 install_chromium=1 install_gh=1
   local install_claude=1 install_opencode=1 install_codex=1 install_vibe=1
+  # MCP servers wired into the agents' configs. Named mcp-* in --preinstall so
+  # future MCP servers share one obvious namespace. Only servers with a
+  # dependency worth baking into the image belong here: a remote MCP server is
+  # a URL (and often a secret), which belongs in per-project config rather than
+  # in an image every VM is cloned from. Both current ones drive the installed
+  # Chromium. mcp-playwright is opt-in like the Ruby/Rust/Go languages: a second
+  # browser-driving server is redundant for most users, and every wired server
+  # costs tool definitions in the agent's context.
+  local install_mcp_chrome=1 install_mcp_playwright=0
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -790,12 +1185,23 @@ Options:
                         'none' for nothing.
                       Available names:
                         python, node, ruby, rust, golang, docker, chromium,
-                        gh, claude, opencode, codex, vibe
+                        gh, claude, opencode, codex, vibe, mcp-chrome,
+                        mcp-playwright
                       Selecting codex, or chromium with any AI agent, also
                       installs node because those paths require npm/npx.
+                      The mcp-* names wire an MCP server into each installed
+                      agent's config. Both 'mcp-chrome' (Chrome DevTools) and
+                      'mcp-playwright' drive the preinstalled Chromium, so
+                      both need node and chromium and are skipped, with a
+                      notice, without them. 'mcp-playwright' is opt-in and not
+                      part of 'default' — a second browser-driving server is
+                      redundant for most users. Omit them to leave the agents'
+                      MCP config untouched — useful when MCP servers are
+                      managed per project rather than baked into the image.
                       Examples:
                         --preinstall=default,rust       # default set plus Rust
                         --preinstall=python,docker,claude
+                        --preinstall=node,chromium,opencode   # no chrome MCP
   --help              Show this help
 EOF
         return 0
@@ -868,6 +1274,7 @@ EOF
     install_python=0 install_node=0 install_ruby=0 install_rust=0 install_golang=0
     install_docker=0 install_chromium=0 install_gh=0
     install_claude=0 install_opencode=0 install_codex=0 install_vibe=0
+    install_mcp_chrome=0 install_mcp_playwright=0
     [[ -z "$preinstall" ]] && preinstall="default"
     # Iterate the comma-list portably across bash and zsh by appending a
     # trailing comma and peeling off one token per iteration.
@@ -884,11 +1291,13 @@ EOF
           install_rust=1 install_golang=1
           install_docker=1 install_chromium=1 install_gh=1
           install_claude=1 install_opencode=1 install_codex=1 install_vibe=1
+          install_mcp_chrome=1 install_mcp_playwright=1
           ;;
         default)
           install_python=1 install_node=1
           install_docker=1 install_chromium=1 install_gh=1
           install_claude=1 install_opencode=1 install_codex=1 install_vibe=1
+          install_mcp_chrome=1
           ;;
         none) ;;  # explicit no-op token; with the all-off reset above,
                   # `--preinstall=none` ships nothing.
@@ -904,9 +1313,11 @@ EOF
         opencode) install_opencode=1 ;;
         codex)    install_codex=1 ;;
         vibe)     install_vibe=1 ;;
+        mcp-chrome)     install_mcp_chrome=1 ;;
+        mcp-playwright) install_mcp_playwright=1 ;;
         *)
           echo "Unknown preinstall name: $f (names are lowercase)" >&2
-          echo "Valid: python, node, ruby, rust, golang, docker, chromium, gh, claude, opencode, codex, vibe, default, all, none" >&2
+          echo "Valid: python, node, ruby, rust, golang, docker, chromium, gh, claude, opencode, codex, vibe, mcp-chrome, mcp-playwright, default, all, none" >&2
           return 1
           ;;
       esac
@@ -946,8 +1357,9 @@ EOF
     printf 'Software\n' >&2
     printf '────────\n' >&2
     printf '  Install:  Python, Node.js, Docker, Chromium, gh,\n' >&2
-    printf '            Claude Code, OpenCode, Codex CLI, Mistral Vibe\n' >&2
-    printf '  Skip:     Ruby, Rust, Go\n\n' >&2
+    printf '            Claude Code, OpenCode, Codex CLI, Mistral Vibe,\n' >&2
+    printf '            Chrome DevTools MCP\n' >&2
+    printf '  Skip:     Ruby, Rust, Go, Playwright MCP\n\n' >&2
     local use_default_software
     use_default_software=$(_agent_vm_ask_yn "Use this default" Y)
     if [[ "$use_default_software" != "1" ]]; then
@@ -964,10 +1376,24 @@ EOF
       install_chromium=$(_agent_vm_ask_yn "Chromium (headless browser)" Y)
       install_gh=$(_agent_vm_ask_yn "GitHub CLI (gh)" Y)
 
+      # MCP servers, wired into each installed agent's config. Chrome DevTools
+      # drives the Chromium above, so it is only worth asking when that is on.
+      # Playwright brings its own browser download, hence the N default.
+      if [[ "$install_chromium" == "1" ]]; then
+        install_mcp_chrome=$(_agent_vm_ask_yn "Chrome DevTools MCP (wired into each agent's config)" Y)
+      else
+        install_mcp_chrome=0
+      fi
+      if [[ "$install_chromium" == "1" ]]; then
+        install_mcp_playwright=$(_agent_vm_ask_yn "Playwright MCP (also drives that Chromium)" N)
+      else
+        install_mcp_playwright=0
+      fi
+
       local node_forced_reason=""
       if [[ "$install_codex" == "1" ]]; then
         node_forced_reason="Codex CLI requires Node.js"
-      elif [[ "$install_chromium" == "1" && ( "$install_claude" == "1" || "$install_opencode" == "1" || "$install_vibe" == "1" ) ]]; then
+      elif [[ "$install_chromium" == "1" && "$install_mcp_chrome" == "1" && ( "$install_claude" == "1" || "$install_opencode" == "1" || "$install_vibe" == "1" ) ]]; then
         node_forced_reason="Chrome DevTools MCP uses npx"
       fi
 
@@ -1005,7 +1431,7 @@ EOF
     printf '\n' >&2
   fi
 
-  if [[ "$install_chromium" == "1" ]]; then
+  if [[ "$install_chromium" == "1" && "$install_mcp_chrome" == "1" ]]; then
     local wants_chrome_mcp=0
     [[ "$install_claude" == "1" || "$install_opencode" == "1" || "$install_codex" == "1" || "$install_vibe" == "1" ]] && wants_chrome_mcp=1
     if [[ "$wants_chrome_mcp" == "1" && "$install_node" != "1" ]]; then
@@ -1076,6 +1502,8 @@ EOF
     printf 'export AGENT_VM_INSTALL_OPENCODE=%s\n'  "$install_opencode"
     printf 'export AGENT_VM_INSTALL_CODEX=%s\n'     "$install_codex"
     printf 'export AGENT_VM_INSTALL_VIBE=%s\n'      "$install_vibe"
+    printf 'export AGENT_VM_INSTALL_MCP_CHROME=%s\n'     "$install_mcp_chrome"
+    printf 'export AGENT_VM_INSTALL_MCP_PLAYWRIGHT=%s\n' "$install_mcp_playwright"
     cat "${AGENT_VM_SCRIPT_DIR}/agent-vm.setup.sh"
   } | limactl shell "$AGENT_VM_TEMPLATE" bash -l || { echo "Error: Setup script failed." >&2; return 1; }
 
@@ -1148,11 +1576,11 @@ _agent_vm_claude() {
   local vm_name
   vm_name="$(_agent_vm_name "$host_dir")"
 
-  _agent_vm_ensure_running "$vm_name" "$host_dir" "${vm_opts[@]}" || return 1
+  _agent_vm_ensure_running "$vm_name" "$host_dir" ${vm_opts[@]+"${vm_opts[@]}"} || return 1
   _agent_vm_print_resources "$vm_name"
 
   local exit_code=0
-  _agent_vm_lima_run "$vm_name" "$host_dir" "" claude --dangerously-skip-permissions "${args[@]}"
+  _agent_vm_lima_run "$vm_name" "$host_dir" "" claude --dangerously-skip-permissions ${args[@]+"${args[@]}"}
   exit_code=$?
   [[ -n "$rm" ]] && { echo "Removing VM..."; _agent_vm_destroy; }
   return $exit_code
@@ -1180,14 +1608,14 @@ _agent_vm_opencode() {
   local vm_name
   vm_name="$(_agent_vm_name "$host_dir")"
 
-  _agent_vm_ensure_running "$vm_name" "$host_dir" "${vm_opts[@]}" || return 1
+  _agent_vm_ensure_running "$vm_name" "$host_dir" ${vm_opts[@]+"${vm_opts[@]}"} || return 1
   _agent_vm_print_resources "$vm_name"
 
   # --auto auto-approves permission prompts that aren't explicitly denied,
   # giving full autonomy (safe inside the sandbox). This is OpenCode's shipped
   # equivalent of a "yolo" mode; the proposed --yolo flag was never merged.
   local exit_code=0
-  _agent_vm_lima_run "$vm_name" "$host_dir" 1 opencode --auto "${args[@]}"
+  _agent_vm_lima_run "$vm_name" "$host_dir" 1 opencode --auto ${args[@]+"${args[@]}"}
   exit_code=$?
   [[ -n "$rm" ]] && { echo "Removing VM..."; _agent_vm_destroy; }
   return $exit_code
@@ -1215,11 +1643,11 @@ _agent_vm_codex() {
   local vm_name
   vm_name="$(_agent_vm_name "$host_dir")"
 
-  _agent_vm_ensure_running "$vm_name" "$host_dir" "${vm_opts[@]}" || return 1
+  _agent_vm_ensure_running "$vm_name" "$host_dir" ${vm_opts[@]+"${vm_opts[@]}"} || return 1
   _agent_vm_print_resources "$vm_name"
 
   local exit_code=0
-  _agent_vm_lima_run "$vm_name" "$host_dir" "" codex --dangerously-bypass-approvals-and-sandbox "${args[@]}"
+  _agent_vm_lima_run "$vm_name" "$host_dir" "" codex --dangerously-bypass-approvals-and-sandbox ${args[@]+"${args[@]}"}
   exit_code=$?
   [[ -n "$rm" ]] && { echo "Removing VM..."; _agent_vm_destroy; }
   return $exit_code
@@ -1247,13 +1675,13 @@ _agent_vm_vibe() {
   local vm_name
   vm_name="$(_agent_vm_name "$host_dir")"
 
-  _agent_vm_ensure_running "$vm_name" "$host_dir" "${vm_opts[@]}" || return 1
+  _agent_vm_ensure_running "$vm_name" "$host_dir" ${vm_opts[@]+"${vm_opts[@]}"} || return 1
   _agent_vm_print_resources "$vm_name"
 
   # Vibe is a full-screen TUI, so allocate a tty (like opencode).
   # --agent auto-approve gives full autonomy (safe inside the sandbox).
   local exit_code=0
-  _agent_vm_lima_run "$vm_name" "$host_dir" 1 vibe --agent auto-approve "${args[@]}"
+  _agent_vm_lima_run "$vm_name" "$host_dir" 1 vibe --agent auto-approve ${args[@]+"${args[@]}"}
   exit_code=$?
   [[ -n "$rm" ]] && { echo "Removing VM..."; _agent_vm_destroy; }
   return $exit_code
@@ -1287,7 +1715,7 @@ _agent_vm_shell() {
   local vm_name
   vm_name="$(_agent_vm_name "$host_dir")"
 
-  _agent_vm_ensure_running "$vm_name" "$host_dir" "${vm_opts[@]}" || return 1
+  _agent_vm_ensure_running "$vm_name" "$host_dir" ${vm_opts[@]+"${vm_opts[@]}"} || return 1
   _agent_vm_print_resources "$vm_name"
 
   local exit_code=0
@@ -1338,7 +1766,7 @@ _agent_vm_run() {
   local vm_name
   vm_name="$(_agent_vm_name "$host_dir")"
 
-  _agent_vm_ensure_running "$vm_name" "$host_dir" "${vm_opts[@]}" || return 1
+  _agent_vm_ensure_running "$vm_name" "$host_dir" ${vm_opts[@]+"${vm_opts[@]}"} || return 1
   _agent_vm_print_resources "$vm_name"
 
   # `--tty` forces limactl to allocate a pseudo-terminal in the VM, which
