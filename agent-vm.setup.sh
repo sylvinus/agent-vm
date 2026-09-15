@@ -225,9 +225,17 @@ configure_mcp() {
     echo "Configuring $name MCP server for Claude..."
     local config="$HOME/.claude.json"
     [ -f "$config" ] || echo '{}' > "$config"
-    jq --arg n "$name" --arg c "$cmd" --argjson a "$args_json" \
-      '.mcpServers[$n] = {"command": $c, "args": $a}' \
-      "$config" > "$config.tmp" && mv "$config.tmp" "$config"
+    # Guarded: `a && b` is exempt from `set -e`, and this is not the last
+    # statement of the function, so a jq failure (invalid JSON in an existing
+    # config, full disk) would otherwise leave a stray .tmp behind and let setup
+    # finish "successfully" without the MCP server.
+    if ! { jq --arg n "$name" --arg c "$cmd" --argjson a "$args_json" \
+             '.mcpServers[$n] = {"command": $c, "args": $a}' \
+             "$config" > "$config.tmp" && mv "$config.tmp" "$config"; }; then
+      rm -f "$config.tmp"
+      echo "Error: failed to write '$name' into $config" >&2
+      return 1
+    fi
   fi
 
   if [[ "$INSTALL_OPENCODE" == "1" ]]; then
@@ -235,9 +243,13 @@ configure_mcp() {
     mkdir -p "$HOME/.config/opencode"
     local config="$HOME/.config/opencode/opencode.json"
     [ -f "$config" ] || echo '{"$schema": "https://opencode.ai/config.json"}' > "$config"
-    jq --arg n "$name" --arg c "$cmd" --argjson a "$args_json" \
-      '.mcp[$n] = {"type": "local", "command": ([$c] + $a), "enabled": true}' \
-      "$config" > "$config.tmp" && mv "$config.tmp" "$config"
+    if ! { jq --arg n "$name" --arg c "$cmd" --argjson a "$args_json" \
+             '.mcp[$n] = {"type": "local", "command": ([$c] + $a), "enabled": true}' \
+             "$config" > "$config.tmp" && mv "$config.tmp" "$config"; }; then
+      rm -f "$config.tmp"
+      echo "Error: failed to write '$name' into $config" >&2
+      return 1
+    fi
   fi
 
   if [[ "$INSTALL_VIBE" == "1" ]]; then

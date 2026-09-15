@@ -35,7 +35,10 @@ section() { printf '\n%s\n' "$1"; }
 SB="$(mktemp -d)"
 trap 'rm -rf "$SB"' EXIT
 export HOME="$SB/home"
-mkdir -p "$HOME" "$SB/bin"
+# A real directory: `name` and `info` resolve their argument and reject a
+# path that does not exist, so the tests cannot use a made-up one.
+PROJ="$SB/proj"
+mkdir -p "$HOME" "$SB/bin" "$PROJ"
 
 # --- stubs --------------------------------------------------------------------
 # One base VM plus one project VM, running, 4 CPUs / 8 GiB / 32 GiB.
@@ -92,7 +95,7 @@ section "sourcing under a strict caller"
   _agent_vm_running agent-vm-proj-deadbeef >/dev/null
   _agent_vm_base_exists >/dev/null
   agent-vm version >/dev/null
-  agent-vm info /tmp/x >/dev/null
+  agent-vm info "$PROJ" >/dev/null
 ) 2>"$SB/strict.err"
 if [ -s "$SB/strict.err" ]; then
   fail "no diagnostics under set -u / pipefail"; sed 's/^/         /' "$SB/strict.err"
@@ -175,13 +178,13 @@ section "machine-readable surface"
 # =============================================================================
 check "version" "$(agent-vm version)" "$AGENT_VM_VERSION"
 check "--version" "$(agent-vm --version)" "$AGENT_VM_VERSION"
-check "name matches the internal helper" "$(agent-vm name /tmp/proj)" "$(_agent_vm_name /tmp/proj)"
+check "name matches the internal helper" "$(agent-vm name "$PROJ")" "$(_agent_vm_name "$PROJ")"
 
-info_out="$(agent-vm info /tmp/proj)"
+info_out="$(agent-vm info "$PROJ")"
 get() { printf '%s\n' "$info_out" | grep "^$1=" | cut -d= -f2-; }
 check "info: version"      "$(get version)"     "$AGENT_VM_VERSION"
 check "info: template"     "$(get template)"    "agent-vm-base"
-check "info: dir"          "$(get dir)"         "/tmp/proj"
+check "info: dir"          "$(get dir)"         "$PROJ"
 check "info: base_exists"  "$(get base_exists)" "1"
 check "info: vm_exists"    "$(get vm_exists)"   "0"
 check "info: vm_stale unknown with no VM" "$(get vm_stale)" "unknown"
@@ -202,13 +205,31 @@ while [ -n "$_rest" ]; do
   [ -x "$_d/limactl" ] && continue
   nolima_path="${nolima_path:+$nolima_path:}$_d"
 done
-nolima="$(PATH="$nolima_path" bash -c "source '$AGENT_VM_SH'; agent-vm info /tmp/proj" 2>/dev/null)"
+nolima="$(PATH="$nolima_path" bash -c 'source "$1"; agent-vm info "$2"' _ "$AGENT_VM_SH" "$PROJ" 2>/dev/null)"
 check "info without limactl still prints 9 keys" \
   "$(printf '%s\n' "$nolima" | grep -c '^[a-z_]*=')" "9"
 case "$nolima" in
   *"base_exists=unknown"*) pass "info without limactl says unknown, not 0" ;;
   *) fail "info without limactl should report unknown" ;;
 esac
+
+# =============================================================================
+section "directory arguments are normalised"
+# =============================================================================
+# The VM name is a hash of the directory STRING, and the VM-running commands
+# always feed it `$(pwd)`. Without normalising, `name /tmp` and `name /tmp/`
+# would be two different VMs for one directory, and neither need match what
+# `cd /tmp && agent-vm opencode` produces.
+canon="$(agent-vm name "$PROJ")"
+check "trailing slash agrees"   "$(agent-vm name "$PROJ/")"        "$canon"
+check "relative path agrees"    "$(cd "$PROJ" && agent-vm name .)" "$canon"
+check "no argument means cwd"   "$(cd "$PROJ" && agent-vm name)"   "$canon"
+check "info agrees with name"   "$(agent-vm info "$PROJ/" | grep '^vm_name=' | cut -d= -f2)" "$canon"
+if agent-vm name "$SB/does-not-exist" >/dev/null 2>&1; then
+  fail "a nonexistent directory should be rejected, not hashed"
+else
+  pass "a nonexistent directory is rejected"
+fi
 
 # =============================================================================
 section "--preinstall parsing"
@@ -253,12 +274,14 @@ REALDIR="$(cd -P "$(dirname "$AGENT_VM_SH")" && pwd)"
 mkdir -p "$SB/link1" "$SB/link2"
 ln -sf "$AGENT_VM_SH" "$SB/link1/agent-vm"
 ln -sf "$SB/link1/agent-vm" "$SB/link2/agent-vm"
-check "direct symlink" \
-  "$(bash -c "source '$SB/link1/agent-vm' 2>/dev/null; printf '%s' \"\$AGENT_VM_SCRIPT_DIR\"")" "$REALDIR"
-check "chain of two symlinks" \
-  "$(bash -c "source '$SB/link2/agent-vm' 2>/dev/null; printf '%s' \"\$AGENT_VM_SCRIPT_DIR\"")" "$REALDIR"
-check "no symlink (the historical sourcing)" \
-  "$(bash -c "source '$AGENT_VM_SH' 2>/dev/null; printf '%s' \"\$AGENT_VM_SCRIPT_DIR\"")" "$REALDIR"
+# Paths go in as positional parameters: interpolating them into single-quoted
+# shell text would break on a path containing a single quote.
+script_dir_of() {
+  bash -c 'source "$1" 2>/dev/null; printf "%s" "$AGENT_VM_SCRIPT_DIR"' _ "$1"
+}
+check "direct symlink"                     "$(script_dir_of "$SB/link1/agent-vm")" "$REALDIR"
+check "chain of two symlinks"              "$(script_dir_of "$SB/link2/agent-vm")" "$REALDIR"
+check "no symlink (the historical sourcing)" "$(script_dir_of "$AGENT_VM_SH")"     "$REALDIR"
 
 # =============================================================================
 section "env: the shared secrets file"

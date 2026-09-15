@@ -220,6 +220,16 @@ These are picked up automatically by the tools that look for them: `gh` reads `G
 
 For subscription-based auth (where you've already run `claude login` / `gh auth login` on the host), share the host's credentials directory via [`~/.agent-vm/volumes`](#extra-host-mounts-agent-vmvolumes) instead.
 
+**What the sandbox does and does not protect here.** Anything in this file is
+readable by *everything* running in the VM — the agent, its dependencies, any
+code it fetches. The VM keeps those secrets away from your host, but it does not
+keep them from the agent, and an agent that has been prompt-injected or a
+dependency that has been tampered with can send them out over the network. So:
+put a **dedicated, revocable, narrowly-scoped** token here rather than your main
+one, and reach for `--offline` on sessions that don't need outbound internet.
+`--offline` limits where a secret can go; it does not stop code in the VM from
+reading it.
+
 ### Extra host mounts: `~/.agent-vm/volumes`
 
 List host files or directories to mount inside every VM. One path per line, `~` is expanded, `#` starts a comment. Uses Docker Compose-style `source[:destination][:mode]` syntax, where `mode` is `ro` (default) or `rw`:

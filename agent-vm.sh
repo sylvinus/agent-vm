@@ -164,6 +164,27 @@ _agent_vm_clean_partial_state() {
   fi
 }
 
+# Resolve a user-supplied directory argument to the same absolute form the
+# VM-running commands use.
+#
+# Those commands all derive the name from `$(pwd)`, so they never see a relative
+# or trailing-slash path. `name` and `info` do take a directory argument, and the
+# name is a hash of that *string*: without this, `agent-vm name /tmp` and
+# `agent-vm name /tmp/` return two different VMs for one directory, and neither
+# need match what `cd /tmp && agent-vm opencode` produces.
+#
+# Logical pwd (no `-P`), to agree with the `$(pwd)` the other commands use.
+# A directory that does not exist is rejected rather than hashed: a name derived
+# from an unresolvable path is wrong in a way nothing downstream would catch.
+_agent_vm_abs_dir() {
+  local dir="${1:-$(pwd)}"
+  if [[ ! -d "$dir" ]]; then
+    echo "Error: no such directory: $dir" >&2
+    return 1
+  fi
+  (cd "$dir" && pwd)
+}
+
 # Generate a deterministic VM name for a directory
 _agent_vm_name() {
   local dir="${1:-$(pwd)}"
@@ -189,24 +210,37 @@ _agent_vm_has_line() {
   esac
 }
 
-# Check if a VM exists (any state)
+# Check if a VM exists (any state).
+# 0 = yes · 1 = no · 2 = could not ask (limactl itself failed).
+# The third status matters: an empty answer from a failed query is otherwise
+# indistinguishable from "no such VM", and `info` would report a confident 0.
 _agent_vm_exists() {
   local list
-  list="$(limactl list -q 2>/dev/null || true)"
+  list="$(limactl list -q 2>/dev/null)" || return 2
   _agent_vm_has_line "$list" "$1"
 }
 
-# Check if a VM is running
+# Check if a VM is running. Same three statuses as _agent_vm_exists.
 _agent_vm_running() {
   local list
-  list="$(limactl list --format '{{.Name}} {{.Status}}' 2>/dev/null || true)"
+  list="$(limactl list --format '{{.Name}} {{.Status}}' 2>/dev/null)" || return 2
   _agent_vm_has_line "$list" "$1 Running"
 }
 
 # Check if the base VM template exists. Kept as a named helper so integrators
 # don't have to hardcode the template name to answer "do I need to run setup?".
+# Same three statuses as _agent_vm_exists.
 _agent_vm_base_exists() {
   _agent_vm_exists "$AGENT_VM_TEMPLATE"
+}
+
+# Turn one of those exit statuses into the value `info` publishes.
+_agent_vm_tristate() {
+  case "$1" in
+    0) echo 1 ;;
+    1) echo 0 ;;
+    *) echo unknown ;;
+  esac
 }
 
 # Was <vm_name> cloned from an older base than the current one?
@@ -799,10 +833,14 @@ agent-vm() {
       _agent_vm_status "$@"
       ;;
     name)
-      _agent_vm_name "$@"
+      local name_dir
+      name_dir="$(_agent_vm_abs_dir "${1:-}")" || return 1
+      _agent_vm_name "$name_dir"
       ;;
     info)
-      _agent_vm_info "$@"
+      local info_dir
+      info_dir="$(_agent_vm_abs_dir "${1:-}")" || return 1
+      _agent_vm_info "$info_dir"
       ;;
     env)
       _agent_vm_env "$@"
@@ -850,15 +888,18 @@ _agent_vm_info() {
     return 0
   fi
 
-  local base_exists=0 vm_exists=0 vm_running=0
-  _agent_vm_base_exists && base_exists=1
-  _agent_vm_exists "$vm_name" && vm_exists=1
-  _agent_vm_running "$vm_name" && vm_running=1
+  # Keep the three-way answer from the query helpers: a failed query reports
+  # `unknown`, never a confident 0. A caller told `base_exists=0` when the truth
+  # was "could not ask" would offer to build a base VM that already exists.
+  local base_exists vm_exists vm_running
+  _agent_vm_base_exists;        base_exists="$(_agent_vm_tristate $?)"
+  _agent_vm_exists "$vm_name";  vm_exists="$(_agent_vm_tristate $?)"
+  _agent_vm_running "$vm_name"; vm_running="$(_agent_vm_tristate $?)"
   echo "base_exists=$base_exists"
   echo "vm_exists=$vm_exists"
   echo "vm_running=$vm_running"
   # Staleness compares this VM against the base it was cloned from; with no VM
-  # there is nothing to compare.
+  # (or no way to tell) there is nothing to compare.
   if [[ "$vm_exists" == "1" ]]; then
     echo "vm_stale=$(_agent_vm_stale_state "$vm_name")"
   else
@@ -956,13 +997,20 @@ _agent_vm_env() {
       # reported as stored in the file. An integrator asking "is GH_TOKEN
       # saved?" would get a false yes — and the caller of agent-vm is very
       # often a VM that already has these very variables in its environment.
-      local out
-      out="$(unset "$key"
-             set -a; . "$file" >/dev/null 2>&1; set +a
-             eval "printf '%s' \"\${${key}-__agent_vm_unset__}\"")"
-      [[ "$out" == "__agent_vm_unset__" ]] && return 1
+      #
+      # Presence travels as the exit status and the value as stdout, tested with
+      # ${key+x}. Comparing the value against a sentinel string instead would
+      # report a variable whose stored value happens to equal that sentinel as
+      # absent.
+      local value
+      if ! value="$(unset "$key"
+                    set -a; . "$file" >/dev/null 2>&1; set +a
+                    eval "[ \"\${${key}+x}\" = x ] || exit 1
+                          printf '%s' \"\${${key}}\"")"; then
+        return 1
+      fi
       [[ "$action" == "has" ]] && return 0
-      printf '%s\n' "$out"
+      printf '%s\n' "$value"
       ;;
     list)
       [[ -f "$file" ]] || return 0

@@ -9,6 +9,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The steps below run test.sh from the PR branch. Leaving the checkout
+          # token in .git/config would put it within reach of that code.
+          persist-credentials: false
 
       - name: Syntax check
         run: |
