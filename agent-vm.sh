@@ -40,10 +40,12 @@ AGENT_VM_STATE_DIR="${HOME}/.agent-vm"
 #
 # `readlink -f` would do it in one call but is GNU-only — macOS ships a readlink
 # without it — so walk the chain by hand.
-# `CDPATH=` for the same reason as in _agent_vm_abs_dir: `dirname` can yield a
-# bare relative path (running `bash sub/agent-vm.sh`), and a CDPATH hit would
-# then resolve the wrong directory — leaving `agent-vm setup` unable to find
-# agent-vm.setup.sh next to the real file.
+#
+# `CDPATH=` because `dirname` can yield a bare relative path (running
+# `bash sub/agent-vm.sh`). With CDPATH set, `cd <relative>` searches it before
+# the current directory and prints where it landed, so without clearing it this
+# would resolve the wrong directory and capture a stray line — leaving
+# `agent-vm setup` unable to find agent-vm.setup.sh next to the real file.
 _agent_vm_script_dir() {
   local src="${BASH_SOURCE[0]:-$0}" dir
   while [ -L "$src" ]; do
@@ -759,20 +761,31 @@ _agent_vm_ensure_running() {
 
 agent-vm() {
   local vm_opts=()
-  # Parse global options before the subcommand
+  # Parse global options before the subcommand.
+  #
+  # Resource values are validated here, as `setup` already does for its own
+  # flags. Without it a typo like `--disk 10G` travels all the way into the
+  # resource comparison and surfaces as a raw bash diagnostic
+  # ("[[: 10G: value too great for base") before anything actionable is said.
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --disk)
+        _agent_vm_validate_int --disk "$2" || return 1
         vm_opts+=(--disk "$2"); shift 2 ;;
       --disk=*)
+        _agent_vm_validate_int --disk "${1#*=}" || return 1
         vm_opts+=(--disk "${1#*=}"); shift ;;
       --memory|--ram)
+        _agent_vm_validate_int --memory "$2" || return 1
         vm_opts+=(--memory "$2"); shift 2 ;;
       --memory=*|--ram=*)
+        _agent_vm_validate_int --memory "${1#*=}" || return 1
         vm_opts+=(--memory "${1#*=}"); shift ;;
       --cpus)
+        _agent_vm_validate_int --cpus "$2" || return 1
         vm_opts+=(--cpus "$2"); shift 2 ;;
       --cpus=*)
+        _agent_vm_validate_int --cpus "${1#*=}" || return 1
         vm_opts+=(--cpus "${1#*=}"); shift ;;
       --reset)
         vm_opts+=(--reset); shift ;;
@@ -980,7 +993,13 @@ _agent_vm_env() {
         done < "$file"
       fi
       printf "%s='%s'\n" "$key" "$(_agent_vm_sq_escape "$value")" >> "$tmp"
-      mv "$tmp" "$file"
+      # A silently-dropped write here means the caller is told the secret was
+      # stored when it was not — the worst possible failure for this file.
+      if ! mv "$tmp" "$file"; then
+        rm -f "$tmp"
+        echo "Error: could not write $file" >&2
+        return 1
+      fi
       chmod 600 "$file"
       ;;
     unset)
@@ -994,7 +1013,11 @@ _agent_vm_env() {
           *) printf '%s\n' "$line" >> "$tmp" ;;
         esac
       done < "$file"
-      mv "$tmp" "$file"
+      if ! mv "$tmp" "$file"; then
+        rm -f "$tmp"
+        echo "Error: could not write $file" >&2
+        return 1
+      fi
       chmod 600 "$file"
       ;;
     get|has)
@@ -1059,6 +1082,11 @@ Commands:
                      base_exists, vm_exists, vm_running, vm_stale).
                      Use this from scripts instead of parsing the output
                      of the human-facing commands.
+  env <sub> [args]   Read/write ~/.agent-vm/env, the secrets pushed into every
+                     VM. Subcommands: set KEY VALUE, get KEY, has KEY (exit
+                     status only), unset KEY, list (key names, never values).
+                     Use this rather than editing the file: it is sourced by a
+                     shell, so one bad quote costs every secret in it.
   version            Print the agent-vm version
   help               Show this help
 

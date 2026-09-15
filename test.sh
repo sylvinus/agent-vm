@@ -353,6 +353,58 @@ val="$(set -a; . "$ENVHOME/.agent-vm/env"; set +a; printf '%s' "${AC_GIT_USER_NA
 check "the file sources cleanly in a shell" "$val" "O'Brien"
 
 # =============================================================================
+section "release hygiene"
+# =============================================================================
+# Every dispatched command must appear in `help`: a command nobody can discover
+# is a command nobody uses. (`sh`/`destroy` are aliases documented inline.)
+help_text="$(agent-vm help)"
+missing=""
+for verb in setup claude opencode codex vibe shell run stop rm destroy-all \
+            list status name info env version help; do
+  case "$help_text" in
+    *"  $verb"*) ;;
+    *) missing="$missing $verb" ;;
+  esac
+done
+# One verdict, not a pass that fires whatever the loop found.
+if [ -n "$missing" ]; then
+  fail "dispatched but missing from help:$missing"
+else
+  pass "every dispatched command appears in help"
+fi
+check "the version in help output matches the constant" \
+  "$(agent-vm version)" "$AGENT_VM_VERSION"
+
+# A bad resource value must produce an actionable message, not a raw bash
+# arithmetic diagnostic leaking from the comparison helper.
+bad="$( (agent-vm --disk 10G version) 2>&1 )" || true
+case "$bad" in
+  *"must be a positive integer"*) pass "a non-numeric --disk is rejected clearly" ;;
+  *"value too great for base"*)   fail "raw bash arithmetic error leaked: $bad" ;;
+  *) fail "unexpected output for --disk 10G: $bad" ;;
+esac
+check "a valid resource value still passes" "$(agent-vm --disk 32 --cpus 4 version)" "$AGENT_VM_VERSION"
+
+# A failed write of the secrets file must not be reported as success: a caller
+# told the secret was stored when it was not is the worst outcome for this file.
+# Root ignores permission bits, so the condition cannot be staged as root —
+# which is exactly what the bash 3.2 container runs as.
+if [ "$(id -u)" -eq 0 ]; then
+  printf '  skip env-set-failure test (running as root: permission bits do not apply)\n'
+else
+  RO="$SB/readonly-home"
+  mkdir -p "$RO/.agent-vm"
+  printf "K='v'\n" > "$RO/.agent-vm/env"
+  chmod 500 "$RO/.agent-vm"
+  if HOME="$RO" bash "$AGENT_VM_SH" env set OTHER x >/dev/null 2>&1; then
+    fail "env set reported success on an unwritable directory"
+  else
+    pass "env set fails loudly when the write cannot happen"
+  fi
+  chmod 700 "$RO/.agent-vm"
+fi
+
+# =============================================================================
 section "MCP config writer"
 # =============================================================================
 # configure_mcp lives in the in-VM setup script, whose top level performs the
