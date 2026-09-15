@@ -40,17 +40,21 @@ AGENT_VM_STATE_DIR="${HOME}/.agent-vm"
 #
 # `readlink -f` would do it in one call but is GNU-only — macOS ships a readlink
 # without it — so walk the chain by hand.
+# `CDPATH=` for the same reason as in _agent_vm_abs_dir: `dirname` can yield a
+# bare relative path (running `bash sub/agent-vm.sh`), and a CDPATH hit would
+# then resolve the wrong directory — leaving `agent-vm setup` unable to find
+# agent-vm.setup.sh next to the real file.
 _agent_vm_script_dir() {
   local src="${BASH_SOURCE[0]:-$0}" dir
   while [ -L "$src" ]; do
-    dir="$(cd -P "$(dirname "$src")" && pwd)"
+    dir="$(CDPATH= cd -P -- "$(dirname "$src")" >/dev/null && pwd)"
     src="$(readlink "$src")"
     case "$src" in
       /*) ;;                  # absolu : tel quel
       *) src="$dir/$src" ;;   # relatif : au dossier du lien
     esac
   done
-  (cd -P "$(dirname "$src")" && pwd)
+  (CDPATH= cd -P -- "$(dirname "$src")" >/dev/null && pwd)
 }
 AGENT_VM_SCRIPT_DIR="$(_agent_vm_script_dir)"
 
@@ -176,13 +180,19 @@ _agent_vm_clean_partial_state() {
 # Logical pwd (no `-P`), to agree with the `$(pwd)` the other commands use.
 # A directory that does not exist is rejected rather than hashed: a name derived
 # from an unresolvable path is wrong in a way nothing downstream would catch.
+#
+# `CDPATH=` is not cosmetic. With CDPATH set in the environment, `cd <relative>`
+# searches it *before* the current directory and prints where it landed — so
+# this would both emit a stray line into the captured value and resolve a
+# DIFFERENT directory than the `-d` test above just validated. Clearing it keeps
+# the argument meaning "relative to cwd", like every other path-taking tool.
 _agent_vm_abs_dir() {
   local dir="${1:-$(pwd)}"
   if [[ ! -d "$dir" ]]; then
     echo "Error: no such directory: $dir" >&2
     return 1
   fi
-  (cd "$dir" && pwd)
+  (CDPATH= cd -- "$dir" >/dev/null && pwd)
 }
 
 # Generate a deterministic VM name for a directory

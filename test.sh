@@ -18,7 +18,7 @@
 
 set -uo pipefail
 
-SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+SELF_DIR="$(CDPATH= cd -- "$(dirname "${BASH_SOURCE[0]:-$0}")" >/dev/null && pwd)"
 AGENT_VM_SH="${AGENT_VM_SH:-$SELF_DIR/agent-vm.sh}"
 SETUP_SH="${SETUP_SH:-$SELF_DIR/agent-vm.setup.sh}"
 
@@ -231,6 +231,23 @@ else
   pass "a nonexistent directory is rejected"
 fi
 
+# CDPATH must not leak into the resolution. With it set, `cd <relative>` searches
+# it before the current directory AND prints where it landed — so an unprotected
+# `cd "$dir" && pwd` both emits a stray line and resolves a different directory
+# than the `-d` test validated. Two decoys with the same basename make the
+# difference observable.
+mkdir -p "$SB/decoy/twin" "$SB/real/twin"
+check "CDPATH does not redirect the lookup" \
+  "$(cd "$SB/real" && CDPATH="$SB/decoy" agent-vm name twin)" \
+  "$(agent-vm name "$SB/real/twin")"
+
+# Stray `cd` output has to be observed on `info`, not on `name`: the name is run
+# through `tr -cs 'a-zA-Z0-9' '-'`, which would quietly turn the extra newline
+# into a dash. `info` prints the resolved path raw, so a leaked line shows up as
+# a tenth line among the nine key=value pairs.
+check "no stray cd output leaks into info" \
+  "$(cd "$SB/real" && CDPATH="$SB/decoy" agent-vm info twin | wc -l | tr -d ' ')" "9"
+
 # =============================================================================
 section "--preinstall parsing"
 # =============================================================================
@@ -270,7 +287,7 @@ section "script dir resolves through symlinks"
 # install.sh puts a symlink on PATH. Without following it, AGENT_VM_SCRIPT_DIR
 # points at the link's directory and `agent-vm setup` cannot find
 # agent-vm.setup.sh, which lives next to the real file.
-REALDIR="$(cd -P "$(dirname "$AGENT_VM_SH")" && pwd)"
+REALDIR="$(CDPATH= cd -P -- "$(dirname "$AGENT_VM_SH")" >/dev/null && pwd)"
 mkdir -p "$SB/link1" "$SB/link2"
 ln -sf "$AGENT_VM_SH" "$SB/link1/agent-vm"
 ln -sf "$SB/link1/agent-vm" "$SB/link2/agent-vm"

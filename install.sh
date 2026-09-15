@@ -25,7 +25,9 @@
 
 set -euo pipefail
 
-REPO_DIR="$(cd -P "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+# CDPATH= : `dirname` can yield a bare relative path, and a CDPATH hit would
+# resolve a different directory than the one this script actually lives in.
+REPO_DIR="$(CDPATH= cd -P -- "$(dirname "${BASH_SOURCE[0]:-$0}")" >/dev/null && pwd)"
 SCRIPT="$REPO_DIR/agent-vm.sh"
 BIN_DIR="${AGENT_VM_BIN_DIR:-$HOME/.local/bin}"
 LINK="$BIN_DIR/agent-vm"
