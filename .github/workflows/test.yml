@@ -1,0 +1,32 @@
+name: test
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Syntax check
+        run: |
+          for f in agent-vm.sh agent-vm.setup.sh runtime.example.sh test.sh; do
+            echo "bash -n $f"
+            bash -n "$f"
+          done
+
+      - name: Test suite
+        run: ./test.sh
+
+      # agent-vm is sourced into whatever shell the user runs, and macOS still
+      # ships bash 3.2 — which errors on empty array expansion under `set -u`.
+      # Modern bash does not, so a 3.2 run is the only way to catch it in CI.
+      - name: Test suite on bash 3.2 (what macOS ships)
+        run: docker run --rm -v "$PWD:/w" -w /w bash:3.2 ./test.sh
+
+      - name: Test suite under zsh (the usual way it is sourced)
+        run: |
+          sudo apt-get update && sudo apt-get install -y zsh
+          zsh ./test.sh

@@ -21,8 +21,22 @@ Feedback welcome!
 ```bash
 git clone https://github.com/sylvinus/agent-vm.git
 cd agent-vm
+./install.sh
+```
 
-# Add to your shell config
+`install.sh` puts `agent-vm` on your `PATH` as a symlink to `agent-vm.sh` in the
+clone, then offers to also define it as a shell function. Being a symlink, a
+`git pull` updates the command — there is nothing to reinstall.
+
+**Already installed by sourcing?** Nothing breaks: sourcing is still fully
+supported and is what defines the shell function. Run `./install.sh` once if you
+want the command on your `PATH` too — other tools need that, because a shell
+function is not inherited by child processes. `./install.sh --uninstall` removes
+the link.
+
+Sourcing by hand still works if you prefer it:
+
+```bash
 echo "source $(pwd)/agent-vm.sh" >> ~/.zshrc   # zsh
 echo "source $(pwd)/agent-vm.sh" >> ~/.bashrc  # or bash
 ```
@@ -48,13 +62,17 @@ Options:
 | `--cpus N` | Number of CPUs | 1 |
 | `--preinstall=LIST` | Preinstall only this comma-separated subset in the base image (skips the wizard) | — |
 
-Names are lowercase: `python`, `node`, `ruby`, `rust`, `golang`, `docker`, `chromium`, `gh`, `claude`, `opencode`, `codex`, `vibe`. Use `default` for the default set (everything except Ruby/Rust/Go), `all` for everything, or `none` for nothing. Selecting `codex`, or `chromium` with any AI agent, also installs `node` because those paths require `npm`/`npx`.
+Names are lowercase: `python`, `node`, `ruby`, `rust`, `golang`, `docker`, `chromium`, `gh`, `claude`, `opencode`, `codex`, `vibe`, `mcp-chrome`, `mcp-playwright`. Use `default` for the default set (everything except Ruby/Rust/Go and `mcp-playwright`), `all` for everything, or `none` for nothing. Selecting `codex`, or `chromium` with any AI agent, also installs `node` because those paths require `npm`/`npx`.
+
+The `mcp-*` names wire an MCP server into every installed agent's config. Both current ones drive the preinstalled Chromium, so both need `node` and `chromium` and are skipped with a notice without them. Omit them to leave the agents' MCP config untouched — useful when MCP servers are managed per project rather than baked into the base image.
 
 ```bash
 agent-vm setup                                       # Interactive wizard
 agent-vm setup --preinstall=default                  # Default set, no prompts
 agent-vm setup --preinstall=default,rust             # Default set plus Rust
+agent-vm setup --preinstall=default,mcp-playwright   # Default set plus Playwright MCP
 agent-vm setup --preinstall=python,docker,claude     # Minimal Claude-only setup
+agent-vm setup --preinstall=node,chromium,opencode   # OpenCode, no MCP wired in
 agent-vm setup --disk 50 --memory 16 --cpus 8        # Larger VM for heavy workloads
 ```
 
@@ -105,6 +123,42 @@ agent-vm rm          # Stop and permanently delete the VM
 agent-vm destroy-all # Stop and delete all agent-vm VMs
 ```
 
+### Scripting against agent-vm
+
+Wrapping agent-vm from another tool? Use these instead of parsing human-facing
+output or reading `~/.agent-vm` internals — VM naming, the template name and the
+state files are implementation details.
+
+```bash
+agent-vm version         # 0.1.0 — gate on this; a build without it predates the command
+agent-vm name [dir]      # VM name for a directory (default: cwd)
+agent-vm info [dir]      # machine-readable state, one key=value per line
+agent-vm env set K V     # store a secret for every VM (see below)
+agent-vm env get K       # read it back
+agent-vm env has K       # exit 0 if stored, 1 otherwise, no output
+agent-vm env unset K
+agent-vm env list        # key NAMES only, never values
+```
+
+Use `agent-vm env` rather than writing `~/.agent-vm/env` yourself: that file is
+*sourced* by a shell, so a single mis-escaped quote costs every secret in it, not
+just the mis-quoted one. `get`/`has` answer about the file, never about the
+ambient environment — which matters because callers often run inside a VM that
+already exports those very variables.
+
+`info` prints `version`, `template`, `state_dir`, `dir`, `vm_name`,
+`base_exists`, `vm_exists`, `vm_running` and `vm_stale`. Booleans are `1`/`0`;
+anything that cannot be determined is `unknown` rather than a guess — including
+`vm_stale` when no base version has been recorded to compare against.
+`version`, `name`, `info` and `env` all work without Lima installed (the
+Lima-dependent keys of `info` read `unknown`).
+
+Call the command rather than sourcing the file: a shell function is not
+inherited by child processes, so a tool that spawns a shell cannot see one.
+`agent-vm.sh` does remain safe to `source` from a script running under `set -u`
+and `set -o pipefail`; it is *not* written for the caller's `set -e`, since like
+most shell libraries it uses `test && action` internally.
+
 To automatically destroy a VM after the agent exits (like `docker run --rm`):
 
 ```bash
@@ -143,7 +197,16 @@ agent-vm --offline --readonly claude   # Both
 
 ### Sharing tokens across VMs: `~/.agent-vm/env`
 
-Put environment variables (API tokens, secrets, etc.) in this file as plain `KEY=value` lines — no `export` prefix, `#` for comments. They're auto-loaded into every shell in every VM:
+Put environment variables (API tokens, secrets, etc.) in this file as plain `KEY=value` lines — no `export` prefix, `#` for comments. They're auto-loaded into every shell in every VM.
+
+Edit it by hand, or let agent-vm handle the quoting for you:
+
+```bash
+agent-vm env set GH_TOKEN github_pat_xxxx
+agent-vm env list                          # names only, never values
+```
+
+Scripts should always use `agent-vm env` — the file is *sourced* by a shell, so one mis-escaped quote breaks every secret in it, not just that one.
 
 ```bash
 # ~/.agent-vm/env
@@ -258,7 +321,9 @@ bundle install
 
 ### MCP servers
 
-The base VM comes with [Chrome DevTools MCP](https://github.com/ChromeDevTools/chrome-devtools-mcp) pre-configured for Claude, giving the agent headless browser access.
+The base VM comes with [Chrome DevTools MCP](https://github.com/ChromeDevTools/chrome-devtools-mcp) pre-configured for every installed agent, giving it headless browser access. [Playwright MCP](https://github.com/microsoft/playwright-mcp) is available too via `--preinstall=...,mcp-playwright`; it is pointed at the same Chromium with `--executable-path` and launched through `env PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1` so it does not pull its own copies of Chromium, Firefox and WebKit into every VM. To drive another engine, edit its entry (drop `--executable-path`, add e.g. `--browser firefox`) and run `npx playwright install firefox` inside the VM.
+
+Drop either one with `--preinstall`: the names are opt-in like any other component, so `--preinstall=node,chromium,opencode` installs OpenCode with no MCP server wired in. That is the switch to use when MCP servers are managed per project instead.
 
 To add more MCP servers, add them to `~/.claude.json` in your `~/.agent-vm/setup.sh`, or edit the file directly inside a VM via `agent-vm shell`. Add entries to the `mcpServers` object:
 
@@ -286,12 +351,33 @@ To add more MCP servers, add them to `~/.claude.json` in your `~/.agent-vm/setup
 
 Each VM is fully isolated — agents must authenticate independently inside their VM (e.g. `claude login`). Credentials persist within the VM across restarts but are not shared between VMs or with the host.
 
+## Tests
+
+```bash
+./test.sh
+```
+
+Runs against a stub `limactl` in a throwaway `HOME`: no VM is created, started or
+deleted, your real `~/.agent-vm` is untouched, and no network is needed. It covers
+VM naming, resource comparison, staleness, the `info`/`version`/`name` surface,
+the `--preinstall` parser and the MCP config writer.
+
+Worth running under bash 3.2 as well — it is what macOS ships, and it is stricter
+about empty array expansion under `set -u`, which modern bash forgives:
+
+```bash
+docker run --rm -v "$PWD:/w" -w /w bash:3.2 ./test.sh
+zsh ./test.sh
+```
+
 ## Project structure
 
 | File | Description |
 |------|-------------|
 | `agent-vm.sh` | Main script — source this in your shell config |
 | `agent-vm.setup.sh` | Package installation script that runs inside the base VM during setup |
+| `install.sh` | Installer — puts `agent-vm` on your PATH, `--uninstall` removes it |
+| `test.sh` | Test suite — runs against a stub `limactl`, creates no VMs |
 
 ## What's in the VM
 
@@ -311,7 +397,8 @@ The wizard's "default install" and `--preinstall=default` produce the same set: 
 | Browser | Chromium (headless), xvfb | `chromium` | yes |
 | Containers | Docker Engine, Docker Compose | `docker` | yes |
 | AI agents | Claude Code, OpenCode, Codex CLI, Mistral Vibe | `claude`, `opencode`, `codex`, `vibe` | yes |
-| MCP | Chrome DevTools MCP (Claude/OpenCode/Codex/Vibe) | — | auto, when Node.js + Chromium + agent installed |
+| MCP | Chrome DevTools MCP (Claude/OpenCode/Codex/Vibe) | `mcp-chrome` | yes, when Node.js + Chromium + an agent are installed |
+| MCP | Playwright MCP, reusing the Chromium above | `mcp-playwright` | no |
 
 ## Security model
 

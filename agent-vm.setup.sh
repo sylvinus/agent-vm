@@ -26,6 +26,14 @@ INSTALL_CLAUDE="${AGENT_VM_INSTALL_CLAUDE:-1}"
 INSTALL_OPENCODE="${AGENT_VM_INSTALL_OPENCODE:-1}"
 INSTALL_CODEX="${AGENT_VM_INSTALL_CODEX:-1}"
 INSTALL_VIBE="${AGENT_VM_INSTALL_VIBE:-1}"
+# MCP servers wired into every installed agent's config. Only servers with a
+# dependency worth baking into the image get a toggle; remote MCP servers are
+# a URL (and often a secret) and belong in per-project config, not in an image
+# every VM is cloned from. mcp-playwright is opt-in: a second browser-driving
+# MCP alongside mcp-chrome is redundant for most users, and every wired server
+# costs tool definitions in the agent's context.
+INSTALL_MCP_CHROME="${AGENT_VM_INSTALL_MCP_CHROME:-1}"
+INSTALL_MCP_PLAYWRIGHT="${AGENT_VM_INSTALL_MCP_PLAYWRIGHT:-0}"
 
 # Several installers (Claude Code, Vibe, …) check PATH at install time and
 # print a "~/.local/bin is not in your PATH" warning otherwise. The persistent
@@ -190,96 +198,127 @@ if [[ "$INSTALL_VIBE" == "1" ]]; then
   curl -LsSf https://mistral.ai/vibe/install.sh | bash
 fi
 
-# Chrome DevTools MCP runs via `npx` and controls the local Chromium binary, so
-# only configure it when both dependencies and at least one target agent exist.
-if [[ "$INSTALL_NODE" == "1" && "$INSTALL_CHROMIUM" == "1" ]]; then
+# Wire one stdio MCP server into every installed agent's config. Each agent
+# stores MCP servers in its own format, so that mapping is written once here
+# instead of being copy-pasted per server.
+#
+# Usage: configure_mcp <server-name> <command> [arg...]
+#   configure_mcp chrome-devtools npx -y chrome-devtools-mcp@latest --headless=true
+#
+# Passing a command (rather than assuming npx) is what lets a server be
+# launched through `env VAR=value npx ...`: every one of the four formats below
+# runs a command with arguments, but only some support a separate env block.
+#
+# The args are rendered once as a JSON array; a JSON array of strings is also a
+# valid TOML array, so the same value serves all four formats.
+configure_mcp() {
+  # Not named `command`: that is a shell builtin, and shadowing its name in a
+  # file that uses `command -v` elsewhere invites a double-take.
+  local name="$1" cmd="$2"
+  shift 2
+  # One arg per line into jq -R, so an argument containing a newline would be
+  # split. None of the callers pass one.
+  local args_json
+  args_json="$(printf '%s\n' "$@" | jq -R . | jq -sc .)"
+
   if [[ "$INSTALL_CLAUDE" == "1" ]]; then
-    echo "Configuring Chrome MCP server for Claude..."
-    CONFIG="$HOME/.claude.json"
-    if [ -f "$CONFIG" ]; then
-      jq '.mcpServers["chrome-devtools"] = {
-        "command": "npx",
-        "args": ["-y", "chrome-devtools-mcp@latest", "--headless=true", "--isolated=true"]
-      }' "$CONFIG" > "$CONFIG.tmp" && mv "$CONFIG.tmp" "$CONFIG"
-    else
-      cat > "$CONFIG" << 'JSON'
-{
-  "mcpServers": {
-    "chrome-devtools": {
-      "command": "npx",
-      "args": ["-y", "chrome-devtools-mcp@latest", "--headless=true", "--isolated=true"]
-    }
-  }
-}
-JSON
-    fi
+    echo "Configuring $name MCP server for Claude..."
+    local config="$HOME/.claude.json"
+    [ -f "$config" ] || echo '{}' > "$config"
+    jq --arg n "$name" --arg c "$cmd" --argjson a "$args_json" \
+      '.mcpServers[$n] = {"command": $c, "args": $a}' \
+      "$config" > "$config.tmp" && mv "$config.tmp" "$config"
   fi
 
   if [[ "$INSTALL_OPENCODE" == "1" ]]; then
-    echo "Configuring Chrome MCP server for OpenCode..."
-    OPENCODE_CONFIG_DIR="$HOME/.config/opencode"
-    mkdir -p "$OPENCODE_CONFIG_DIR"
-    OPENCODE_CONFIG="$OPENCODE_CONFIG_DIR/opencode.json"
-    if [ -f "$OPENCODE_CONFIG" ]; then
-      jq '.mcp["chrome-devtools"] = {
-        "type": "local",
-        "command": ["npx", "-y", "chrome-devtools-mcp@latest", "--headless=true", "--isolated=true"],
-        "enabled": true
-      }' "$OPENCODE_CONFIG" > "$OPENCODE_CONFIG.tmp" && mv "$OPENCODE_CONFIG.tmp" "$OPENCODE_CONFIG"
-    else
-      cat > "$OPENCODE_CONFIG" << 'JSON'
-{
-  "$schema": "https://opencode.ai/config.json",
-  "mcp": {
-    "chrome-devtools": {
-      "type": "local",
-      "command": ["npx", "-y", "chrome-devtools-mcp@latest", "--headless=true", "--isolated=true"],
-      "enabled": true
-    }
-  }
-}
-JSON
-    fi
+    echo "Configuring $name MCP server for OpenCode..."
+    mkdir -p "$HOME/.config/opencode"
+    local config="$HOME/.config/opencode/opencode.json"
+    [ -f "$config" ] || echo '{"$schema": "https://opencode.ai/config.json"}' > "$config"
+    jq --arg n "$name" --arg c "$cmd" --argjson a "$args_json" \
+      '.mcp[$n] = {"type": "local", "command": ([$c] + $a), "enabled": true}' \
+      "$config" > "$config.tmp" && mv "$config.tmp" "$config"
   fi
 
   if [[ "$INSTALL_VIBE" == "1" ]]; then
     # Vibe uses TOML; append an array-of-tables entry (valid even if the wizard
     # later writes to the same file). Guard against duplicates on repeated runs.
-    echo "Configuring Chrome MCP server for Vibe..."
-    VIBE_CONFIG_DIR="$HOME/.vibe"
-    mkdir -p "$VIBE_CONFIG_DIR"
-    VIBE_CONFIG="$VIBE_CONFIG_DIR/config.toml"
-    if ! grep -q 'name = "chrome-devtools"' "$VIBE_CONFIG" 2>/dev/null; then
-      cat >> "$VIBE_CONFIG" << 'TOML'
-
-[[mcp_servers]]
-name = "chrome-devtools"
-transport = "stdio"
-command = "npx"
-args = ["-y", "chrome-devtools-mcp@latest", "--headless=true", "--isolated=true"]
-TOML
+    echo "Configuring $name MCP server for Vibe..."
+    mkdir -p "$HOME/.vibe"
+    local config="$HOME/.vibe/config.toml"
+    if ! grep -qF "name = \"$name\"" "$config" 2>/dev/null; then
+      {
+        printf '\n[[mcp_servers]]\n'
+        printf 'name = "%s"\n' "$name"
+        printf 'transport = "stdio"\n'
+        printf 'command = "%s"\n' "$cmd"
+        printf 'args = %s\n' "$args_json"
+      } >> "$config"
     fi
   fi
 
   if [[ "$INSTALL_CODEX" == "1" ]]; then
     # Codex CLI uses TOML at ~/.codex/config.toml with [mcp_servers.NAME]
-    # tables. Append the chrome-devtools entry; guard against duplicates on
-    # repeated setup runs.
-    echo "Configuring Chrome MCP server for Codex..."
-    CODEX_CONFIG_DIR="$HOME/.codex"
-    mkdir -p "$CODEX_CONFIG_DIR"
-    CODEX_CONFIG="$CODEX_CONFIG_DIR/config.toml"
-    if ! grep -q '\[mcp_servers\.chrome-devtools\]' "$CODEX_CONFIG" 2>/dev/null; then
-      cat >> "$CODEX_CONFIG" << 'TOML'
-
-[mcp_servers.chrome-devtools]
-command = "npx"
-args = ["-y", "chrome-devtools-mcp@latest", "--headless=true", "--isolated=true"]
-TOML
+    # tables. Guard against duplicates on repeated setup runs.
+    echo "Configuring $name MCP server for Codex..."
+    mkdir -p "$HOME/.codex"
+    local config="$HOME/.codex/config.toml"
+    if ! grep -qF "[mcp_servers.$name]" "$config" 2>/dev/null; then
+      {
+        printf '\n[mcp_servers.%s]\n' "$name"
+        printf 'command = "%s"\n' "$cmd"
+        printf 'args = %s\n' "$args_json"
+      } >> "$config"
     fi
   fi
-elif [[ "$INSTALL_CLAUDE" == "1" || "$INSTALL_OPENCODE" == "1" || "$INSTALL_CODEX" == "1" || "$INSTALL_VIBE" == "1" ]]; then
-  echo "Skipping Chrome MCP config: requires Node.js and Chromium." >&2
+}
+
+# True when at least one agent is installed — nothing to configure otherwise,
+# and no reason to print a "skipping" notice either.
+any_agent_installed() {
+  [[ "$INSTALL_CLAUDE" == "1" || "$INSTALL_OPENCODE" == "1" \
+     || "$INSTALL_CODEX" == "1" || "$INSTALL_VIBE" == "1" ]]
+}
+
+# Chrome DevTools MCP runs via `npx` and drives the Chromium installed above,
+# so it needs both dependencies plus at least one target agent.
+if [[ "$INSTALL_MCP_CHROME" == "1" ]] && any_agent_installed; then
+  if [[ "$INSTALL_NODE" == "1" && "$INSTALL_CHROMIUM" == "1" ]]; then
+    configure_mcp chrome-devtools npx -y chrome-devtools-mcp@latest --headless=true --isolated=true
+  else
+    echo "Skipping Chrome MCP config: requires Node.js and Chromium." >&2
+  fi
+fi
+
+# Playwright MCP drives the Chromium installed above instead of pulling its own
+# browser build, so it needs the same two dependencies as the Chrome MCP.
+#
+# Two things are needed for that reuse, and --executable-path alone is not
+# enough: @playwright/mcp depends on the `playwright` package, whose postinstall
+# downloads every browser marked installByDefault in playwright-core's
+# browsers.json — chromium, chromium-headless-shell, firefox, webkit and ffmpeg,
+# several hundred MB — regardless of which binary ends up being launched.
+# PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD suppresses that. It is set through `env` on
+# this one command rather than in the VM's ~/.zshenv, so a user's own
+# `npx playwright test` in a project still downloads the browsers it expects.
+#
+# Consequence to know: this server is pinned to Chromium. Pointing it at another
+# engine means editing the MCP entry (drop --executable-path, add e.g.
+# --browser firefox), and the first launch then fails with Playwright's usual
+# "run npx playwright install" message — which works inside the VM and lands the
+# download in that project VM rather than in the base image.
+#
+# The trade-off: Playwright pins and tests against its own browser build, so a
+# distro Chromium can drift from what playwright-core expects. Re-add
+# `npx playwright install chromium` here if that ever bites.
+if [[ "$INSTALL_MCP_PLAYWRIGHT" == "1" ]] && any_agent_installed; then
+  if [[ "$INSTALL_NODE" == "1" && "$INSTALL_CHROMIUM" == "1" ]]; then
+    configure_mcp playwright env PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
+      npx -y @playwright/mcp@latest --headless --isolated \
+      --executable-path /usr/bin/chromium
+  else
+    echo "Skipping Playwright MCP config: requires Node.js and Chromium." >&2
+  fi
 fi
 
 echo "VM setup complete."
