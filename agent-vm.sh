@@ -26,10 +26,14 @@
 
 # Semantic version of this file. Bumped by hand on release. Integrators gate on
 # it via `agent-vm version`; a build with no `version` command predates it.
-AGENT_VM_VERSION="0.1.0"
+AGENT_VM_VERSION="0.2.0"
 
 AGENT_VM_TEMPLATE="agent-vm-base"
-AGENT_VM_STATE_DIR="${HOME}/.agent-vm"
+# Overridable so a test, a CI job or a second install can keep its own state
+# without moving HOME — moving HOME also moves Lima's own state, which makes a
+# sandboxed run rebuild every VM. Integrators must not rebuild this path from
+# $HOME: `agent-vm info` publishes it as state_dir=.
+AGENT_VM_STATE_DIR="${AGENT_VM_STATE_DIR:-${HOME}/.agent-vm}"
 
 # Directory holding the real agent-vm.sh, symlinks followed.
 #
@@ -100,6 +104,207 @@ _agent_vm_ask_int() {
     fi
     printf '  (must be a positive integer, e.g. 10 — got: %s)\n' "$reply" >&2
   done
+}
+
+# --- host capacity ------------------------------------------------------------
+# A VM handed more CPU or RAM than the host can spare makes the host unusable
+# for as long as the agent runs — and agents are meant to run unattended, for
+# a while. So a --cpus/--memory above this host's share is clamped to it, out
+# loud rather than silently. Nothing new to type: the flags stay plain
+# integers, and a request that fits is applied as asked.
+#
+# The share is half the host by default. Not a measurement, a policy: it leaves
+# the machine usable while the VM works. AGENT_VM_HOST_SHARE overrides it for
+# anyone who knows better (1 = the whole host, no clamping in practice).
+AGENT_VM_HOST_SHARE="${AGENT_VM_HOST_SHARE:-2}"
+
+# Host CPU count, empty when it cannot be determined. Never guess: an unknown
+# host must leave the requested value alone, not silently shrink it.
+_agent_vm_host_cpus() {
+  local n
+  if n=$(sysctl -n hw.ncpu 2>/dev/null) && [[ -n "$n" ]]; then printf '%s\n' "$n"
+  elif n=$(nproc 2>/dev/null) && [[ -n "$n" ]]; then printf '%s\n' "$n"
+  fi
+}
+
+# Host RAM in GiB, empty when it cannot be determined.
+_agent_vm_host_mem_gib() {
+  local bytes kib
+  if bytes=$(sysctl -n hw.memsize 2>/dev/null) && [[ -n "$bytes" ]]; then
+    printf '%s\n' "$((bytes / 1073741824))"
+  elif [[ -r /proc/meminfo ]] && kib=$(awk '/^MemTotal:/ {print $2; exit}' /proc/meminfo 2>/dev/null) \
+       && [[ -n "$kib" ]]; then
+    printf '%s\n' "$((kib / 1048576))"
+  fi
+}
+
+# _agent_vm_host_share <total> <floor> — the share of <total> this host will
+# give a VM, never below <floor>.
+_agent_vm_host_share() {
+  local total="$1" floor="$2" share
+  share=$((total / AGENT_VM_HOST_SHARE))
+  [[ "$share" -lt "$floor" ]] && share="$floor"
+  printf '%s\n' "$share"
+}
+
+# _agent_vm_cap_resource <cpus|memory> <value> — the value to actually apply.
+# Above this host's share it comes back clamped, with a notice; at or below it
+# comes back untouched. An empty value (nothing requested) and an unreadable
+# host both mean "don't touch": guessing low on an unknown machine would hand
+# out a 1-CPU VM on a 64-core host, which is worse than not guessing.
+_agent_vm_cap_resource() {
+  local kind="$1" val="$2" total floor share
+  [[ -z "$val" ]] && { printf '\n'; return 0; }
+
+  case "$kind" in
+    cpus)   total="$(_agent_vm_host_cpus)";    floor=1 ;;
+    memory) total="$(_agent_vm_host_mem_gib)"; floor=2 ;;
+    *)      printf '%s\n' "$val"; return 0 ;;
+  esac
+  if [[ -z "$total" || "$total" -le 0 ]]; then
+    printf '%s\n' "$val"
+    return 0
+  fi
+
+  share="$(_agent_vm_host_share "$total" "$floor")"
+  if [[ "$val" -gt "$share" ]]; then
+    echo "Note: --$kind $val exceeds this host's share ($total detected); using $share." >&2
+    printf '%s\n' "$share"
+    return 0
+  fi
+  printf '%s\n' "$val"
+}
+
+# Warn when the host has less free space than the disk being asked for. Lima
+# images are sparse, so this is a warning and not an error: the disk is
+# allocated as it fills, and a smaller host can still work for a while.
+_agent_vm_warn_disk_space() {
+  local want="$1" avail_kib avail_gib
+  [[ -n "$want" ]] || return 0
+  avail_kib=$(df -Pk "${LIMA_HOME:-$HOME}" 2>/dev/null | awk 'NR==2 {print $4}')
+  case "$avail_kib" in ''|*[!0-9]*) return 0 ;; esac
+  avail_gib=$((avail_kib / 1048576))
+  if [[ "$avail_gib" -lt "$want" ]]; then
+    echo "Warning: ~${avail_gib} GiB free for a ${want} GiB VM disk (sparse: allocated as used)." >&2
+  fi
+}
+
+# --- version ------------------------------------------------------------------
+# "1.2.3" -> 1002003, so versions compare as numbers. A string comparison gets
+# "1.10.0" < "1.9.0" wrong, which is the whole reason this exists. Tolerates
+# "1", "1.2" and a "-rc1" suffix.
+_agent_vm_ver_num() {
+  local v="${1%%-*}.0.0" a b c
+  a="${v%%.*}"; v="${v#*.}"
+  b="${v%%.*}"; v="${v#*.}"
+  c="${v%%.*}"
+  a="${a//[!0-9]/}"; b="${b//[!0-9]/}"; c="${c//[!0-9]/}"
+  printf '%d\n' "$(( ${a:-0} * 1000000 + ${b:-0} * 1000 + ${c:-0} ))"
+}
+
+# `version` prints the version. `version --min X.Y.Z` turns it into a check an
+# integrator can put in front of everything else: silent with status 0 when
+# this engine is recent enough, one actionable line on stderr and status 1
+# when it is not.
+#
+# Status 2 is reserved for a malformed call. A typo in the required version
+# must not read as "engine too old" and send a user chasing an upgrade they
+# don't need.
+#
+# Known limit, and the reason this can't be the only check an integrator has:
+# an engine older than the one that introduced --min ignores the flag, prints
+# its version and exits 0. A tool whose floor is below that version still
+# needs its own comparison for the bootstrap check.
+_agent_vm_version() {
+  if [[ $# -eq 0 ]]; then
+    echo "$AGENT_VM_VERSION"
+    return 0
+  fi
+
+  local want=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --min)
+        if [[ $# -lt 2 ]]; then
+          echo "Error: --min needs a version (e.g. --min 0.2.0)" >&2
+          return 2
+        fi
+        want="$2"; shift 2 ;;
+      --min=*)
+        want="${1#*=}"; shift ;;
+      *)
+        echo "Error: unknown option for version: $1" >&2
+        return 2 ;;
+    esac
+  done
+
+  if [[ ! "$want" =~ ^[0-9]+(\.[0-9]+)*(-[A-Za-z0-9.]+)?$ ]]; then
+    echo "Error: --min expects a version like 1.2.3 (got: '$want')" >&2
+    return 2
+  fi
+
+  [[ "$(_agent_vm_ver_num "$AGENT_VM_VERSION")" -ge "$(_agent_vm_ver_num "$want")" ]] && return 0
+
+  echo "Error: agent-vm $AGENT_VM_VERSION is older than the required $want." >&2
+  echo "  Update it:  cd \"$AGENT_VM_SCRIPT_DIR\" && git pull" >&2
+  return 1
+}
+
+# --- runtime scripts ----------------------------------------------------------
+# Interpreter a runtime script asks for, read from its shebang: bash, sh or
+# zsh. Anything else — another language, or no shebang at all — falls back to
+# zsh, which is what every runtime script got before this existed.
+#
+# Only shells are honoured because the script is fed on stdin, and `-s` (read
+# the program from stdin) is a shell convention. A python runtime piped into
+# zsh was already broken; it stays broken, loudly, rather than being executed
+# by the wrong thing in a new way.
+_agent_vm_runtime_interpreter() {
+  local first
+  IFS= read -r first < "$1" || true
+  case "$first" in
+    '#!'*) ;;
+    *) printf 'zsh\n'; return 0 ;;
+  esac
+  # Last word of the shebang covers both "#!/bin/bash" and "#!/usr/bin/env bash".
+  local last="${first##* }"
+  case "${last##*/}" in
+    bash) printf 'bash\n' ;;
+    sh)   printf 'sh\n' ;;
+    *)    printf 'zsh\n' ;;
+  esac
+}
+
+# Where this project's runtime script lives.
+#
+# AGENT_VM_PROJECT_RUNTIME lets an integrator keep it in its own directory
+# (".mytool/runtime.sh") instead of cluttering the project root. A relative
+# path is resolved against the project directory; an absolute one is used
+# as-is. Unset, the historical location applies, so nothing changes for anyone
+# who never heard of the variable.
+_agent_vm_project_runtime_path() {
+  local host_dir="$1" rel="${AGENT_VM_PROJECT_RUNTIME:-.agent-vm.runtime.sh}"
+  case "$rel" in
+    /*) printf '%s\n' "$rel" ;;
+    *)  printf '%s\n' "${host_dir}/${rel}" ;;
+  esac
+}
+
+# Run a runtime script inside the VM, with the interpreter it declares.
+#
+# It goes through a login zsh first, so the script sees the VM's PATH and the
+# auto-sourced ~/.agent-vm.env, then execs the declared shell. Before this,
+# every runtime ran under zsh whatever its shebang said: a script starting
+# with `#!/usr/bin/env bash` silently got zsh's arrays and globbing, which
+# differ where it matters.
+#
+# The script is still piped rather than executed by path: the per-user runtime
+# lives in ~/.agent-vm on the host and is not mounted inside the VM, so its
+# path means nothing there. One transport for both runtimes beats two.
+_agent_vm_run_runtime() {
+  local vm_name="$1" host_dir="$2" file="$3" interp
+  interp="$(_agent_vm_runtime_interpreter "$file")"
+  limactl shell --workdir "$host_dir" "$vm_name" zsh -lc "exec $interp -s" < "$file"
 }
 
 # Validate a positive-integer arg from the CLI (no retry — fail fast).
@@ -239,11 +444,19 @@ _agent_vm_running() {
   _agent_vm_has_line "$list" "$1 Running"
 }
 
-# Check if the base VM template exists. Kept as a named helper so integrators
-# don't have to hardcode the template name to answer "do I need to run setup?".
-# Same three statuses as _agent_vm_exists.
+# Check if the base VM template exists AND is usable. Kept as a named helper so
+# integrators don't have to hardcode the template name to answer "do I need to
+# run setup?". Same three statuses as _agent_vm_exists.
+#
+# Usable, not merely present: a setup interrupted while provisioning (apt
+# failing behind a proxy, a Ctrl-C) leaves the template in Lima with none of
+# the packages, and a clone of it answers every command with
+# `zsh: command not found`. The version marker is written only at the very end
+# of a successful setup, so it says the base can be cloned from, which Lima's
+# inventory does not.
 _agent_vm_base_exists() {
-  _agent_vm_exists "$AGENT_VM_TEMPLATE"
+  _agent_vm_exists "$AGENT_VM_TEMPLATE" || return $?
+  [[ -f "$AGENT_VM_STATE_DIR/.agent-vm-base-version" ]]
 }
 
 # Turn one of those exit statuses into the value `info` publishes.
@@ -477,6 +690,12 @@ _agent_vm_ensure_running() {
     esac
   done
 
+  # Clamp to this host's share once, here: every path below (create, edit,
+  # resource comparison) then sees the values that will actually be applied.
+  cpus="$(_agent_vm_cap_resource cpus "$cpus")"
+  memory="$(_agent_vm_cap_resource memory "$memory")"
+  _agent_vm_warn_disk_space "$disk"
+
   # Lima's host mount cannot share a path containing whitespace: the mount
   # fails silently and the VM starts with a bare, root-owned mountpoint, so
   # every write into the project (e.g. creating .claude) fails with
@@ -494,7 +713,13 @@ _agent_vm_ensure_running() {
   _agent_vm_clean_partial_state "$vm_name"
 
   if ! _agent_vm_base_exists; then
-    echo "Error: Base VM not found. Run 'agent-vm setup' first." >&2
+    # Distinguish "never set up" from "setup died halfway": the second one
+    # leaves a template that looks fine in `limactl list` but is empty.
+    if _agent_vm_exists "$AGENT_VM_TEMPLATE"; then
+      echo "Error: Base VM setup did not complete. Run 'agent-vm setup' again." >&2
+    else
+      echo "Error: Base VM not found. Run 'agent-vm setup' first." >&2
+    fi
     return 1
   fi
 
@@ -647,23 +872,34 @@ _agent_vm_ensure_running() {
   # without --reset. The base VM's ~/.zshenv auto-sources it via `set -a`, so
   # the contents stay a plain KEY=value file (no `export` needed). `umask 077`
   # creates the file mode-600 since it usually holds secrets.
-  if [ -f "$AGENT_VM_STATE_DIR/env" ]; then
-    if ! limactl shell "$vm_name" sh -c 'umask 077 && rm -f "$HOME/.agent-vm.env" && cat > "$HOME/.agent-vm.env"' \
-         < "$AGENT_VM_STATE_DIR/env" 2>/dev/null; then
-      echo "Warning: failed to push ~/.agent-vm/env into VM '$vm_name'." >&2
+  #
+  # The project's own env (agent-vm project-env) is appended AFTER the shared
+  # one, into the same guest file: the file is sourced, so a key set in both
+  # ends up with the project's value — which is what "per project" has to mean.
+  # One guest file and not two, because the base VM's ~/.zshenv sources exactly
+  # that one; a second file would need every existing base VM rebuilt.
+  local env_payload
+  env_payload="$(_agent_vm_env_payload "$host_dir")"
+  if [ -n "$env_payload" ]; then
+    if ! printf '%s\n' "$env_payload" \
+         | limactl shell "$vm_name" sh -c 'umask 077 && rm -f "$HOME/.agent-vm.env" && cat > "$HOME/.agent-vm.env"' \
+           2>/dev/null; then
+      echo "Warning: failed to push the env files into VM '$vm_name'." >&2
     fi
   fi
 
   # Run per-user runtime script if it exists
   if [ -f "$AGENT_VM_STATE_DIR/runtime.sh" ]; then
     echo "Running user runtime setup..."
-    limactl shell --workdir "$host_dir" "$vm_name" zsh -l < "$AGENT_VM_STATE_DIR/runtime.sh"
+    _agent_vm_run_runtime "$vm_name" "$host_dir" "$AGENT_VM_STATE_DIR/runtime.sh"
   fi
 
-  # Run project-specific runtime script if it exists
-  if [ -f "${host_dir}/.agent-vm.runtime.sh" ]; then
+  # Run project-specific runtime script if it exists.
+  local project_runtime
+  project_runtime="$(_agent_vm_project_runtime_path "$host_dir")"
+  if [ -f "$project_runtime" ]; then
     echo "Running project runtime setup..."
-    limactl shell --workdir "$host_dir" "$vm_name" zsh -l < "${host_dir}/.agent-vm.runtime.sh"
+    _agent_vm_run_runtime "$vm_name" "$host_dir" "$project_runtime"
   fi
 
   # Apply per-session restrictions
@@ -809,7 +1045,7 @@ agent-vm() {
   # itself; help needs nothing.) Without this, stop/list/status/etc. would fail
   # with confusing empty output instead of a clear, actionable message.
   case "$cmd" in
-    help|--help|-h|setup|version|--version|-V|name|info|env) ;;
+    help|--help|-h|setup|version|--version|-V|name|info|env|project-env) ;;
     *)
       if ! command -v limactl &>/dev/null; then
         echo "Error: limactl (Lima) not found. Run 'agent-vm setup' first, or install" >&2
@@ -866,10 +1102,20 @@ agent-vm() {
       _agent_vm_info "$info_dir"
       ;;
     env)
-      _agent_vm_env "$@"
+      _agent_vm_env env "$AGENT_VM_STATE_DIR/env" "$@"
+      ;;
+    project-env)
+      local project_env_file
+      project_env_file="$(_agent_vm_project_env_file)"
+      _agent_vm_env project-env "$project_env_file" "$@" || return $?
+      # Only after a write, and only if it worked: that is when the file is
+      # new to the repository and when the user is looking.
+      if [ "${1:-}" = "set" ]; then
+        _agent_vm_warn_unignored "$project_env_file"
+      fi
       ;;
     version|--version|-V)
-      echo "$AGENT_VM_VERSION"
+      _agent_vm_version "$@"
       ;;
     help|--help|-h)
       _agent_vm_help
@@ -898,6 +1144,7 @@ _agent_vm_info() {
   echo "version=$AGENT_VM_VERSION"
   echo "template=$AGENT_VM_TEMPLATE"
   echo "state_dir=$AGENT_VM_STATE_DIR"
+  echo "project_env=$(_agent_vm_project_env_file "$dir")"
   echo "dir=$dir"
   echo "vm_name=$vm_name"
 
@@ -955,15 +1202,85 @@ _agent_vm_sq_escape() {
 #
 # Writes are atomic (temp file then mv) and the file is kept mode 600. Lines
 # this command does not manage are preserved untouched.
+# Where this project's env file lives. Same shape as the runtime script above,
+# same override rule: AGENT_VM_PROJECT_ENV holds it somewhere else (typically
+# an integrator's own directory, ".mytool/env"), relative paths resolve against
+# the project, absolute ones are used as-is.
+#
+# In the project, not in the state dir: a per-project value belongs with the
+# project. It follows a clone, a move and a delete without the engine having to
+# track which directory was which — and nothing outlives a project that is
+# gone.
+#
+# The flip side, and it is on the integrator: this file is inside a git
+# repository. Put a secret in it and it is one `git add` away from being
+# published. Secrets shared by every VM belong in `agent-vm env`, which lives
+# outside any repository.
+_agent_vm_project_env_file() {
+  local host_dir="${1:-$(pwd)}" rel="${AGENT_VM_PROJECT_ENV:-.agent-vm.env}"
+  case "$rel" in
+    /*) printf '%s\n' "$rel" ;;
+    *)  printf '%s\n' "${host_dir}/${rel}" ;;
+  esac
+}
+
+# A project env file is a file in someone's repository, so the failure that
+# matters is committing it. Say so when it is WRITTEN — the only moment the
+# user is thinking about this file — and give the exact line that prevents it:
+# a warning without the fix is just noise someone learns to scroll past.
+#
+# `git check-ignore` is the authority here: it accounts for .gitignore at every
+# level, .git/info/exclude and the user's global excludes, none of which a grep
+# over .gitignore would see. Exit 1 means "not ignored"; anything else (no
+# repository, git missing, an error) is not something to lecture about.
+#
+# Already tracked is the worse case and a different fix: ignoring a tracked
+# file changes nothing, git keeps staging its edits. Saying "add this line"
+# there would be wrong advice.
+_agent_vm_warn_unignored() {
+  local file="$1" top rel rc=0
+  command -v git >/dev/null 2>&1 || return 0
+  top="$(git -C "$(dirname "$file")" rev-parse --show-toplevel 2>/dev/null)" || return 0
+  [ -n "$top" ] || return 0
+  rel="${file#"$top"/}"
+
+  if git -C "$top" ls-files --error-unmatch "$file" >/dev/null 2>&1; then
+    echo "Warning: $rel is tracked by git — its contents are in the repository." >&2
+    echo "         git rm --cached '$rel' && echo '/$rel' >> .gitignore" >&2
+    return 0
+  fi
+
+  git -C "$top" check-ignore -q "$file" 2>/dev/null || rc=$?
+  [ "$rc" -eq 1 ] || return 0
+  echo "Warning: $rel is not ignored by git — it can be committed by accident." >&2
+  echo "         echo '/$rel' >> $top/.gitignore" >&2
+}
+
+# What gets pushed into a VM: the shared file first, this project's next.
+# The guest sources it, so the last assignment wins and the project's value
+# overrides the shared one. A function of its own so that order is testable
+# without starting a VM — it is the whole meaning of "per project".
+_agent_vm_env_payload() {
+  local host_dir="${1:-$(pwd)}" project_env
+  project_env="$(_agent_vm_project_env_file "$host_dir")"
+  [ -f "$AGENT_VM_STATE_DIR/env" ] && cat "$AGENT_VM_STATE_DIR/env"
+  [ -f "$project_env" ] && cat "$project_env"
+  return 0
+}
+
+# The env verbs, shared by `env` (one file for every VM) and `project-env`
+# (one file per project). Same code for both on purpose: this file is SOURCED
+# by the VM's shell, so the quoting and the atomic replace below are the whole
+# point of the engine owning it. A second copy would be a second set of bugs.
 _agent_vm_env() {
+  local verb="$1" file="$2"; shift 2
   local action="${1:-list}"
   local key="${2:-}"
-  local file="$AGENT_VM_STATE_DIR/env"
 
   case "$action" in
     set|get|has|unset)
       if [[ -z "$key" ]]; then
-        echo "Error: 'agent-vm env $action' needs a KEY." >&2
+        echo "Error: 'agent-vm $verb $action' needs a KEY." >&2
         return 1
       fi
       # A key must be a shell-assignable name: anything else would produce a
@@ -977,11 +1294,11 @@ _agent_vm_env() {
   case "$action" in
     set)
       if [[ $# -lt 3 ]]; then
-        echo "Error: 'agent-vm env set' needs a VALUE." >&2
+        echo "Error: 'agent-vm $verb set' needs a VALUE." >&2
         return 1
       fi
       local value="$3" tmp line
-      mkdir -p "$AGENT_VM_STATE_DIR"
+      mkdir -p "$(dirname "$file")"
       tmp="$(mktemp "${file}.XXXXXX")"
       chmod 600 "$tmp"
       if [[ -f "$file" ]]; then
@@ -1051,7 +1368,7 @@ _agent_vm_env() {
       sed -n 's/^\([A-Za-z_][A-Za-z0-9_]*\)=.*/\1/p' "$file"
       ;;
     *)
-      echo "Usage: agent-vm env {set KEY VALUE|get KEY|has KEY|unset KEY|list}" >&2
+      echo "Usage: agent-vm $verb {set KEY VALUE|get KEY|has KEY|unset KEY|list}" >&2
       return 1 ;;
   esac
 }
@@ -1071,8 +1388,11 @@ Commands:
   run <cmd> [args]   Run a command in the VM (no shell — for pipes/redirects
                      use 'shell -c "..."' instead; pass --tty for TUIs like
                      opencode, vibe, htop, etc.)
-  stop               Stop the VM for the current directory
-  rm                 Stop and delete the VM for the current directory
+  stop [vm-name]     Stop the VM for the current directory, or the named one
+  rm [vm-name]       Stop and delete the VM for the current directory, or the
+                     named one. Pass a name from 'agent-vm list' to reach a VM
+                     whose directory was renamed or deleted: its name is a
+                     hash of the old path, so no 'cd' can name it any more.
   destroy-all        Stop and delete all agent-vm VMs
   list               List all agent-vm VMs
   status             Show status of all VMs (current dir marked with >)
@@ -1087,13 +1407,29 @@ Commands:
                      status only), unset KEY, list (key names, never values).
                      Use this rather than editing the file: it is sourced by a
                      shell, so one bad quote costs every secret in it.
+  project-env <sub>  Same subcommands, for THIS directory's project only. Its
+                     values are pushed after the shared ones, so a key set in
+                     both takes the project's value. Stored IN the project
+                     (.agent-vm.env by default, AGENT_VM_PROJECT_ENV to put it
+                     elsewhere) — so it follows the project and dies with it.
+                     Being in a repository, it is the wrong place for a secret:
+                     `agent-vm env` is outside any. `set` warns, with the line
+                     to run, when the file is not ignored by git. `info` prints
+                     the path as project_env=.
   version            Print the agent-vm version
+  version --min X.Y.Z
+                     Check it: silent and 0 when this engine is at least
+                     X.Y.Z, an actionable error and 1 when it is older
+                     (2 when the call itself is wrong). For integrators.
   help               Show this help
 
 VM options (for claude, opencode, codex, vibe, shell, run):
   --disk GB          VM disk size (default: 10)
   --memory GB        VM memory (default: 3)
   --cpus N           Number of CPUs (default: 1)
+                     Both are clamped to a share of the host (half of it, with
+                     a notice) so the VM cannot starve the machine it runs on.
+                     AGENT_VM_HOST_SHARE overrides the divisor.
   --reset            Destroy and re-clone the VM from the base template
   --offline          Block outbound internet (keeps host/VM communication)
   --readonly         Mount the project directory as read-only
@@ -1117,6 +1453,7 @@ Examples:
   agent-vm run npm install                   # Run a command in the VM
   agent-vm run --tty opencode -p "..."       # Run a TUI with PTY allocated
   agent-vm claude -p "fix lint errors"       # Pass args to claude
+  agent-vm rm agent-vm-old-name-1a2b3c4d     # Delete a VM by name (see 'list')
 
 VMs are persistent and unique per directory. Running "agent-vm shell" or
 "agent-vm claude" in the same directory will reuse the same VM.
@@ -1127,11 +1464,35 @@ Customization:
   ~/.agent-vm/volumes               Extra host paths to mount in VMs (one per
                                      line, supports both directories and files)
   ~/.agent-vm/setup.sh              Per-user setup (runs during "agent-vm setup")
+  ~/.agent-vm/env                   Shared env pushed into every VM
+  <project>/.agent-vm.env           Per-project env (agent-vm project-env)
+                                    Override the path with AGENT_VM_PROJECT_ENV
   ~/.agent-vm/runtime.sh            Per-user runtime (runs on each VM start)
   <project>/.agent-vm.runtime.sh    Per-project runtime (runs on each VM start)
+                                    Override the path with AGENT_VM_PROJECT_RUNTIME
+                                    (relative to the project, or absolute).
+                                    Runtimes run under the shell their shebang
+                                    names (bash, sh; zsh otherwise).
 
 More info: https://github.com/sylvinus/agent-vm
 EOF
+}
+
+# Report a setup failure and leave nothing running. The half-provisioned
+# template stays on disk on purpose (the next `setup` deletes and recreates
+# it, and keeping it lets the user look inside), but it has no reason to keep
+# burning CPU and RAM meanwhile.
+_agent_vm_setup_aborted() {
+  echo "Error: $1" >&2
+  limactl stop "$AGENT_VM_TEMPLATE" &>/dev/null
+}
+
+# The agent-vm VMs other than the base template, one per line. Empty when
+# there are none, or when limactl cannot answer.
+_agent_vm_project_vms() {
+  local list
+  list="$(limactl list -q 2>/dev/null)" || return 0
+  printf '%s\n' "$list" | grep "^agent-vm-" | grep -v "^${AGENT_VM_TEMPLATE}\$" || true
 }
 
 _agent_vm_setup() {
@@ -1447,8 +1808,22 @@ EOF
 
   _agent_vm_clean_partial_state "$AGENT_VM_TEMPLATE"
 
+  # Retire the marker with the base it describes, before anything can fail.
+  # It is only rewritten at the end of a successful setup, so leaving the old
+  # one in place would make an interrupted re-setup look like a ready base.
+  rm -f "$AGENT_VM_STATE_DIR/.agent-vm-base-version"
+
   limactl stop "$AGENT_VM_TEMPLATE" &>/dev/null
   limactl delete "$AGENT_VM_TEMPLATE" --force &>/dev/null
+
+  # Same clamp as the per-project path. Done here rather than at parse time so
+  # the wizard above still shows what was asked for.
+  local eff_cpus eff_memory
+  eff_cpus="$(_agent_vm_cap_resource cpus "$cpus")"
+  eff_memory="$(_agent_vm_cap_resource memory "$memory")"
+  [[ -n "$eff_cpus" ]] && cpus="$eff_cpus"
+  [[ -n "$eff_memory" ]] && memory="$eff_memory"
+  _agent_vm_warn_disk_space "$disk"
 
   echo "Creating base VM..."
   local create_args=(
@@ -1505,13 +1880,13 @@ EOF
     printf 'export AGENT_VM_INSTALL_MCP_CHROME=%s\n'     "$install_mcp_chrome"
     printf 'export AGENT_VM_INSTALL_MCP_PLAYWRIGHT=%s\n' "$install_mcp_playwright"
     cat "${AGENT_VM_SCRIPT_DIR}/agent-vm.setup.sh"
-  } | limactl shell "$AGENT_VM_TEMPLATE" bash -l || { echo "Error: Setup script failed." >&2; return 1; }
+  } | limactl shell "$AGENT_VM_TEMPLATE" bash -l || { _agent_vm_setup_aborted "Setup script failed."; return 1; }
 
   # Run user's custom setup script if it exists
   local user_setup="$AGENT_VM_STATE_DIR/setup.sh"
   if [ -f "$user_setup" ]; then
     echo "Running custom setup from $user_setup..."
-    limactl shell "$AGENT_VM_TEMPLATE" zsh -l < "$user_setup" || { echo "Error: Custom setup script failed." >&2; return 1; }
+    limactl shell "$AGENT_VM_TEMPLATE" zsh -l < "$user_setup" || { _agent_vm_setup_aborted "Custom setup script failed."; return 1; }
   fi
 
   limactl stop "$AGENT_VM_TEMPLATE" &>/dev/null
@@ -1527,8 +1902,12 @@ EOF
   [[ "$install_opencode" == "1" ]] && echo "  agent-vm opencode"
   [[ "$install_codex"    == "1" ]] && echo "  agent-vm codex"
   [[ "$install_vibe"     == "1" ]] && echo "  agent-vm vibe"
-  echo ""
-  echo "Note: Existing VMs were not updated. Use --reset to re-clone them from the new base."
+  # Only worth saying to someone who has a VM to re-clone: on a first install
+  # there is nothing to reset, and the advice reads like a missed step.
+  if [[ -n "$(_agent_vm_project_vms)" ]]; then
+    echo ""
+    echo "Note: Existing VMs were not updated. Use --reset to re-clone them from the new base."
+  fi
 }
 
 # Run a command in the VM through a login zsh.
@@ -1780,16 +2159,64 @@ _agent_vm_run() {
   return $exit_code
 }
 
-_agent_vm_stop() {
-  local host_dir
-  host_dir="$(pwd)"
-  local vm_name
-  vm_name="$(_agent_vm_name "$host_dir")"
+# Resolve the VM that `stop` / `rm` acts on, and prove it exists.
+# Prints the name on stdout; diagnostics go to stderr.
+#
+# With no argument: the current directory's VM, as before.
+#
+# With one argument: a VM name as printed by `agent-vm list`. It has to be a
+# NAME and not a directory, because the case it exists for is a VM no directory
+# can reach any more: the name embeds a hash of the path, so renaming or
+# deleting the project folder orphans the VM, and `_agent_vm_abs_dir` would
+# refuse the old path anyway. `list` remains the only handle on it.
+#
+# The `agent-vm-` prefix is required: without it a typo could stop or delete an
+# unrelated Lima instance on the same machine.
+_agent_vm_resolve_target() {
+  local verb="$1"
+  shift
 
-  if ! _agent_vm_exists "$vm_name"; then
-    echo "No VM found for this directory." >&2
-    return 1
-  fi
+  local vm_name
+  case $# in
+    0) vm_name="$(_agent_vm_name "$(pwd)")" ;;
+    1)
+      vm_name="$1"
+      case "$vm_name" in
+        agent-vm-*) ;;
+        *)
+          echo "Error: '$vm_name' is not an agent-vm VM name (they start with 'agent-vm-')." >&2
+          echo "Run 'agent-vm list' to see them." >&2
+          return 1 ;;
+      esac ;;
+    *)
+      echo "Usage: agent-vm $verb [vm-name]" >&2
+      return 1 ;;
+  esac
+
+  local st=0
+  _agent_vm_exists "$vm_name" || st=$?
+  case "$st" in
+    0) ;;
+    1)
+      if [[ $# -eq 0 ]]; then
+        echo "No VM found for this directory." >&2
+        echo "Run 'agent-vm list' to see existing VMs, then 'agent-vm $verb <vm-name>'." >&2
+      else
+        echo "Error: no such VM: $vm_name" >&2
+        echo "Run 'agent-vm list' to see existing VMs." >&2
+      fi
+      return 1 ;;
+    *)
+      echo "Error: could not query Lima. Is it installed and working?" >&2
+      return 1 ;;
+  esac
+
+  echo "$vm_name"
+}
+
+_agent_vm_stop() {
+  local vm_name
+  vm_name="$(_agent_vm_resolve_target stop "$@")" || return 1
 
   echo "Stopping VM '$vm_name'..."
   limactl stop "$vm_name" &>/dev/null
@@ -1797,15 +2224,8 @@ _agent_vm_stop() {
 }
 
 _agent_vm_destroy() {
-  local host_dir
-  host_dir="$(pwd)"
   local vm_name
-  vm_name="$(_agent_vm_name "$host_dir")"
-
-  if ! _agent_vm_exists "$vm_name"; then
-    echo "No VM found for this directory." >&2
-    return 1
-  fi
+  vm_name="$(_agent_vm_resolve_target rm "$@")" || return 1
 
   echo "Stopping and deleting VM '$vm_name'..."
   limactl stop "$vm_name" &>/dev/null

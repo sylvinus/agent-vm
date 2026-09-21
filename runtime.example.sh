@@ -55,6 +55,13 @@
 #
 # echo "<your-github-pat>" | gh auth login --with-token
 
+# Let `git push` over HTTPS use that token: git needs a credential helper,
+# which `gh` knows how to install. Commits need an identity too, but that one
+# comes from the environment — put GIT_AUTHOR_* / GIT_COMMITTER_* in
+# ~/.agent-vm/env, see "Letting the agent commit and push" in the README.
+#
+# gh auth setup-git
+
 
 # =============================================================================
 # 4. Claude Code skills

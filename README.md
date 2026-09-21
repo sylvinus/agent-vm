@@ -123,6 +123,17 @@ agent-vm rm          # Stop and permanently delete the VM
 agent-vm destroy-all # Stop and delete all agent-vm VMs
 ```
 
+`stop` and `rm` also take a VM name, as printed by `agent-vm list`:
+
+```bash
+agent-vm list
+agent-vm rm agent-vm-old-name-1a2b3c4d
+```
+
+That is how you reach a VM whose directory was renamed or deleted: the VM name
+embeds a hash of the directory path, so once the path changes, no `cd` leads
+back to it and `agent-vm list` is the only handle left.
+
 ### Scripting against agent-vm
 
 Wrapping agent-vm from another tool? Use these instead of parsing human-facing
@@ -138,6 +149,7 @@ agent-vm env get K       # read it back
 agent-vm env has K       # exit 0 if stored, 1 otherwise, no output
 agent-vm env unset K
 agent-vm env list        # key NAMES only, never values
+agent-vm project-env …   # same subcommands, for THIS project only
 ```
 
 Use `agent-vm env` rather than writing `~/.agent-vm/env` yourself: that file is
@@ -146,15 +158,52 @@ just the mis-quoted one. `get`/`has` answer about the file, never about the
 ambient environment — which matters because callers often run inside a VM that
 already exports those very variables.
 
-`info` prints `version`, `template`, `state_dir`, `dir`, `vm_name`,
-`base_exists`, `vm_exists`, `vm_running` and `vm_stale`. Booleans are `1`/`0`;
+`agent-vm project-env` is the same thing scoped to the current project: same
+subcommands, same quoting, same file format. Its values are pushed into the VM
+**after** the shared ones, so a key set in both takes the project's value. The
+file lives **in the project** (`.agent-vm.env`, like the project runtime
+script), so it follows a clone or a move and disappears with the project;
+`AGENT_VM_PROJECT_ENV` puts it somewhere else, typically an integrator's own
+directory (`.mytool/env`), exactly like `AGENT_VM_PROJECT_RUNTIME`. Being a
+file in a repository, it is the wrong place for a secret — `agent-vm env` is
+outside any repository. `project-env set` says so out loud: if the file is not
+ignored by git it prints the exact `echo … >> .gitignore` line to run (and, if
+the file is already tracked, the `git rm --cached` that a gitignore line alone
+would not fix). `info` prints the path as `project_env=`, so nobody has to
+rebuild it.
+
+`AGENT_VM_STATE_DIR` moves the whole state directory (default `~/.agent-vm`).
+Set it to give a test, a CI job or a second install its own state without
+moving `HOME` — moving `HOME` also moves Lima's state, which makes a sandboxed
+run rebuild every VM. Integrators should read `state_dir` from `info` rather
+than rebuilding the path from `$HOME`.
+
+`info` prints `version`, `template`, `state_dir`, `project_env`, `dir`,
+`vm_name`, `base_exists`, `vm_exists`, `vm_running` and `vm_stale`. Booleans are `1`/`0`;
 anything that cannot be determined is `unknown` rather than a guess — including
 `vm_stale` when no base version has been recorded to compare against.
 `version`, `name`, `info` and `env` all work without Lima installed (the
 Lima-dependent keys of `info` read `unknown`).
 
+`base_exists=1` means the base VM is *usable*, not merely listed by Lima: a
+`setup` interrupted while it provisions leaves the template behind with none
+of the packages installed, and a VM cloned from that answers every command
+with `zsh: command not found`. Running `setup` again deletes and rebuilds it.
+
 Call the command rather than sourcing the file: a shell function is not
 inherited by child processes, so a tool that spawns a shell cannot see one.
+
+To require a minimum engine version, ask it rather than parsing `version`:
+
+```bash
+agent-vm version --min 0.2.0 || exit 1   # silent when satisfied
+```
+
+Exit status is `0` when this engine is at least that version, `1` with an
+actionable message when it is older, and `2` when the call itself is malformed
+— a typo in the required version must not read as "engine too old". Note that
+an engine predating `--min` ignores the flag and exits `0`, so a tool whose
+floor is below 0.2.0 still needs its own check to bootstrap.
 `agent-vm.sh` does remain safe to `source` from a script running under `set -u`
 and `set -o pipefail`; it is *not* written for the caller's `set -e`, since like
 most shell libraries it uses `test && action` internally.
@@ -174,6 +223,14 @@ agent-vm --memory 16 --cpus 8 shell    # Increase memory and CPUs, then open she
 ```
 
 Note: disk can only be grown, not shrunk.
+
+CPUs and memory are clamped to a share of the host — half of it — so a VM
+cannot starve the machine it runs on while the agent works unattended. Asking
+for more than that share is not an error: you get the share, and a notice on
+stderr rather than silence. `AGENT_VM_HOST_SHARE` changes the divisor (`1`
+gives the whole host, `4` a quarter). When the host capacity cannot be read,
+nothing is clamped — guessing low on an unknown machine would be worse than
+not guessing.
 
 Running `agent-vm setup` again updates the base template but does **not** update existing VMs. You'll see a warning when using a VM cloned from an older base. Use `--reset` to re-clone:
 
@@ -216,7 +273,43 @@ OPENAI_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxx
 MISTRAL_API_KEY=xxxxxxxxxxxxxxxxxxxxxxxx
 ```
 
-These are picked up automatically by the tools that look for them: `gh` reads `GH_TOKEN`, Claude Code uses `ANTHROPIC_API_KEY` when not signed in, Codex uses `OPENAI_API_KEY`, Vibe uses `MISTRAL_API_KEY`, etc. The file is pushed into the VM at `~/.agent-vm.env` (mode 0600) on every `agent-vm` invocation, so edits propagate without `--reset`.
+For a value that belongs to **one** project (a config path, a per-project
+setting), use `agent-vm project-env set K V` from that directory instead. It
+writes `.agent-vm.env` in the project and tells you to gitignore it if you have
+not; keep secrets in the shared file, which lives outside any repository. Both files are
+pushed into the same guest file, the project's one last, so it wins on a key
+present in both.
+
+These are picked up automatically by the tools that look for them: `gh` reads `GH_TOKEN`, Claude Code uses `ANTHROPIC_API_KEY` when not signed in, Codex uses `OPENAI_API_KEY`, Vibe uses `MISTRAL_API_KEY`, etc. agent-vm itself knows none of these names: it transports the file, whatever is in it. The file is pushed into the VM at `~/.agent-vm.env` (mode 0600) on every `agent-vm` invocation, so edits propagate without `--reset`.
+
+#### Letting the agent commit and push
+
+git reads its identity from the environment too, so the same file covers it —
+no `git config` inside the VM, and nothing for agent-vm to configure on your
+behalf:
+
+```bash
+# ~/.agent-vm/env
+GIT_AUTHOR_NAME=Your Name
+GIT_AUTHOR_EMAIL=12345+you@users.noreply.github.com
+GIT_COMMITTER_NAME=Your Name
+GIT_COMMITTER_EMAIL=12345+you@users.noreply.github.com
+```
+
+All four are needed: git refuses to commit without a committer, not just an
+author. Note that environment variables win over `git config`, so this
+identity applies to every repository in the VM and a per-repo
+`git config user.email` will not override it. If you need per-repo identities,
+set `user.name`/`user.email` from a runtime script instead.
+
+`gh` picks up `GH_TOKEN` on its own, so `gh pr create` works with nothing else.
+Plain `git push` over HTTPS does not: git needs a credential helper. Add one
+line to your runtime script if you want it:
+
+```bash
+# ~/.agent-vm/runtime.sh
+gh auth setup-git    # points git at gh for github.com credentials
+```
 
 For subscription-based auth (where you've already run `claude login` / `gh auth login` on the host), share the host's credentials directory via [`~/.agent-vm/volumes`](#extra-host-mounts-agent-vmvolumes) instead.
 
@@ -303,6 +396,8 @@ Paste the output into your `runtime.sh` — the script decodes it at boot and se
 | `~/.agent-vm/runtime.sh` | All VMs | Every VM start, first |
 | `.agent-vm.runtime.sh` | Current project only | Every VM start, after global |
 
+The per-project path is overridable with `AGENT_VM_PROJECT_RUNTIME` (see below).
+
 **Important:** Always launch `agent-vm` from a path without spaces. macOS iCloud paths contain spaces (`~/Library/Mobile Documents/...`), which can break mounts. Create a symlink instead:
 
 ```bash
@@ -328,6 +423,22 @@ For projects using a specific language version (Ruby, Python, etc.), install it 
 mise install
 bundle install
 ```
+
+**Interpreter.** The script runs under the shell its shebang names — `bash` and
+`sh` are honoured, anything else (another language, or no shebang) runs under
+`zsh` as before. It is fed on standard input, so `$0` is the shell, not the
+file.
+
+**Another location.** Set `AGENT_VM_PROJECT_RUNTIME` to keep the script in your
+own directory instead of the project root — useful for a tool that already has
+a folder there and would rather not add a second entry to `git status`:
+
+```bash
+AGENT_VM_PROJECT_RUNTIME=.mytool/runtime.sh agent-vm claude
+```
+
+A relative path resolves against the project directory, an absolute one is used
+as-is. Unset, the historical `.agent-vm.runtime.sh` applies.
 
 ### MCP servers
 

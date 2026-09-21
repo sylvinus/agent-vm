@@ -43,6 +43,9 @@ mkdir -p "$HOME" "$SB/bin" "$PROJ"
 # --- stubs --------------------------------------------------------------------
 # One base VM plus one project VM, running, 4 CPUs / 8 GiB / 32 GiB.
 # `shell` dumps stdin so we can assert on what setup pipes into the VM.
+# AGENT_VM_TEST_EXTRA_VM adds one more name to the inventory, so a test can
+# make the VM of an arbitrary directory exist. AGENT_VM_TEST_CALLS records the
+# destructive calls, to assert which VM they hit.
 cat > "$SB/bin/limactl" <<'STUB'
 #!/usr/bin/env bash
 case "$1" in
@@ -56,9 +59,11 @@ case "$1" in
         echo "agent-vm-proj-deadbeef Running" ;;
       *-q*)
         echo "agent-vm-base"
-        echo "agent-vm-proj-deadbeef" ;;
+        echo "agent-vm-proj-deadbeef"
+        [ -n "${AGENT_VM_TEST_EXTRA_VM:-}" ] && echo "$AGENT_VM_TEST_EXTRA_VM" ;;
     esac ;;
   shell) cat > "${AGENT_VM_TEST_CAPTURE:-/dev/null}" ;;
+  stop|delete) echo "$*" >> "${AGENT_VM_TEST_CALLS:-/dev/null}" ;;
   *) : ;;
 esac
 exit 0
@@ -94,6 +99,7 @@ section "sourcing under a strict caller"
   _agent_vm_exists agent-vm-base >/dev/null
   _agent_vm_running agent-vm-proj-deadbeef >/dev/null
   _agent_vm_base_exists >/dev/null
+  _agent_vm_project_vms >/dev/null
   agent-vm version >/dev/null
   agent-vm info "$PROJ" >/dev/null
 ) 2>"$SB/strict.err"
@@ -174,6 +180,52 @@ check "base newer -> stale" "$(_agent_vm_stale_state vmx)" "1"
 rm -f "$HOME/.agent-vm/.agent-vm-base-version" "$HOME/.agent-vm/.agent-vm-version-vmx"
 
 # =============================================================================
+section "base readiness (a half-provisioned template is not a base)"
+# =============================================================================
+# The stub always lists agent-vm-base, so what changes below is only the
+# marker, which is exactly the state a setup interrupted while provisioning
+# leaves: the template is in Lima, nothing is installed in it.
+if _agent_vm_base_exists; then
+  fail "template listed but no version marker -> treated as a usable base"
+else
+  pass "template listed but no version marker -> not a usable base"
+fi
+echo 111 > "$HOME/.agent-vm/.agent-vm-base-version"
+if _agent_vm_base_exists; then
+  pass "template listed and marked -> usable base"
+else
+  fail "a completed setup is not recognised"
+fi
+# And a failed query still answers "could not ask", not "no base": info turns
+# that status into `unknown`, and a caller told 0 would offer to rebuild a
+# base VM that exists.
+mkdir -p "$SB/brokenlima"
+printf '#!/usr/bin/env bash\nexit 1\n' > "$SB/brokenlima/limactl"
+chmod +x "$SB/brokenlima/limactl"
+( PATH="$SB/brokenlima:$PATH"; _agent_vm_base_exists; [ "$?" = 2 ] ) \
+  && pass "a failing limactl keeps the 'unknown' status" \
+  || fail "a failing limactl no longer reports status 2"
+
+# =============================================================================
+section "project VMs (who the post-setup --reset note is for)"
+# =============================================================================
+check "the template is not a project VM" \
+  "$(_agent_vm_project_vms)" "agent-vm-proj-deadbeef"
+# A first install: the base is there, nothing has been cloned from it yet, and
+# suggesting --reset would point at nothing.
+mkdir -p "$SB/baseonly"
+cat > "$SB/baseonly/limactl" <<'STUB'
+#!/usr/bin/env bash
+[ "$1" = list ] && echo "agent-vm-base"
+exit 0
+STUB
+chmod +x "$SB/baseonly/limactl"
+check "nothing cloned yet -> no project VM" \
+  "$( PATH="$SB/baseonly:$PATH"; _agent_vm_project_vms )" ""
+check "a failing limactl lists nothing rather than erroring" \
+  "$( PATH="$SB/brokenlima:$PATH"; _agent_vm_project_vms )" ""
+
+# =============================================================================
 section "machine-readable surface"
 # =============================================================================
 check "version" "$(agent-vm version)" "$AGENT_VM_VERSION"
@@ -188,7 +240,7 @@ check "info: dir"          "$(get dir)"         "$PROJ"
 check "info: base_exists"  "$(get base_exists)" "1"
 check "info: vm_exists"    "$(get vm_exists)"   "0"
 check "info: vm_stale unknown with no VM" "$(get vm_stale)" "unknown"
-check "info: key count"    "$(printf '%s\n' "$info_out" | grep -c '^[a-z_]*=')" "9"
+check "info: key count"    "$(printf '%s\n' "$info_out" | grep -c '^[a-z_]*=')" "10"
 
 # Every key must be present even with no Lima on the box. Build a PATH with the
 # limactl-bearing directories dropped rather than a hardcoded one, so this also
@@ -206,8 +258,8 @@ while [ -n "$_rest" ]; do
   nolima_path="${nolima_path:+$nolima_path:}$_d"
 done
 nolima="$(PATH="$nolima_path" bash -c 'source "$1"; agent-vm info "$2"' _ "$AGENT_VM_SH" "$PROJ" 2>/dev/null)"
-check "info without limactl still prints 9 keys" \
-  "$(printf '%s\n' "$nolima" | grep -c '^[a-z_]*=')" "9"
+check "info without limactl still prints 10 keys" \
+  "$(printf '%s\n' "$nolima" | grep -c '^[a-z_]*=')" "10"
 case "$nolima" in
   *"base_exists=unknown"*) pass "info without limactl says unknown, not 0" ;;
   *) fail "info without limactl should report unknown" ;;
@@ -244,9 +296,9 @@ check "CDPATH does not redirect the lookup" \
 # Stray `cd` output has to be observed on `info`, not on `name`: the name is run
 # through `tr -cs 'a-zA-Z0-9' '-'`, which would quietly turn the extra newline
 # into a dash. `info` prints the resolved path raw, so a leaked line shows up as
-# a tenth line among the nine key=value pairs.
+# one line too many among the key=value pairs.
 check "no stray cd output leaks into info" \
-  "$(cd "$SB/real" && CDPATH="$SB/decoy" agent-vm info twin | wc -l | tr -d ' ')" "9"
+  "$(cd "$SB/real" && CDPATH="$SB/decoy" agent-vm info twin | wc -l | tr -d ' ')" "10"
 
 # =============================================================================
 section "--preinstall parsing"
@@ -353,6 +405,260 @@ val="$(set -a; . "$ENVHOME/.agent-vm/env"; set +a; printf '%s' "${AC_GIT_USER_NA
 check "the file sources cleanly in a shell" "$val" "O'Brien"
 
 # =============================================================================
+section "state dir: overridable, and published"
+# =============================================================================
+# Integrators must not rebuild this path from $HOME. They can only stop doing
+# that if the engine both publishes it and honours an override.
+STATE_ALT="$SB/state-alt"
+check "AGENT_VM_STATE_DIR is honoured" \
+  "$(AGENT_VM_STATE_DIR="$STATE_ALT" bash "$AGENT_VM_SH" info "$SB" | sed -n 's/^state_dir=//p')" \
+  "$STATE_ALT"
+AGENT_VM_STATE_DIR="$STATE_ALT" bash "$AGENT_VM_SH" env set SOME_KEY v >/dev/null
+if [ -f "$STATE_ALT/env" ]; then
+  pass "writes land in the overridden state dir"
+else
+  fail "the override is published but not used for writes"
+fi
+
+# =============================================================================
+section "project-env: one env per project"
+# =============================================================================
+# Same file format and same quoting as the shared env — deliberately the same
+# code — but it lives WITH the project, like the project runtime script, and
+# moves, clones and disappears with it.
+PENV="$SB/penv"; mkdir -p "$PENV/pa/.mytool" "$PENV/pb" "$PENV/state"
+pe() { ( cd "$1" && AGENT_VM_STATE_DIR="$PENV/state" bash "$AGENT_VM_SH" project-env "${@:2}" ); }
+
+pe "$PENV/pa" set OPENCODE_CONFIG "/a/.albert-code/opencode.json" >/dev/null
+pe "$PENV/pb" set OPENCODE_CONFIG "/b/.albert-code/opencode.json" >/dev/null
+check "each project keeps its own value (a)" "$(pe "$PENV/pa" get OPENCODE_CONFIG)" "/a/.albert-code/opencode.json"
+check "each project keeps its own value (b)" "$(pe "$PENV/pb" get OPENCODE_CONFIG)" "/b/.albert-code/opencode.json"
+check "the file sits in the project, at the documented default" \
+  "$(ls -A "$PENV/pa" | grep '^\.agent-vm\.env$')" ".agent-vm.env"
+if [ -z "$(ls -A "$PENV/state" 2>/dev/null)" ]; then
+  pass "nothing about a project is written into the state dir"
+else
+  fail "project state leaked outside the project: $(ls -A "$PENV/state" | tr '\n' ' ')"
+fi
+pe "$PENV/pa" set NAME "O'Brien" >/dev/null
+check "the shared quoting applies here too" "$(pe "$PENV/pa" get NAME)" "O'Brien"
+check "the file is mode 600" "$(ls -l "$PENV/pa/.agent-vm.env" | cut -c2-10)" "rw-------"
+if pe "$PENV/pa" list | grep -q "O'Brien"; then fail "list must never print values"; else pass "list never prints values"; fi
+
+# AGENT_VM_PROJECT_ENV, like AGENT_VM_PROJECT_RUNTIME: an integrator keeps its
+# files in its own directory instead of cluttering the project root.
+_pe_alt() { ( cd "$PENV/pa" && AGENT_VM_PROJECT_ENV=.mytool/env AGENT_VM_STATE_DIR="$PENV/state" bash "$AGENT_VM_SH" project-env "$@" ); }
+_pe_alt set OPENCODE_CONFIG "/elsewhere" >/dev/null
+check "AGENT_VM_PROJECT_ENV relocates the file" "$(cat "$PENV/pa/.mytool/env")" "OPENCODE_CONFIG='/elsewhere'"
+check "and the default file is untouched by it" "$(pe "$PENV/pa" get OPENCODE_CONFIG)" "/a/.albert-code/opencode.json"
+check "info publishes the path, so nobody rebuilds it" \
+  "$( ( cd "$PENV/pa" && AGENT_VM_PROJECT_ENV=.mytool/env AGENT_VM_STATE_DIR="$PENV/state" bash "$AGENT_VM_SH" info | sed -n 's/^project_env=//p' ) )" \
+  "$PENV/pa/.mytool/env"
+
+# Precedence: the payload pushed into the VM is shared-then-project, because it
+# is sourced — so a key set in both ends up with the project's value. Without
+# this order, "per project" would mean nothing.
+( AGENT_VM_STATE_DIR="$PENV/state"
+  mkdir -p "$AGENT_VM_STATE_DIR"
+  printf "SHARED_ONLY='s'\nBOTH='shared'\n" > "$AGENT_VM_STATE_DIR/env"
+  printf "BOTH='project'\n" > "$PENV/pa/.agent-vm.env"
+  payload="$(_agent_vm_env_payload "$PENV/pa")"
+  val="$(set -a; eval "$payload"; set +a; printf '%s' "${BOTH:-MISSING}")"
+  shared="$(set -a; eval "$payload"; set +a; printf '%s' "${SHARED_ONLY:-MISSING}")"
+  [ "$val" = "project" ] || { echo "      BOTH=$val" >&2; exit 1; }
+  [ "$shared" = "s" ] || { echo "      SHARED_ONLY=$shared" >&2; exit 1; } )
+if [ $? -eq 0 ]; then
+  pass "the project's value wins, and shared keys still come through"
+else
+  fail "wrong precedence between the shared env and the project env"
+fi
+
+# =============================================================================
+section "project-env: the file is in a repository, so say so"
+# =============================================================================
+# The failure that matters for this file is committing it. The warning has to
+# name the fix, and the fix has to work — a printed line nobody can apply is
+# worse than no warning.
+if command -v git >/dev/null 2>&1; then
+  GI="$SB/gitrepo"; mkdir -p "$GI"
+  ( cd "$GI" && git init -q && git config user.email t@t && git config user.name t )
+  gpe() { ( cd "$GI" && AGENT_VM_STATE_DIR="$PENV/state" bash "$AGENT_VM_SH" project-env "$@" ); }
+
+  err_out="$(gpe set K v 2>&1 >/dev/null)"
+  case "$err_out" in
+    *"not ignored by git"*) pass "warns when the file is not ignored" ;;
+    *) fail "no warning on an unignored file: $err_out" ;;
+  esac
+  check "the warning stays on stderr" "$(gpe set K v 2>/dev/null)" ""
+
+  # The printed line, applied verbatim, must silence the warning.
+  line="$(printf '%s\n' "$err_out" | sed -n 's/^ *echo //p' | sed "s/ >>.*//; s/^'//; s/'$//")"
+  printf '%s\n' "$line" >> "$GI/.gitignore"
+  if [ -n "$(gpe set K v2 2>&1 >/dev/null)" ]; then
+    fail "the suggested line does not silence the warning: $(gpe set K v2 2>&1 >/dev/null)"
+  else
+    pass "the suggested line is the one that fixes it"
+  fi
+
+  # .git/info/exclude counts too — a grep over .gitignore would miss it.
+  rm -f "$GI/.gitignore"
+  printf '.agent-vm.env\n' >> "$GI/.git/info/exclude"
+  if [ -n "$(gpe set K v3 2>&1 >/dev/null)" ]; then
+    fail "warns although .git/info/exclude covers the file"
+  else
+    pass "an exclude outside .gitignore is honoured"
+  fi
+
+  # Already tracked: ignoring changes nothing, so the advice must differ.
+  : > "$GI/.git/info/exclude"
+  ( cd "$GI" && git add -f .agent-vm.env >/dev/null 2>&1 )
+  case "$(gpe set K v4 2>&1 >/dev/null)" in
+    *"tracked by git"*) pass "a tracked file gets the fix that actually applies" ;;
+    *) fail "a tracked file must not be told to add a gitignore line" ;;
+  esac
+
+  # Outside a repository there is nothing to warn about.
+  OUTSIDE="$SB/outside"; mkdir -p "$OUTSIDE"
+  if [ -n "$( ( cd "$OUTSIDE" && AGENT_VM_STATE_DIR="$PENV/state" bash "$AGENT_VM_SH" project-env set K v ) 2>&1 >/dev/null )" ]; then
+    fail "warns outside a git repository"
+  else
+    pass "silent outside a git repository"
+  fi
+else
+  echo "  (git absent: gitignore warning not exercised)"
+fi
+
+# =============================================================================
+section "host capacity: clamping"
+# =============================================================================
+# The policy is "a VM must not starve the host it runs on". These assertions
+# pin the arithmetic, the floors, and the two cases where the value must be
+# left alone: nothing asked, and an unreadable host.
+check "half of 8 CPUs"                 "$(_agent_vm_host_share 8 1)" "4"
+check "floor of 1 CPU on a 1-CPU host" "$(_agent_vm_host_share 1 1)" "1"
+check "floor of 2 GiB on a 3 GiB host" "$(_agent_vm_host_share 3 2)" "2"
+
+# A known host: 8 CPUs / 16 GiB.
+_agent_vm_host_cpus()    { echo 8; }
+_agent_vm_host_mem_gib() { echo 16; }
+
+check "nothing asked stays nothing"    "$(_agent_vm_cap_resource cpus '')"  ""
+check "a value under the share passes" "$(_agent_vm_cap_resource cpus 2)"   "2"
+check "a value at the share passes"    "$(_agent_vm_cap_resource cpus 4)"   "4"
+check "a value above the share is clamped" \
+  "$(_agent_vm_cap_resource cpus 16 2>/dev/null)" "4"
+check "memory is clamped too" \
+  "$(_agent_vm_cap_resource memory 64 2>/dev/null)" "8"
+# Clamping must be said, not done behind the user's back.
+clamp_msg="$(_agent_vm_cap_resource cpus 16 2>&1 >/dev/null)"
+case "$clamp_msg" in
+  *"exceeds this host's share"*) pass "clamping is announced on stderr" ;;
+  *) fail "clamping was silent (got: '$clamp_msg')" ;;
+esac
+# The share is a policy, so it is overridable.
+check "AGENT_VM_HOST_SHARE=1 gives the whole host" \
+  "$(AGENT_VM_HOST_SHARE=1 _agent_vm_cap_resource cpus 8)" "8"
+check "AGENT_VM_HOST_SHARE=4 clamps to a quarter" \
+  "$(AGENT_VM_HOST_SHARE=4 _agent_vm_cap_resource cpus 8 2>/dev/null)" "2"
+
+# An unreadable host must never shrink anything.
+_agent_vm_host_cpus()    { echo ""; }
+_agent_vm_host_mem_gib() { echo ""; }
+check "unknown host: the value is honoured as asked" \
+  "$(_agent_vm_cap_resource cpus 16)" "16"
+
+# Restore the real probes for anything running after this section.
+unset -f _agent_vm_host_cpus _agent_vm_host_mem_gib
+# shellcheck source=./agent-vm.sh
+source "$AGENT_VM_SH"
+
+# The flags stay plain integers — no new value to learn, no new way to be wrong.
+check "a resource value still reaches the command" \
+  "$(agent-vm --cpus 4 --memory 8 version)" "$AGENT_VM_VERSION"
+
+# =============================================================================
+section "version --min: a floor an integrator can oppose"
+# =============================================================================
+# Without this, every integrator reimplements the comparison — and some get
+# "1.10.0 > 1.9.0" wrong, which a string comparison does.
+check "1.2.3 compares as a number"  "$(_agent_vm_ver_num 1.2.3)"  "1002003"
+check "1.10.0 outranks 1.9.0" \
+  "$([ "$(_agent_vm_ver_num 1.10.0)" -gt "$(_agent_vm_ver_num 1.9.0)" ] && echo yes)" "yes"
+check "a short version is padded"   "$(_agent_vm_ver_num 1)"      "1000000"
+check "a -rc suffix is ignored"     "$(_agent_vm_ver_num 2.0.0-rc1)" "2000000"
+
+check "plain version still prints" "$(agent-vm version)" "$AGENT_VM_VERSION"
+
+if agent-vm version --min 0.0.1 >/dev/null 2>&1; then
+  pass "a floor below the installed version passes"
+else
+  fail "a satisfied floor was rejected"
+fi
+check "a satisfied floor prints nothing" "$(agent-vm version --min 0.0.1 2>/dev/null)" ""
+check "--min= spelling works too" \
+  "$( (agent-vm version --min=0.0.1 >/dev/null 2>&1) && echo yes )" "yes"
+
+agent-vm version --min 99.0.0 >/dev/null 2>&1
+check "an unmet floor exits 1" "$?" "1"
+# The case that separates a numeric comparison from a lexical one: against
+# 0.2.0, "0.10.0" is higher as a number and lower as a string. A lexical
+# implementation passes every other assertion in this section.
+agent-vm version --min 0.10.0 >/dev/null 2>&1
+check "0.10.0 is a higher floor than 0.2.0" "$?" "1"
+too_old="$(agent-vm version --min 99.0.0 2>&1 >/dev/null)"
+case "$too_old" in
+  *"older than the required 99.0.0"*"git pull"*) pass "an unmet floor says what to do" ;;
+  *) fail "unhelpful message for an unmet floor: $too_old" ;;
+esac
+
+# A malformed call must be distinguishable from "too old": a typo in the
+# caller's own code should not send a user chasing an upgrade.
+agent-vm version --min oups >/dev/null 2>&1
+check "a malformed version exits 2" "$?" "2"
+agent-vm version --min >/dev/null 2>&1
+check "a missing value exits 2" "$?" "2"
+agent-vm version --max 1 >/dev/null 2>&1
+check "an unknown option exits 2" "$?" "2"
+
+# =============================================================================
+section "runtime scripts: location and interpreter"
+# =============================================================================
+# Before this, every runtime ran under zsh whatever its shebang said — a bash
+# script silently got zsh's arrays and globbing.
+RT="$SB/rt"; mkdir -p "$RT"
+printf '#!/usr/bin/env bash\ntrue\n' > "$RT/env-bash.sh"
+printf '#!/bin/bash\ntrue\n'         > "$RT/bin-bash.sh"
+printf '#!/bin/sh\ntrue\n'           > "$RT/sh.sh"
+printf '#!/usr/bin/env python3\n'    > "$RT/py.sh"
+printf 'echo no shebang\n'           > "$RT/none.sh"
+: > "$RT/empty.sh"
+check "#!/usr/bin/env bash → bash" "$(_agent_vm_runtime_interpreter "$RT/env-bash.sh")" "bash"
+check "#!/bin/bash → bash"         "$(_agent_vm_runtime_interpreter "$RT/bin-bash.sh")" "bash"
+check "#!/bin/sh → sh"             "$(_agent_vm_runtime_interpreter "$RT/sh.sh")"       "sh"
+check "another language → zsh (unchanged behaviour)" \
+  "$(_agent_vm_runtime_interpreter "$RT/py.sh")" "zsh"
+check "no shebang → zsh"           "$(_agent_vm_runtime_interpreter "$RT/none.sh")"     "zsh"
+check "empty file → zsh"           "$(_agent_vm_runtime_interpreter "$RT/empty.sh")"    "zsh"
+
+# Where the project runtime is looked up.
+check "default location is the project root" \
+  "$(_agent_vm_project_runtime_path "$PROJ")" "$PROJ/.agent-vm.runtime.sh"
+check "a relative override resolves against the project" \
+  "$(AGENT_VM_PROJECT_RUNTIME=.mytool/runtime.sh _agent_vm_project_runtime_path "$PROJ")" \
+  "$PROJ/.mytool/runtime.sh"
+check "an absolute override is used as-is" \
+  "$(AGENT_VM_PROJECT_RUNTIME=/tmp/elsewhere.sh _agent_vm_project_runtime_path "$PROJ")" \
+  "/tmp/elsewhere.sh"
+
+# The script still reaches the VM whole: it is piped, because the per-user
+# runtime lives outside the mount and its path means nothing inside the VM.
+export AGENT_VM_TEST_CAPTURE="$SB/runtime-stdin"
+_agent_vm_run_runtime agent-vm-proj-deadbeef "$PROJ" "$RT/env-bash.sh"
+unset AGENT_VM_TEST_CAPTURE
+check "the runtime is piped into the VM intact" \
+  "$(cat "$SB/runtime-stdin")" "$(cat "$RT/env-bash.sh")"
+
+# =============================================================================
 section "release hygiene"
 # =============================================================================
 # Every dispatched command must appear in `help`: a command nobody can discover
@@ -405,6 +711,23 @@ else
 fi
 
 # =============================================================================
+section "setup script: apt runs with a working debconf frontend"
+# =============================================================================
+# `export DEBIAN_FRONTEND=noninteractive` does not survive sudo's env_reset,
+# so an apt call that does not carry the variable itself prints debconf's
+# "unable to initialize frontend: Dialog" block on every install step.
+if grep -qE '^[^#]*sudo apt-get' "$SETUP_SH"; then
+  fail "an apt call bypasses apt_get: $(grep -nE '^[^#]*sudo apt-get' "$SETUP_SH" | head -1)"
+else
+  pass "every apt call goes through apt_get"
+fi
+if grep -q 'sudo env DEBIAN_FRONTEND=noninteractive apt-get' "$SETUP_SH"; then
+  pass "apt_get hands the frontend to sudo"
+else
+  fail "apt_get no longer passes DEBIAN_FRONTEND through sudo"
+fi
+
+# =============================================================================
 section "MCP config writer"
 # =============================================================================
 # configure_mcp lives in the in-VM setup script, whose top level performs the
@@ -436,6 +759,77 @@ else
     "$(grep -cF '[mcp_servers.playwright]' "$MCPHOME/.codex/config.toml")" "1"
   check "vibe: no duplicate entry after two runs" \
     "$(grep -c '^\[\[mcp_servers\]\]' "$MCPHOME/.vibe/config.toml")" "2"
+fi
+
+# =============================================================================
+section "stop / rm target selection"
+# =============================================================================
+# The whole point of the optional name is the orphan case: a directory that was
+# renamed or deleted leaves a VM no `cd` can reach, because the name hashes the
+# old path. So the argument is a VM name, and it has to reach limactl untouched.
+CALLS="$SB/calls"
+
+: > "$CALLS"
+out="$( export AGENT_VM_TEST_CALLS="$CALLS"; agent-vm stop agent-vm-proj-deadbeef 2>&1 )"
+check "stop <name> stops the named VM" "$(cat "$CALLS")" "stop agent-vm-proj-deadbeef"
+
+: > "$CALLS"
+out="$( export AGENT_VM_TEST_CALLS="$CALLS"; agent-vm rm agent-vm-proj-deadbeef 2>&1 )"
+check "rm <name> stops then deletes the named VM" \
+  "$(cat "$CALLS")" "$(printf 'stop agent-vm-proj-deadbeef\ndelete agent-vm-proj-deadbeef --force')"
+
+# A name that is not ours must not reach limactl at all: `agent-vm rm` is not a
+# way to delete someone else's Lima instance by typo.
+: > "$CALLS"
+if out="$( export AGENT_VM_TEST_CALLS="$CALLS"; agent-vm rm some-other-lima-vm 2>&1 )"; then
+  fail "rm accepted a non-agent-vm name"
+else
+  case "$out" in
+    *"not an agent-vm VM name"*) pass "rm rejects a name outside the agent-vm- namespace" ;;
+    *) fail "unexpected rejection message: $out" ;;
+  esac
+fi
+check "the rejected name never reached limactl" "$(cat "$CALLS")" ""
+
+: > "$CALLS"
+if out="$( export AGENT_VM_TEST_CALLS="$CALLS"; agent-vm stop agent-vm-does-not-exist 2>&1 )"; then
+  fail "stop accepted a VM that does not exist"
+else
+  case "$out" in
+    *"no such VM: agent-vm-does-not-exist"*) pass "stop reports an unknown VM by name" ;;
+    *) fail "unexpected message for an unknown VM: $out" ;;
+  esac
+fi
+check "the unknown name never reached limactl" "$(cat "$CALLS")" ""
+
+if out="$( agent-vm stop agent-vm-proj-deadbeef agent-vm-base 2>&1 )"; then
+  fail "stop accepted two names"
+else
+  case "$out" in
+    *"Usage: agent-vm stop [vm-name]"*) pass "stop refuses more than one name" ;;
+    *) fail "unexpected message for two names: $out" ;;
+  esac
+fi
+
+# Without an argument, the current directory still selects the VM.
+PROJ_VM="$(_agent_vm_name "$PROJ")"
+: > "$CALLS"
+out="$( cd "$PROJ" || exit 1
+        export AGENT_VM_TEST_CALLS="$CALLS" AGENT_VM_TEST_EXTRA_VM="$PROJ_VM"
+        agent-vm stop 2>&1 )"
+check "stop with no argument targets the current directory's VM" \
+  "$(cat "$CALLS")" "stop $PROJ_VM"
+
+: > "$CALLS"
+if out="$( cd "$PROJ" || exit 1
+           export AGENT_VM_TEST_CALLS="$CALLS"
+           agent-vm stop 2>&1 )"; then
+  fail "stop succeeded with no VM for the current directory"
+else
+  case "$out" in
+    *"No VM found for this directory."*) pass "stop with no argument reports the empty directory" ;;
+    *) fail "unexpected message for a directory with no VM: $out" ;;
+  esac
 fi
 
 # =============================================================================

@@ -10,6 +10,20 @@ set -euo pipefail
 
 export DEBIAN_FRONTEND=noninteractive
 
+# apt under sudo, with the noninteractive frontend actually reaching it.
+#
+# The export above does not survive sudo: `Defaults env_reset` drops every
+# variable that is not in env_keep, so each `sudo apt-get install` started
+# debconf's Dialog frontend, failed to load it, fell back to Readline, failed
+# again, and printed that warning block, once per install step.
+#
+# `sudo env VAR=value` rather than `sudo -E` or `sudo VAR=value cmd`: both of
+# those need the sudoers policy to allow setting the environment, while
+# passing the variable to `env` is just a command with arguments.
+apt_get() {
+  sudo env DEBIAN_FRONTEND=noninteractive apt-get "$@"
+}
+
 # Component toggles. The host wizard prepends `export` lines for these before
 # piping the script in. Members of the default install set (everything except
 # Ruby/Rust/Go) default to 1 so running this script standalone (without the
@@ -50,8 +64,8 @@ echo '$nrconf{restart} = '"'"'a'"'"';' | sudo tee /etc/needrestart/conf.d/no-pro
 # to compile Ruby/Python/Node versions via mise (kept here so that toggling a
 # language off doesn't strip the libs the user may still want to build with).
 echo "Installing base packages..."
-sudo apt-get update
-sudo apt-get install -y \
+apt_get update
+apt_get install -y \
   git curl jq zsh \
   wget build-essential \
   ripgrep fd-find htop \
@@ -62,17 +76,17 @@ sudo apt-get install -y \
 
 if [[ "$INSTALL_PYTHON" == "1" ]]; then
   echo "Installing Python 3..."
-  sudo apt-get install -y python3 python3-pip python3-venv
+  apt_get install -y python3 python3-pip python3-venv
 fi
 
 if [[ "$INSTALL_RUBY" == "1" ]]; then
   echo "Installing Ruby..."
-  sudo apt-get install -y ruby-full
+  apt_get install -y ruby-full
 fi
 
 if [[ "$INSTALL_GOLANG" == "1" ]]; then
   echo "Installing Go..."
-  sudo apt-get install -y golang-go
+  apt_get install -y golang-go
 fi
 
 if [[ "$INSTALL_RUST" == "1" ]]; then
@@ -114,8 +128,8 @@ if [[ "$INSTALL_DOCKER" == "1" ]]; then
   sudo curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc
   sudo chmod a+r /etc/apt/keyrings/docker.asc
   echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-  sudo apt-get update
-  sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+  apt_get update
+  apt_get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
   sudo usermod -aG docker "$(whoami)"
 fi
 
@@ -123,13 +137,13 @@ if [[ "$INSTALL_NODE" == "1" ]]; then
   # Install Node.js 24 LTS (needed for MCP servers and Codex CLI)
   echo "Installing Node.js 24..."
   curl -fsSL https://deb.nodesource.com/setup_24.x | sudo -E bash -
-  sudo apt-get install -y nodejs
+  apt_get install -y nodejs
 fi
 
 if [[ "$INSTALL_CHROMIUM" == "1" ]]; then
   # Install Chromium and dependencies for headless browsing
   echo "Installing Chromium..."
-  sudo apt-get install -y chromium fonts-liberation xvfb
+  apt_get install -y chromium fonts-liberation xvfb
   sudo ln -sf /usr/bin/chromium /usr/bin/google-chrome
   sudo ln -sf /usr/bin/chromium /usr/bin/google-chrome-stable
   sudo mkdir -p /opt/google/chrome
@@ -143,8 +157,8 @@ if [[ "$INSTALL_GH" == "1" ]]; then
   wget -qO- https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo tee /etc/apt/keyrings/githubcli-archive-keyring.gpg > /dev/null
   sudo chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg
   echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
-  sudo apt-get update
-  sudo apt-get install -y gh
+  apt_get update
+  apt_get install -y gh
 fi
 
 if [[ "$INSTALL_CLAUDE" == "1" ]]; then
