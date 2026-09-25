@@ -274,6 +274,39 @@ _agent_vm_stale_state() {
   fi
 }
 
+# Fully resolve a path INCLUDING its final component. `cd -P` resolves only the
+# directory part (it cannot enter a file) and `readlink -f` is GNU-only (macOS
+# ships a readlink without it), so walk the last component's symlink chain by
+# hand. A symlinked *file* is the dangerous case: `ln` hardlinks the symlink's
+# TARGET, so staging must judge the target, not the link spelling. When the
+# directory cannot be resolved (e.g. a dangling link), the lexical path is
+# printed — callers warn separately about missing paths.
+_agent_vm_real_file_path() {
+  local path="$1" dir name target hops=0
+  dir="$(CDPATH='' cd -P -- "$(dirname -- "$path")" 2>/dev/null && pwd)" \
+    || { printf '%s\n' "$path"; return 0; }
+  name="$(basename -- "$path")"
+  # Cap the chain walk: a symlink loop must not spin here. On overflow the
+  # partially-resolved path is returned; staging an actual loop fails on its
+  # own (ln hits ELOOP) and the generic staging warning covers it.
+  while [[ -L "$dir/$name" ]]; do
+    hops=$((hops + 1))
+    if [[ $hops -gt 40 ]]; then
+      printf '%s/%s\n' "$dir" "$name"
+      return 0
+    fi
+    target="$(readlink "$dir/$name")" || break
+    case "$target" in
+      /*) path="$target" ;;            # absolute link target: use as-is
+      *)  path="$dir/$target" ;;       # relative: to the link's directory
+    esac
+    dir="$(CDPATH='' cd -P -- "$(dirname -- "$path")" 2>/dev/null && pwd)" \
+      || { printf '%s\n' "$path"; return 0; }
+    name="$(basename -- "$path")"
+  done
+  printf '%s/%s\n' "$dir" "$name"
+}
+
 # Stage a single host file at <dst> via hardlink, falling back to copy if the
 # source and destination live on different filesystems. Hardlinking keeps the
 # content live-synced with the host (same inode) without exposing the source's
@@ -301,27 +334,106 @@ _agent_vm_cleanup_state() {
   rm -f "$AGENT_VM_STATE_DIR/.agent-vm-version-${vm_name}"
   rm -f "$AGENT_VM_STATE_DIR/.agent-vm-term-${vm_name}"
   rm -f "$AGENT_VM_STATE_DIR/.agent-vm-file-mounts-${vm_name}"
+  rm -f "$AGENT_VM_STATE_DIR/.agent-vm-mounts-${vm_name}"
   rm -rf "$AGENT_VM_STATE_DIR/file-mounts/${vm_name}"
 }
 
 # Build the .mounts JSON array for a VM. The first entry is always the project
-# dir (writable). Additional entries come from ~/.agent-vm/volumes, parsed as
-# Docker-Compose-ish `source[:destination][:mode]` (mode ∈ {ro,rw}, default ro).
+# dir (writable). Additional entries come from ~/.agent-vm/volumes (global,
+# shared by every VM) and then <project>/.agent-vm.volumes (per-project,
+# appended after the global ones), both parsed as Docker-Compose-ish
+# `source[:destination][:mode]` (mode ∈ {ro,rw}, default ro). In the
+# per-project file a relative source resolves against the project dir, which
+# is what makes the file committable; the global file only takes absolute or
+# ~-prefixed paths, since a relative path there would depend on the caller's
+# cwd.
+#
+# Trust boundary between the two files: ~/.agent-vm/volumes is *user-owned*
+# (anything it says goes), but .agent-vm.volumes is *repository content* —
+# without a check, anyone who can push a commit could point it at ~/.ssh and
+# read the host's credentials from inside the VM (CWE-552). So per-project
+# entries are confined to the project tree: every source is resolved to its
+# real path (files via their parent directory, since `cd` only walks dirs) and
+# entries resolving outside the project are skipped with a warning that names
+# the escape hatch — adding the path to ~/.agent-vm/volumes is the explicit,
+# user-owned approval for a mount outside the repo. Resolution also defeats
+# symlink escapes (`./link -> ~/.ssh` and `./token -> ~/.ssh/id_rsa` both
+# resolve outside and are dropped; `ln` would happily hardlink the target).
+#
+# --readonly / --git-read-only are enforced on the host-side mount list too.
+# Inside the VM they bind+remount $host_dir (respectively $host_dir/.git), but
+# Lima happily hands out a *second* mountPoint for the same host location, and
+# remounting one alias does not cover the other (CWE-284). So any entry whose
+# host source lies inside the protected path is downgraded to ro (with a
+# warning) whenever the corresponding flag is set — for both files, and for
+# sources anywhere under the project, not just the project dir itself, since
+# `sub:/elsewhere:rw` is as much of a writable alias as a second mount of the
+# project root. Comparisons use the resolved paths so a symlinked cwd cannot
+# make every project entry look outside (or an outside entry look inside).
 #
 # Side effects: stages any file mounts as hardlinks under
-# ~/.agent-vm/file-mounts/<vm>/ and persists the file mount metadata to
-# ~/.agent-vm/.agent-vm-file-mounts-<vm> so subsequent starts can re-apply the
-# inside-VM bind mounts without re-parsing the volumes file. Stdout: the
-# mounts JSON array (consumed by `limactl edit --set ".mounts = ..."`).
+# ~/.agent-vm/file-mounts/<vm>/, persists the file mount metadata to
+# ~/.agent-vm/.agent-vm-file-mounts-<vm> (so subsequent starts can re-apply the
+# inside-VM bind mounts without re-parsing the volumes files), and persists the
+# full mount list to ~/.agent-vm/.agent-vm-mounts-<vm> as
+# `resolved_host_src|guest_mount_point|writable` lines — the record of what is
+# actually baked into the VM, used to enforce --readonly/--git-read-only on
+# aliases for sessions on an *existing* VM (the list itself is only set at
+# creation; see _agent_vm_protected_aliases). Stdout: the mounts JSON array
+# (consumed by `limactl edit --set ".mounts = ..."`).
 _agent_vm_build_mounts_json() {
   local vm_name="$1" host_dir="$2"
+  shift 2
+  # $3+ (optional): --readonly / --git-read-only, mirrored from
+  # _agent_vm_ensure_running. Enforced at build time so the mount list itself
+  # cannot carry a writable alias of a path the flags protect.
+  local rdonly="" git_ro=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --readonly) rdonly=1; shift ;;
+      --git-read-only|--git-ro) git_ro=1; shift ;;
+      *) shift ;;
+    esac
+  done
+  # Resolved forms of the paths the flags protect. host_dir may itself be
+  # reached through a symlink (logical pwd by design — see _agent_vm_name);
+  # comparing real sources against the logical path would then misclassify
+  # every entry.
+  local host_dir_real git_dir_real=""
+  host_dir_real="$(CDPATH='' cd -P -- "$host_dir" 2>/dev/null && pwd)"
+  host_dir_real="${host_dir_real:-$host_dir}"
+  if [[ -n "$git_ro" && -d "$host_dir/.git" ]]; then
+    git_dir_real="$(CDPATH='' cd -P -- "$host_dir/.git" 2>/dev/null && pwd)"
+    git_dir_real="${git_dir_real:-$host_dir/.git}"
+  fi
   local mounts_json="[{\"location\": \"${host_dir}\", \"writable\": true}"
-  local mounts_file="$AGENT_VM_STATE_DIR/volumes"
   local file_mount_entries=()
   local file_mounts_cache="$AGENT_VM_STATE_DIR/.agent-vm-file-mounts-${vm_name}"
+  # Record of every mount that ends up in the VM: `src|dst|writable`, with the
+  # RESOLVED host source. Written after the loop (see comment there) and read
+  # by _agent_vm_protected_aliases on later sessions, because the mounts list
+  # baked into the VM at creation outlives the flags' per-session nature.
+  local mounts_record=()
+  local mounts_record_file="$AGENT_VM_STATE_DIR/.agent-vm-mounts-${vm_name}"
+  # staging_idx counts across BOTH files: staging dirs are keyed by it, and two
+  # file mounts landing on the same index would collide on one mountPoint.
+  local staging_idx=0
 
-  if [[ -f "$mounts_file" ]]; then
-    local staging_idx=0
+  # A plain `for` over the two candidate files — no numeric array indexing,
+  # which zsh (1-based) and bash (0-based) disagree on.
+  local mounts_file is_project_file src_label
+  for mounts_file in "$AGENT_VM_STATE_DIR/volumes" "$host_dir/.agent-vm.volumes"; do
+    [[ -f "$mounts_file" ]] || continue
+    # One boolean per file instead of re-comparing $mounts_file inside the
+    # loop: with `done < "$mounts_file"` below, another textual mention of
+    # "$host_dir/.agent-vm.volumes" reads to shellcheck as a read+write of the
+    # same file in one pipeline, which would be a real bug if it were true.
+    case "$mounts_file" in
+      "$AGENT_VM_STATE_DIR"/volumes)
+        is_project_file=""; src_label="$AGENT_VM_STATE_DIR/volumes" ;;
+      *)
+        is_project_file="1"; src_label="<project>/.agent-vm.volumes" ;;
+    esac
     while IFS= read -r line || [[ -n "$line" ]]; do
       line="${line%%#*}"                                          # strip comments
       line="${line#"${line%%[![:space:]]*}"}"                     # trim leading whitespace
@@ -342,19 +454,59 @@ _agent_vm_build_mounts_json() {
         src="$line"
       fi
       src="${src/#\~/$HOME}"                                      # expand ~
+      # A relative source in the per-project file resolves against the project
+      # dir, so a committed .agent-vm.volumes means the same thing on any
+      # machine where the repo lands. The global file has no such anchor — a
+      # relative path there would silently depend on the caller's cwd.
+      if [[ "$src" != /* ]]; then
+        if [[ -n "$is_project_file" ]]; then
+          src="${host_dir%/}/$src"
+        else
+          echo "Warning: Mount entry '${line}' (from ${src_label}) has a relative path; global volume paths must be absolute or start with ~, skipping." >&2
+          continue
+        fi
+      fi
       # Reject characters that would break JSON interpolation below or the
       # pipe-separated cache format used for file mounts.
       if [[ "$src" == *[$'"\\\n|']* || "$dst" == *[$'"\\\n|']* ]]; then
-        echo "Warning: Mount entry '${line}' (from ~/.agent-vm/volumes) contains invalid characters (quote/backslash/newline/pipe), skipping." >&2
+        echo "Warning: Mount entry '${line}' (from ${src_label}) contains invalid characters (quote/backslash/newline/pipe), skipping." >&2
         continue
       fi
+      # Resolve the source to its real path. Directories resolve directly;
+      # files via _agent_vm_real_file_path, which also walks the final
+      # component's symlink chain. What the VM actually sees is the resolved
+      # target — Lima follows the mount path, and the hardlink staging for
+      # files links the TARGET — so containment and protection checks below
+      # must judge the real path, not the spelling. A missing path falls back
+      # to the lexical form; the -e check below warns about it right after.
+      local resolved_src
+      if [[ -d "$src" ]]; then
+        resolved_src="$(CDPATH='' cd -P -- "$src" 2>/dev/null && pwd)"
+      else
+        resolved_src="$(_agent_vm_real_file_path "$src")"
+      fi
+      resolved_src="${resolved_src:-$src}"
+      # Repository content must not choose host paths: a per-project entry
+      # whose real path escapes the project is skipped. Genuinely needed
+      # outside paths belong in ~/.agent-vm/volumes — the user's own decision
+      # rather than the repo's. Judging the fully-resolved file path (not just
+      # its parent) is what stops a symlinked file from staging a target the
+      # link spelling would have hidden (the hardlink follows the link).
+      if [[ -n "$is_project_file" ]]; then
+        case "$resolved_src/" in
+          "$host_dir_real/"*) ;;
+          *)
+            echo "Warning: Mount entry '${line}' (from ${src_label}) resolves outside the project ('${resolved_src}'); per-project entries may only mount paths inside the project. If you need it, add it to ~/.agent-vm/volumes yourself." >&2
+            continue ;;
+        esac
+      fi
       if [[ ! -e "$src" ]]; then
-        echo "Warning: Mount path '${src}' (from ~/.agent-vm/volumes) does not exist, skipping." >&2
+        echo "Warning: Mount path '${src}' (from ${src_label}) does not exist, skipping." >&2
         continue
       fi
       if [[ -f "$src" ]]; then
         if [[ "$mode" == "rw" ]]; then
-          echo "Warning: Mount entry '${line}' (from ~/.agent-vm/volumes) requests rw on a file; only directories support rw. Mount the parent directory instead. Skipping." >&2
+          echo "Warning: Mount entry '${line}' (from ${src_label}) requests rw on a file; only directories support rw. Mount the parent directory instead. Skipping." >&2
           continue
         fi
         # File mount: hardlink the source into a per-VM host staging dir so
@@ -378,26 +530,139 @@ _agent_vm_build_mounts_json() {
         continue
       fi
       if [[ ! -d "$src" ]]; then
-        echo "Warning: Mount path '${src}' (from ~/.agent-vm/volumes) is not a regular file or directory, skipping." >&2
+        echo "Warning: Mount path '${src}' (from ${src_label}) is not a regular file or directory, skipping." >&2
         continue
       fi
       local writable="false"
       [[ "$mode" == "rw" ]] && writable="true"
+      # Downgrade writable aliases of protected paths to ro — the flags only
+      # bind+remount the canonical guest path inside the VM, so any second
+      # mountPoint for the same host data would stay writable behind their
+      # back. Applies to both files; the entry is kept (read-only) so the user
+      # sees what happened instead of a silent drop.
+      if [[ "$writable" == "true" && -n "$rdonly" ]]; then
+        case "$resolved_src/" in
+          "$host_dir_real/"*)
+            echo "Warning: Mount entry '${line}' (from ${src_label}) requests rw inside the project, which --readonly protects; forcing it to ro." >&2
+            writable="false" ;;
+        esac
+      fi
+      if [[ "$writable" == "true" && -n "$git_dir_real" ]]; then
+        case "$resolved_src/" in
+          "$git_dir_real/"*)
+            echo "Warning: Mount entry '${line}' (from ${src_label}) requests rw inside .git, which --git-read-only protects; forcing it to ro." >&2
+            writable="false" ;;
+        esac
+      fi
       if [[ -n "$dst" ]]; then
         mounts_json+=", {\"location\": \"${src}\", \"mountPoint\": \"${dst}\", \"writable\": ${writable}}"
       else
         mounts_json+=", {\"location\": \"${src}\", \"writable\": ${writable}}"
       fi
+      # Record in resolved-source form so later sessions can match a baked
+      # mount against (possibly re-resolved) protected paths. The destination
+      # is the guest mountPoint verbatim (it may be a path that does not exist
+      # on the host, so resolving it would be meaningless). The mode keyword
+      # (not the JSON boolean) is stored: _agent_vm_protected_aliases matches
+      # on it.
+      if [[ "$writable" == "true" ]]; then
+        mounts_record+=("${resolved_src}|${dst:-${src}}|rw")
+      else
+        mounts_record+=("${resolved_src}|${dst:-${src}}|ro")
+      fi
     done < "$mounts_file"
-  fi
+  done
   mounts_json+="]"
 
   rm -f "$file_mounts_cache"
   if [[ ${#file_mount_entries[@]} -gt 0 ]]; then
     printf '%s\n' "${file_mount_entries[@]}" > "$file_mounts_cache"
   fi
+  # The mount record must also reflect the project dir itself: it is the one
+  # mount that always exists, and --readonly protects exactly it. The mode
+  # keyword (rw) is used for consistency with the parsed entries, since
+  # _agent_vm_protected_aliases matches on it. mkdir -p first: the builder can
+  # run before anything created the state dir (the strict-caller test calls it
+  # directly), and a failed write of the record would silently strip alias
+  # protection from later sessions.
+  mkdir -p "$AGENT_VM_STATE_DIR" 2>/dev/null
+  rm -f "$mounts_record_file"
+  {
+    printf '%s|%s|%s\n' "$host_dir_real" "$host_dir" "rw"
+    if [[ ${#mounts_record[@]} -gt 0 ]]; then
+      printf '%s\n' "${mounts_record[@]}"
+    fi
+  } > "$mounts_record_file" 2>/dev/null || echo "Warning: could not write the mount record ($mounts_record_file); --readonly/--git-read-only will not cover extra mounts aliasing the project on future sessions." >&2
 
   printf '%s' "$mounts_json"
+}
+
+# Print the guest mountPoints that alias a protected path, read from the
+# per-VM mount record written by _agent_vm_build_mounts_json.
+#
+# Why a record instead of re-reading the volumes files: the .mounts list is
+# only applied at VM creation. An existing VM started later with --readonly
+# keeps the mount list it was created with — and the flags' in-VM remount only
+# covers the canonical $host_dir (respectively $host_dir/.git), so a writable
+# alias baked in earlier (e.g. `sub:/tmp/x:rw`) would stay writable behind the
+# flag's back (CWE-284). The record is the source of truth for what Lima
+# actually mounts, so the per-session remount below can cover every alias.
+#
+# Usage: _agent_vm_protected_aliases <vm> <host_dir> [--readonly] [--git-read-only]
+# Prints one alias per line: `<guest_mount_point>|<host_src>`, excluding the
+# canonical paths themselves (those get the main remount).
+#
+# Exit status: 0 when the record was read (aliases may or may not follow),
+# 1 when the record is MISSING and a protection flag was requested. A missing
+# record means the mount metadata that should describe the VM is gone (failed
+# write at creation, hand-deleted state) — treating that as "no aliases" would
+# let a protected session launch without enforcement, so the caller aborts.
+# Without a protection flag the record is irrelevant, hence success either way.
+_agent_vm_protected_aliases() {
+  local vm_name="$1" host_dir="$2"
+  shift 2
+  local rdonly="" git_ro=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --readonly) rdonly=1; shift ;;
+      --git-read-only|--git-ro) git_ro=1; shift ;;
+      *) shift ;;
+    esac
+  done
+  local record_file="$AGENT_VM_STATE_DIR/.agent-vm-mounts-${vm_name}"
+  if [[ ! -f "$record_file" ]]; then
+    [[ -n "$rdonly" || -n "$git_ro" ]] && return 1
+    return 0
+  fi
+  local host_dir_real git_dir_real=""
+  host_dir_real="$(CDPATH='' cd -P -- "$host_dir" 2>/dev/null && pwd)"
+  host_dir_real="${host_dir_real:-$host_dir}"
+  if [[ -n "$git_ro" && -d "$host_dir/.git" ]]; then
+    git_dir_real="$(CDPATH='' cd -P -- "$host_dir/.git" 2>/dev/null && pwd)"
+    git_dir_real="${git_dir_real:-$host_dir/.git}"
+  fi
+  local line src dst writable
+  while IFS= read -r line; do
+    [[ -z "$line" ]] && continue
+    IFS='|' read -r src dst writable <<< "$line"
+    # The record stores the mode keyword (ro/rw), matching the volumes files.
+    [[ "$writable" == "rw" ]] || continue
+    # The canonical mounts are handled by the main --readonly/--git-read-only
+    # remounts; only the extra aliases need covering here.
+    [[ "$dst" == "$host_dir" || "$dst" == "$host_dir/.git" ]] && continue
+    local protected=""
+    if [[ -n "$rdonly" ]]; then
+      case "$src/" in
+        "$host_dir_real/"*) protected=1 ;;
+      esac
+    fi
+    if [[ -n "$git_ro" && -z "$protected" && -n "$git_dir_real" ]]; then
+      case "$src/" in
+        "$git_dir_real/"*) protected=1 ;;
+      esac
+    fi
+    [[ -n "$protected" ]] && printf '%s|%s\n' "$dst" "$src"
+  done < "$record_file"
 }
 
 # Current resources of <vm_name> as "cpus|memory_gib|disk_gib".
@@ -518,7 +783,8 @@ _agent_vm_ensure_running() {
     # Mount and memory/cpus are applied separately from disk, because
     # Lima rejects the entire edit if disk shrinking is attempted.
     local mounts_json
-    mounts_json=$(_agent_vm_build_mounts_json "$vm_name" "$host_dir")
+    mounts_json=$(_agent_vm_build_mounts_json "$vm_name" "$host_dir" \
+      ${rdonly:+"--readonly"} ${git_ro:+"--git-read-only"})
     local edit_args=()
     edit_args+=(--set ".mounts = ${mounts_json}")
     [[ -n "$memory" ]] && edit_args+=(--memory "$memory")
@@ -547,15 +813,20 @@ _agent_vm_ensure_running() {
       local reply=""
       IFS= read -r reply </dev/tty 2>/dev/null || reply=""
       if [[ ! "$reply" =~ ^[Yy]$ ]]; then
-        echo "Aborted. Starting with current settings."
-        return 0
+        # Fail the command, not just the resize: a plain "continue" here would
+        # skip the rest of ensure_running — including the per-session
+        # restrictions (--offline/--readonly/...) — and the caller would then
+        # launch the agent without any of the protection that was requested.
+        echo "Aborted. The session was not started." >&2
+        return 1
       fi
       echo "Stopping VM..."
       limactl stop "$vm_name" &>/dev/null
     fi
     echo "Updating VM resources..."
     # Don't touch .mounts here — those are baked in at creation (including any
-    # entries from ~/.agent-vm/volumes). Re-setting them would clobber extras.
+    # entries from ~/.agent-vm/volumes and <project>/.agent-vm.volumes).
+    # Re-setting them would clobber extras.
     local edit_args=()
     [[ -n "$memory" ]] && edit_args+=(--memory "$memory")
     [[ -n "$cpus" ]]   && edit_args+=(--cpus "$cpus")
@@ -611,11 +882,12 @@ _agent_vm_ensure_running() {
   if ! limactl shell "$vm_name" test -w "$host_dir" &>/dev/null; then
     echo "Project mount is not writable; repairing..." >&2
     limactl stop "$vm_name" &>/dev/null
-    # Rebuild the full mounts JSON so any ~/.agent-vm/volumes entries are
-    # preserved across the repair (a plain project-dir-only set would silently
-    # drop them).
+    # Rebuild the full mounts JSON so any ~/.agent-vm/volumes and
+    # <project>/.agent-vm.volumes entries are preserved across the repair (a
+    # plain project-dir-only set would silently drop them).
     local repair_mounts_json
-    repair_mounts_json=$(_agent_vm_build_mounts_json "$vm_name" "$host_dir")
+    repair_mounts_json=$(_agent_vm_build_mounts_json "$vm_name" "$host_dir" \
+      ${rdonly:+"--readonly"} ${git_ro:+"--git-read-only"})
     (cd /tmp && limactl edit "$vm_name" \
       --set ".mounts = ${repair_mounts_json}") &>/dev/null
     limactl start "$vm_name" &>/dev/null
@@ -654,19 +926,105 @@ _agent_vm_ensure_running() {
     fi
   fi
 
-  # Run per-user runtime script if it exists
-  if [ -f "$AGENT_VM_STATE_DIR/runtime.sh" ]; then
-    echo "Running user runtime setup..."
-    limactl shell --workdir "$host_dir" "$vm_name" zsh -l < "$AGENT_VM_STATE_DIR/runtime.sh"
+  # Load file mount entries from the cache. _agent_vm_build_mounts_json writes
+  # them there (from its own local scope) for both new and existing VMs, so we
+  # always read them back here to drive the inside-VM bind mounts below.
+  if [[ -f "$file_mounts_cache" ]]; then
+    local entry
+    while IFS= read -r entry; do
+      [[ -n "$entry" ]] && file_mount_entries+=("$entry")
+    done < "$file_mounts_cache"
+
+    # For existing VMs, refresh host-side hardlinks so atomic-rename edits on the
+    # host propagate after a VM restart (ln/cp against the cached staging path).
+    # New VMs just staged fresh copies in _agent_vm_build_mounts_json, so there
+    # is nothing to refresh.
+    #
+    # The refresh RE-VALIDATES project-file sources against the containment
+    # rule: the cache stores the lexical source, and a symlink that pointed
+    # inside the project at creation time can be retargeted afterwards —
+    # re-staging through the link would then copy an outside-project host file
+    # into the VM (CWE-552), the same escape the builder blocks at creation.
+    # A source that no longer passes is skipped with a warning; the VM keeps
+    # seeing the last-staged (in-project) content.
+    if [[ -z "$is_new_vm" ]] && [[ ${#file_mount_entries[@]} -gt 0 ]]; then
+      local host_src host_staging _bind_src _bind_dst
+      local host_dir_real refreshed_src
+      host_dir_real="$(CDPATH='' cd -P -- "$host_dir" 2>/dev/null && pwd)"
+      host_dir_real="${host_dir_real:-$host_dir}"
+      for entry in "${file_mount_entries[@]}"; do
+        IFS='|' read -r host_src host_staging _bind_src _bind_dst <<< "$entry"
+        [[ -z "$host_staging" ]] && continue
+        if [[ ! -e "$host_src" ]]; then
+          echo "Warning: Mount source '${host_src}' no longer exists; VM will see the last-staged copy." >&2
+          continue
+        fi
+        # Only project-file sources need the re-check: entries from the
+        # user-owned global file are the user's own choice. The cache does not
+        # record which file an entry came from, so distinguish by location: a
+        # source under the project (which is what the per-project file can
+        # legally produce) is re-resolved and re-checked.
+        case "$host_src/" in
+          "$host_dir_real/"*)
+            refreshed_src="$(_agent_vm_real_file_path "$host_src")"
+            case "$refreshed_src/" in
+              "$host_dir_real/"*) ;;
+              *)
+                echo "Warning: Mount source '${host_src}' now resolves outside the project ('${refreshed_src}'); not refreshing it. The VM will see the last-staged copy." >&2
+                continue ;;
+            esac
+            ;;
+        esac
+        _agent_vm_stage_file "$host_src" "$host_staging" \
+          || echo "Warning: Failed to refresh staged '${host_src}'; VM may see stale content." >&2
+      done
+    fi
   fi
 
-  # Run project-specific runtime script if it exists
-  if [ -f "${host_dir}/.agent-vm.runtime.sh" ]; then
-    echo "Running project runtime setup..."
-    limactl shell --workdir "$host_dir" "$vm_name" zsh -l < "${host_dir}/.agent-vm.runtime.sh"
+  # Apply inside-VM bind mounts so each staged file appears at its final path.
+  # Lima re-mounts staging dirs on each start, but the bind onto the final dest
+  # is ephemeral.
+  #
+  # This runs BEFORE the per-session --readonly/--git-read-only remounts below:
+  # preparing a destination needs a `touch` on it, which would fail against a
+  # destination that was already remounted read-only (e.g. a file bind whose
+  # destination defaults to a path inside the project, .agent-vm.volumes'
+  # default form). The binds themselves always end up read-only (remount in
+  # the same script), so ordering first does not weaken the policy.
+  if [[ ${#file_mount_entries[@]} -gt 0 ]]; then
+    local file_bind_payload=()
+    local _host_src _host_staging bind_src bind_dst
+    for entry in "${file_mount_entries[@]}"; do
+      IFS='|' read -r _host_src _host_staging bind_src bind_dst <<< "$entry"
+      [[ -n "$bind_src" && -n "$bind_dst" ]] && file_bind_payload+=("${bind_src}|${bind_dst}")
+    done
+    if [[ ${#file_bind_payload[@]} -gt 0 ]]; then
+      echo "Mounting individual files..."
+      # Paths are passed as positional args (single-quoted script) so entries
+      # containing quotes or metacharacters cannot be interpreted as shell code.
+      if ! limactl shell "$vm_name" sudo bash -c '
+        set -e
+        for entry in "$@"; do
+          bind_src="${entry%%|*}"
+          bind_dst="${entry#*|}"
+          if ! findmnt -no TARGET "$bind_dst" >/dev/null 2>&1; then
+            mkdir -p "$(dirname "$bind_dst")" && touch "$bind_dst"
+            mount --bind "$bind_src" "$bind_dst"
+            mount -o remount,ro,bind "$bind_dst"
+          fi
+        done
+      ' -- "${file_bind_payload[@]}"; then
+        echo "Error: Failed to mount individual files inside the VM." >&2
+        return 1
+      fi
+    fi
   fi
 
-  # Apply per-session restrictions
+  # Apply per-session restrictions. Everything below is policy the user asked
+  # for with a flag, so it runs BEFORE the runtime scripts: a runtime script
+  # must not be able to write through a mount the session promised to protect
+  # (and under --readonly a later `touch`-style setup step in a script would
+  # simply fail against the read-only mount).
   if [[ -n "$offline" ]]; then
     echo "Enabling offline mode..."
     limactl shell "$vm_name" sudo iptables -F OUTPUT 2>/dev/null
@@ -700,62 +1058,66 @@ _agent_vm_ensure_running() {
     fi
   fi
 
-  # Load file mount entries from the cache. _agent_vm_build_mounts_json writes
-  # them there (from its own local scope) for both new and existing VMs, so we
-  # always read them back here to drive the inside-VM bind mounts below.
-  if [[ -f "$file_mounts_cache" ]]; then
-    local entry
-    while IFS= read -r entry; do
-      [[ -n "$entry" ]] && file_mount_entries+=("$entry")
-    done < "$file_mounts_cache"
-
-    # For existing VMs, refresh host-side hardlinks so atomic-rename edits on the
-    # host propagate after a VM restart (ln/cp against the cached staging path).
-    # New VMs just staged fresh copies in _agent_vm_build_mounts_json, so there
-    # is nothing to refresh.
-    if [[ -z "$is_new_vm" ]] && [[ ${#file_mount_entries[@]} -gt 0 ]]; then
-      local host_src host_staging _bind_src _bind_dst
-      for entry in "${file_mount_entries[@]}"; do
-        IFS='|' read -r host_src host_staging _bind_src _bind_dst <<< "$entry"
-        [[ -z "$host_staging" ]] && continue
-        if [[ ! -e "$host_src" ]]; then
-          echo "Warning: Mount source '${host_src}' no longer exists; VM will see the last-staged copy." >&2
-          continue
+  # Close the alias loophole on EXISTING VMs: the .mounts list is baked at
+  # creation, so a writable alias of a protected path created without the
+  # flags (e.g. `sub:/tmp/x:rw` in .agent-vm.volumes, VM later started with
+  # --readonly) would stay writable — the remounts above cover only the
+  # canonical paths (CWE-284). Remount every recorded writable alias of a
+  # protected path read-only for this session. Files are skipped: file mounts
+  # are always read-only (staged + bind-remounted ro).
+  local alias_line alias_dst alias_src
+  local aliases alias_rc=0
+  aliases="$(_agent_vm_protected_aliases "$vm_name" "$host_dir" \
+    ${rdonly:+"--readonly"} ${git_ro:+"--git-read-only"})" || alias_rc=$?
+  if [[ "$alias_rc" -ne 0 ]]; then
+    # The record describing this VM's mounts is gone, so "no aliases found"
+    # would be a guess, not a fact — and a wrong guess here leaves a writable
+    # alias behind the requested protection (CWE-284). Fail closed instead.
+    echo "Error: the mount record for '$vm_name' is missing, so the read-only policy cannot be verified against the VM's extra mounts." >&2
+    echo "The session was not started; runtime setup may already have run before isolation was enforced." >&2
+    echo "Re-run with --reset to rebuild the VM and its mount record, then retry." >&2
+    return 1
+  fi
+  if [[ -n "$aliases" ]]; then
+    echo "Enforcing read-only policy on extra mounts aliasing the project..."
+    local alias_failed=""
+    while IFS= read -r alias_line; do
+      IFS='|' read -r alias_dst alias_src <<< "$alias_line"
+      [[ -n "$alias_dst" ]] || continue
+      if [[ -d "$alias_src" ]]; then
+        limactl shell "$vm_name" sudo mkdir -p "$alias_dst"
+        if ! limactl shell "$vm_name" sudo mount --bind "$alias_src" "$alias_dst" 2>/dev/null \
+           || ! limactl shell "$vm_name" sudo mount -o remount,ro,bind "$alias_dst" 2>/dev/null; then
+          echo "Warning: could not enforce read-only on alias '$alias_dst' (host source '$alias_src'); it may still be writable." >&2
+          alias_failed=1
         fi
-        _agent_vm_stage_file "$host_src" "$host_staging" \
-          || echo "Warning: Failed to refresh staged '${host_src}'; VM may see stale content." >&2
-      done
+      fi
+    done <<< "$aliases"
+    # Fail closed: the canonical remounts above abort on failure, and this is
+    # the same contract — a session that asked for read-only protection must
+    # not launch with a writable alias left behind. Every alias is still
+    # attempted first, so as many as possible are closed and the diagnostics
+    # below list all of them.
+    if [[ -n "$alias_failed" ]]; then
+      echo "Error: the requested read-only policy could not be enforced on every mount aliasing a protected path (see warnings above)." >&2
+      echo "The session was not started; runtime setup may already have run before isolation was enforced." >&2
+      echo "Re-run with --reset to rebuild the mount list, then retry." >&2
+      return 1
     fi
   fi
 
-  # Apply inside-VM bind mounts so each staged file appears at its final path.
-  # Lima re-mounts staging dirs on each start, but the bind onto the final dest
-  # is ephemeral. Batched into one limactl shell call (roundtrips cost ~1-2s)
-  # and made idempotent so re-runs on a running VM are cheap no-ops.
-  if [[ ${#file_mount_entries[@]} -gt 0 ]]; then
-    local file_bind_payload=()
-    local _host_src _host_staging bind_src bind_dst
-    for entry in "${file_mount_entries[@]}"; do
-      IFS='|' read -r _host_src _host_staging bind_src bind_dst <<< "$entry"
-      [[ -n "$bind_src" && -n "$bind_dst" ]] && file_bind_payload+=("${bind_src}|${bind_dst}")
-    done
-    if [[ ${#file_bind_payload[@]} -gt 0 ]]; then
-      echo "Mounting individual files..."
-      # Paths are passed as positional args (single-quoted script) so entries
-      # containing quotes or metacharacters cannot be interpreted as shell code.
-      limactl shell "$vm_name" sudo bash -c '
-        set -e
-        for entry in "$@"; do
-          bind_src="${entry%%|*}"
-          bind_dst="${entry#*|}"
-          if ! findmnt -no TARGET "$bind_dst" >/dev/null 2>&1; then
-            mkdir -p "$(dirname "$bind_dst")" && touch "$bind_dst"
-            mount --bind "$bind_src" "$bind_dst"
-            mount -o remount,ro,bind "$bind_dst"
-          fi
-        done
-      ' -- "${file_bind_payload[@]}"
-    fi
+  # Run per-user runtime script if it exists. Runs after the per-session
+  # restrictions above, so a script cannot write through a mount the session
+  # promised to protect (and under --readonly the project is already ro).
+  if [ -f "$AGENT_VM_STATE_DIR/runtime.sh" ]; then
+    echo "Running user runtime setup..."
+    limactl shell --workdir "$host_dir" "$vm_name" zsh -l < "$AGENT_VM_STATE_DIR/runtime.sh"
+  fi
+
+  # Run project-specific runtime script if it exists
+  if [ -f "${host_dir}/.agent-vm.runtime.sh" ]; then
+    echo "Running project runtime setup..."
+    limactl shell --workdir "$host_dir" "$vm_name" zsh -l < "${host_dir}/.agent-vm.runtime.sh"
   fi
 }
 
@@ -1124,8 +1486,11 @@ VMs are persistent and unique per directory. Running "agent-vm shell" or
 Customization:
   ~/.agent-vm/env                   Shared env vars / tokens (dotenv-style;
                                      auto-loaded into every VM shell)
-  ~/.agent-vm/volumes               Extra host paths to mount in VMs (one per
-                                     line, supports both directories and files)
+  ~/.agent-vm/volumes               Extra host paths to mount in every VM (one
+                                     per line, supports directories and files)
+  <project>/.agent-vm.volumes       Per-project extra mounts (same syntax;
+                                     relative paths resolve against the project;
+                                     may only mount paths inside the project)
   ~/.agent-vm/setup.sh              Per-user setup (runs during "agent-vm setup")
   ~/.agent-vm/runtime.sh            Per-user runtime (runs on each VM start)
   <project>/.agent-vm.runtime.sh    Per-project runtime (runs on each VM start)

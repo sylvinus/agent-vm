@@ -96,6 +96,13 @@ section "sourcing under a strict caller"
   _agent_vm_base_exists >/dev/null
   agent-vm version >/dev/null
   agent-vm info "$PROJ" >/dev/null
+  # The mount builder is called from command substitution inside
+  # _agent_vm_ensure_running, so a stray unbound variable there would also
+  # only surface for a strict caller.
+  VOL_STRICT_HOME="$SB/strict-home"
+  mkdir -p "$VOL_STRICT_HOME/.agent-vm" "$VOL_STRICT_HOME/proj"
+  HOME="$VOL_STRICT_HOME" _agent_vm_build_mounts_json \
+    agent-vm-proj-deadbeef "$VOL_STRICT_HOME/proj" >/dev/null
 ) 2>"$SB/strict.err"
 if [ -s "$SB/strict.err" ]; then
   fail "no diagnostics under set -u / pipefail"; sed 's/^/         /' "$SB/strict.err"
@@ -351,6 +358,351 @@ fi
 # The file has to survive being sourced the way the VM sources it.
 val="$(set -a; . "$ENVHOME/.agent-vm/env"; set +a; printf '%s' "${AC_GIT_USER_NAME:-BROKEN}")"
 check "the file sources cleanly in a shell" "$val" "O'Brien"
+
+# =============================================================================
+section "mounts: global + per-project volumes"
+# =============================================================================
+# The mounts JSON is built from ~/.agent-vm/volumes (global) merged with
+# <project>/.agent-vm.volumes (per-project, appended after the global ones).
+# Calling the builder directly keeps this independent of a real VM.
+VOLHOME="$SB/volhome"; mkdir -p "$VOLHOME/.agent-vm" "$VOLHOME/.ssh"
+printf 'secret' > "$VOLHOME/.ssh/id_rsa"
+VOLPROJ="$SB/volproj"; mkdir -p "$VOLPROJ/sub" "$VOLPROJ/fix"
+printf 'x' > "$VOLPROJ/token.txt"
+printf 'x' > "$VOLHOME/gitconfig"
+VOL_VM="agent-vm-proj-deadbeef"
+# The builder is invoked through bash explicitly (test.sh itself also runs
+# under zsh) and with HOME pointed at a scratch dir, so the real ~/.agent-vm
+# is never read or written.
+# The extra flag args exercise the --readonly/--git-read-only downgrades; the
+# plain form keeps the other checks independent of them.
+mounts_of() { HOME="$VOLHOME" bash -c '
+  source "$1"; _agent_vm_build_mounts_json "$2" "$3"' _ "$AGENT_VM_SH" "$VOL_VM" "$VOLPROJ"; }
+mounts_ro_of() { HOME="$VOLHOME" bash -c '
+  source "$1"; _agent_vm_build_mounts_json "$2" "$3" --readonly --git-read-only' \
+  _ "$AGENT_VM_SH" "$VOL_VM" "$VOLPROJ"; }
+# True when the substrings appear in the given order in "$1".
+substrings_in_order() {
+  local rest="$1" piece
+  shift
+  for piece in "$@"; do
+    case "$rest" in
+      *"$piece"*) rest="${rest#*"$piece"}" ;;
+      *) return 1 ;;
+    esac
+  done
+}
+
+# 1. No volumes files anywhere: just the project dir, writable.
+check "no volumes files -> project dir only" \
+  "$(mounts_of)" "[{\"location\": \"$VOLPROJ\", \"writable\": true}]"
+
+# 2. Global-only: an ro dir and a file mount (with an explicit destination).
+printf '%s\n' \
+  "$VOLPROJ/fix" \
+  "$VOLPROJ/token.txt:~/.token.txt" \
+  > "$VOLHOME/.agent-vm/volumes"
+m="$(mounts_of)"
+case "$m" in
+  *"\"location\": \"$VOLPROJ/fix\", \"writable\": false"*) pass "global ro dir mounted" ;;
+  *) fail "global ro dir missing: $m" ;;
+esac
+# The staging dir path appears in the JSON with its index; a file entry is
+# recognizable by that location shape.
+case "$m" in
+  *"\"location\": \"$VOLHOME/.agent-vm/file-mounts/$VOL_VM/0\""*) pass "global file staged at index 0" ;;
+  *) fail "global file mount missing: $m" ;;
+esac
+check "global file mount cache written" \
+  "$(cut -d'|' -f1,4 "$VOLHOME/.agent-vm/.agent-vm-file-mounts-$VOL_VM" | tr '\n' ' ')" \
+  "$VOLPROJ/token.txt|~/.token.txt "
+
+# 3. Per-project file: comments/blanks ignored, entries appended after the
+# global ones, a relative source resolves against the project dir, and the
+# file-mount indices advance across both files (no staging collision).
+printf '%s\n' \
+  "# comment" \
+  "" \
+  "sub:/home/me/sub:rw" \
+  "token.txt:/tmp/committed-token" \
+  "./missing-thing" \
+  > "$VOLPROJ/.agent-vm.volumes"
+m="$(mounts_of 2>"$SB/vol.err")"
+if substrings_in_order "$m" \
+    "$VOLPROJ/fix\", \"writable\": false" \
+    "file-mounts/$VOL_VM/0" \
+    "$VOLPROJ/sub\", \"mountPoint\": \"/home/me/sub\", \"writable\": true" \
+    "file-mounts/$VOL_VM/1"; then
+  pass "global then per-project entries, in order"
+else
+  fail "global/per-project merge wrong: $m"
+fi
+check "per-project relative file mount cache entry" \
+  "$(cut -d'|' -f1,4 "$VOLHOME/.agent-vm/.agent-vm-file-mounts-$VOL_VM" | tail -n 1)" \
+  "$VOLPROJ/token.txt|/tmp/committed-token"
+case "$(cat "$SB/vol.err")" in
+  *"missing-thing"*) pass "missing relative path skipped with a warning" ;;
+  *) fail "no warning for the missing relative path: $(cat "$SB/vol.err")" ;;
+esac
+
+# 4. A relative path in the GLOBAL file is rejected (it would silently depend
+# on the caller's cwd), while ~ still expands there.
+# shellcheck disable=SC2088  # the tilde is deliberately literal: it tests the file's own ~ expansion
+printf '%s\n' "../elsewhere" "~/gitconfig" > "$VOLHOME/.agent-vm/volumes"
+printf '%s\n' "fix" > "$VOLPROJ/.agent-vm.volumes"
+m="$(mounts_of 2>"$SB/vol.err")"
+case "$(cat "$SB/vol.err")" in
+  *"relative path"*) pass "relative path in the global file is rejected" ;;
+  *) fail "relative global path not rejected: $(cat "$SB/vol.err")" ;;
+esac
+case "$m" in
+  *"\"location\": \"$VOLPROJ/fix\", \"writable\": false"*)
+    pass "per-project file still parsed after a bad global line" ;;
+  *) fail "per-project entry lost after global warning: $m" ;;
+esac
+check "~ expansion still works in the global file" \
+  "$(cut -d'|' -f1 "$VOLHOME/.agent-vm/.agent-vm-file-mounts-$VOL_VM" 2>/dev/null | tr '\n' ' ')" \
+  "$VOLHOME/gitconfig "
+
+# 5. Security: repository content must not choose host paths (CWE-552). A
+# per-project entry pointing at ~/.ssh (directly, via .., or via a symlink —
+# including a symlinked *file*, which the hardlink staging would happily
+# link) is skipped; the same entries are fine in the global file, which is
+# the user's own decision.
+rm -f "$VOLHOME/.agent-vm/volumes"
+ln -s "$VOLHOME/.ssh" "$VOLPROJ/ssh-link"
+ln -s "$VOLHOME/.ssh/id_rsa" "$VOLPROJ/key-link"
+printf '%s\n' \
+  "$VOLHOME/.ssh" \
+  "../$(basename "$VOLHOME")/ssh-link" \
+  "ssh-link" \
+  "key-link:/tmp/key" \
+  > "$VOLPROJ/.agent-vm.volumes"
+m="$(mounts_of 2>"$SB/vol.err")"
+case "$(cat "$SB/vol.err")" in
+  *"resolves outside the project"*) pass "outside paths in the project file are rejected" ;;
+  *) fail "project file escaped the project without a warning: $(cat "$SB/vol.err")" ;;
+esac
+case "$m" in
+  *"id_rsa"*) fail "host credentials leaked into the mount list: $m" ;;
+  *) pass "no ~/.ssh path reached the mount list" ;;
+esac
+case "$m" in
+  *"\"location\": \"$VOLPROJ\""*) pass "the project dir mount itself survived" ;;
+  *) fail "project dir mount missing: $m" ;;
+esac
+# The user-owned global file may mount the same paths: nothing is skipped.
+printf '%s\n' "$VOLHOME/.ssh" > "$VOLHOME/.agent-vm/volumes"
+printf '%s\n' "fix" > "$VOLPROJ/.agent-vm.volumes"
+m="$(mounts_of 2>"$SB/vol.err")"
+check "the same path is allowed in the global file" \
+  "$(cat "$SB/vol.err")" ""
+case "$m" in
+  *"\"location\": \"$VOLHOME/.ssh\", \"writable\": false"*) pass "global file mounts outside paths" ;;
+  *) fail "global outside path not mounted: $m" ;;
+esac
+rm -f "$VOLHOME/.agent-vm/volumes" "$VOLPROJ/ssh-link" "$VOLPROJ/key-link"
+
+# 6. Security: --readonly/--git-read-only must also cover the mount *list*
+# (CWE-284). The flags bind+remount one guest path; a second mountPoint for
+# the same host data would stay writable. Any rw entry under the project (or
+# under .git) is therefore forced to ro — from either file.
+printf '%s\n' "$VOLPROJ/sub:/home/me/sub:rw" > "$VOLHOME/.agent-vm/volumes"
+printf '%s\n' "sub:/home/me/sub-rw:rw" > "$VOLPROJ/.agent-vm.volumes"
+m="$(mounts_ro_of 2>"$SB/vol.err")"
+if substrings_in_order "$m" \
+    "\"location\": \"$VOLPROJ/sub\", \"mountPoint\": \"/home/me/sub\", \"writable\": false" \
+    "\"location\": \"$VOLPROJ/sub\", \"mountPoint\": \"/home/me/sub-rw\", \"writable\": false"; then
+  pass "rw aliases of the project are forced to ro under --readonly"
+else
+  fail "writable alias survived --readonly: $m"
+fi
+check "both downgrades warned about" \
+  "$(grep -c 'forcing it to ro' "$SB/vol.err")" "2"
+# Without the flags the same entries stay writable.
+m="$(mounts_of)"
+case "$m" in
+  *"\"mountPoint\": \"/home/me/sub-rw\", \"writable\": true"*) pass "rw allowed again without the flags" ;;
+  *) fail "no rw alias without --readonly: $m" ;;
+esac
+
+# 7. .git protection: same downgrade logic, for --git-read-only. A plain
+# directory stands in for .git — the bash 3.2 CI container has no git, and the
+# downgrade logic only cares that the path exists.
+mkdir -p "$VOLPROJ/.git"
+printf '%s\n' ".git:/home/me/git:rw" > "$VOLPROJ/.agent-vm.volumes"
+m="$(mounts_ro_of 2>"$SB/vol.err")"
+case "$m" in
+  *"\"location\": \"$VOLPROJ/.git\", \"mountPoint\": \"/home/me/git\", \"writable\": false"*)
+    pass "rw .git alias forced to ro under --git-read-only" ;;
+  *) fail "writable .git alias survived --git-read-only: $m" ;;
+esac
+m="$(mounts_of)"
+case "$m" in
+  *"\"mountPoint\": \"/home/me/git\", \"writable\": true"*) pass ".git rw allowed without the flag" ;;
+  *) fail ".git alias downgraded without --git-read-only: $m" ;;
+esac
+
+# 8. The mount record (persisted for alias protection on later sessions):
+# one line per mount, resolved host source first, canonical project dir
+# included, mode keyword last. Built from the section-7 state: the global
+# file's `sub` entry, the project file's `.git` entry, plus the project dir.
+check "mount record: canonical project dir first, resolved sources" \
+  "$(cat "$VOLHOME/.agent-vm/.agent-vm-mounts-$VOL_VM")" \
+  "$VOLPROJ|$VOLPROJ|rw
+$VOLPROJ/sub|/home/me/sub|rw
+$VOLPROJ/.git|/home/me/git|rw"
+
+# 9. Alias extraction from the record (CWE-284 on existing VMs): with the
+# flags, every writable alias under a protected path is listed for the
+# per-session remount; ro aliases, outside paths and the canonical mounts
+# are not.
+REC="$VOLHOME/.agent-vm/.agent-vm-mounts-$VOL_VM"
+printf '%s\n' \
+  "$VOLPROJ|$VOLPROJ|rw" \
+  "$VOLPROJ/.git|$VOLPROJ/.git|rw" \
+  "$VOLPROJ/sub|/home/me/sub|rw" \
+  "$VOLPROJ/sub|/home/me/sub-ro|ro" \
+  "$VOLPROJ/token.txt|/tmp/committed-token|ro" \
+  "$VOLHOME/elsewhere|/tmp/out|rw" \
+  > "$REC"
+aliases_of() {
+  local ro="${1:-}" git_ro="${2:-}"
+  HOME="$VOLHOME" bash -c '
+    source "$1"; _agent_vm_protected_aliases "$2" "$3" "$4" "$5"' \
+    _ "$AGENT_VM_SH" "$VOL_VM" "$VOLPROJ" \
+    "${ro:+--readonly}" "${git_ro:+--git-read-only}"
+}
+check "aliases: only the writable in-project alias under --readonly" \
+  "$(aliases_of 1)" "/home/me/sub|$VOLPROJ/sub"
+check "aliases: none without flags" "$(aliases_of)" ""
+check "aliases: an in-project alias is covered by either flag" \
+  "$(aliases_of 1 1)" "/home/me/sub|$VOLPROJ/sub"
+# The .git subdirectory (not the whole project) must NOT be treated as
+# protected by plain --readonly: that flag remounts the project root, which
+# already covers .git through the parent mount, and blindly listing .git
+# aliases under --readonly would produce a confusing second remount of the
+# same data. Only --git-read-only targets .git specifically.
+printf '%s\n' "$VOLPROJ/.git|/tmp/git-only|rw" > "$REC"
+check "aliases: a .git-only alias needs --git-read-only, not --readonly" \
+  "$(aliases_of 1 1)" "/tmp/git-only|$VOLPROJ/.git"
+
+rm -rf "$VOLHOME" "$VOLPROJ"
+
+# =============================================================================
+section "alias enforcement fails closed"
+# =============================================================================
+# A session that requests --readonly must not launch if a recorded writable
+# alias cannot be remounted read-only: warning-and-continue would launch the
+# agent with weaker isolation than requested (CWE-284). The enforcement loop
+# is exercised directly — stubbing limactl's `sudo` plumbing is not needed
+# because the failure is injected the same way the VM would produce it: a
+# failing shell call. Run through the real _agent_vm_ensure_running would need
+# a full VM; instead replicate its alias block's inputs and check the
+# contract of the pieces it composes.
+FA_HOME="$SB/fa-home"; FA_PROJ="$SB/fa-proj"
+mkdir -p "$FA_HOME/.agent-vm" "$FA_PROJ/sub"
+printf '%s|%s|%s\n' "$FA_PROJ/sub" /tmp/fa-alias rw \
+  > "$FA_HOME/.agent-vm/.agent-vm-mounts-$VOL_VM"
+fa_aliases() { HOME="$FA_HOME" bash -c '
+  source "$1"; _agent_vm_protected_aliases "$2" "$3" --readonly' \
+  _ "$AGENT_VM_SH" "$VOL_VM" "$FA_PROJ"; }
+check "fail-closed setup: the alias is selected for enforcement" \
+  "$(fa_aliases)" "/tmp/fa-alias|$FA_PROJ/sub"
+# And the failure path in ensure_running is a `return 1` right after the
+# warning: assert the source keeps that contract so a refactor cannot
+# silently reintroduce warn-and-continue.
+if grep -A6 'could not enforce read-only on alias' "$AGENT_VM_SH" \
+   | grep -q 'alias_failed=1'; then
+  pass "a failed alias remount is recorded, not ignored"
+else
+  fail "alias remount failure is not tracked"
+fi
+if grep -A16 'alias_failed=1' "$AGENT_VM_SH" | grep -q 'return 1'; then
+  pass "any failed alias remount aborts the session (fail closed)"
+else
+  fail "failed alias remount does not abort the session"
+fi
+# A MISSING record must not read as "no aliases": the metadata that should
+# describe the VM is gone, so a protected session cannot be verified — it must
+# fail closed instead of launching unchecked.
+rm -f "$FA_HOME/.agent-vm/.agent-vm-mounts-$VOL_VM"
+if fa_aliases >/dev/null 2>&1; then
+  fail "a missing mount record is treated as 'no aliases'"
+else
+  pass "a missing mount record fails closed (non-zero exit)"
+fi
+if HOME="$FA_HOME" bash -c '
+  source "$1"; _agent_vm_protected_aliases "$2" "$3"' \
+  _ "$AGENT_VM_SH" "$VOL_VM" "$FA_PROJ" >/dev/null 2>&1; then
+  pass "without flags a missing record is irrelevant (exit 0)"
+else
+  fail "missing record errors even without protection flags"
+fi
+rm -rf "$FA_HOME" "$FA_PROJ"
+
+# =============================================================================
+section "file-mount refresh revalidates the project boundary"
+# =============================================================================
+# The per-VM file-mount cache stores the lexical source. A symlink that pointed
+# inside the project at VM creation can be retargeted outside afterwards; the
+# refresh must re-check the resolved target before re-staging, or the next
+# session would copy an outside-project host file into the VM (CWE-552).
+RF_HOME="$SB/rf-home"; RF_PROJ="$SB/rf-proj"
+mkdir -p "$RF_HOME/.agent-vm" "$RF_HOME/.ssh" "$RF_PROJ"
+printf 'SECRET' > "$RF_HOME/.ssh/id_rsa"
+printf 'x' > "$RF_PROJ/token.txt"
+printf 'token.txt:/tmp/vm-token\n' > "$RF_PROJ/.agent-vm.volumes"
+HOME="$RF_HOME" bash -c '
+  source "$1"
+  _agent_vm_build_mounts_json "'"$VOL_VM"'" "'"$RF_PROJ"'" >/dev/null 2>&1
+' _ "$AGENT_VM_SH"
+RF_CACHE="$RF_HOME/.agent-vm/.agent-vm-file-mounts-$VOL_VM"
+check "refresh setup: cache holds the lexical source" \
+  "$(cut -d'|' -f1 "$RF_CACHE")" "$RF_PROJ/token.txt"
+# Retarget the (previously in-project, real-file) source outside the project.
+rm -f "$RF_PROJ/token.txt"
+ln -s "$RF_HOME/.ssh/id_rsa" "$RF_PROJ/token.txt"
+rf_err="$SB/rf.err"
+# Drive the refresh through the real ensure_running branch: stub limactl so
+# the VM counts as existing + running (existing-VM => is_new_vm empty => the
+# refresh path is what runs). Everything limactl would do is a no-op; only
+# the staging loop has real effects on the host.
+mkdir -p "$SB/rfbin"
+cat > "$SB/rfbin/limactl" <<'STUB'
+#!/usr/bin/env bash
+case "$1" in
+  list)
+    case "$*" in
+      *"{{.Name}} {{.Status}}"*)
+        echo "agent-vm-base Stopped"
+        echo "agent-vm-proj-deadbeef Running" ;;
+      *-q*)
+        echo "agent-vm-base"
+        echo "agent-vm-proj-deadbeef" ;;
+      *"{{.Name}}|"*)
+        echo "agent-vm-proj-deadbeef|4|8589934592|34359738368" ;;
+    esac ;;
+esac
+exit 0
+STUB
+chmod +x "$SB/rfbin/limactl"
+# ensure_running needs a base VM too; the stub list already reports one.
+HOME="$RF_HOME" PATH="$SB/rfbin:$PATH" bash -c '
+  _agent_vm_check_linux_prereqs() { return 0; }
+  source "$1"
+  _agent_vm_ensure_running "'"$VOL_VM"'" "'"$RF_PROJ"'" >/dev/null
+' _ "$AGENT_VM_SH" 2>"$rf_err"
+case "$(cat "$rf_err")" in
+  *"now resolves outside the project"*) pass "a retargeted symlink is not refreshed" ;;
+  *) fail "retargeted symlink refreshed without revalidation: $(cat "$rf_err")" ;;
+esac
+case "$(cat "$RF_HOME/.agent-vm/file-mounts/$VOL_VM/0/token.txt")" in
+  SECRET) fail "the outside target content was staged" ;;
+  x)      pass "staged content is still the last in-project copy" ;;
+  *)      fail "unexpected staged content" ;;
+esac
+rm -rf "$RF_HOME" "$RF_PROJ" "$SB/rfbin"
 
 # =============================================================================
 section "release hygiene"

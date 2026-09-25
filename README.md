@@ -257,6 +257,35 @@ When no destination is specified, the path is mounted at the same location insid
 
 Individual files are supported without exposing their parent directory: agent-vm hardlinks the source into a per-VM staging dir under `~/.agent-vm/file-mounts/<vm>/`, then bind-mounts it at the final destination on each VM start. If the source sits on a different filesystem (hardlink impossible), it falls back to a copy and live host changes won't propagate until the next VM restart. The staged hardlink is refreshed on each `agent-vm` invocation, so atomic-rename edits (common in editors) are picked up at the next VM (re)start.
 
+### Per-project extra mounts: `.agent-vm.volumes`
+
+Create this file at the root of a project to mount extra host paths in **that project's VM only**, on top of whatever the global [`~/.agent-vm/volumes`](#extra-host-mounts-agent-vmvolumes) lists. Same syntax; per-project entries are applied after the global ones.
+
+A **relative source** is allowed and resolves against the project directory — so the file can be committed to the repo and still work for teammates who cloned it elsewhere:
+
+```bash
+# your-project/.agent-vm.volumes
+
+# A local data directory inside the project
+./test-fixtures:/home/youruser.linux/fixtures:rw
+
+# A subdirectory of the project, elsewhere in the VM (read-only)
+./docs:/home/youruser.linux/project-docs
+```
+
+**Per-project entries may only mount paths inside the project.** The file is repository content, so anyone who can push a commit could otherwise point it at `~/.ssh` and read the host's credentials from inside the VM. Entries whose path resolves outside the project are skipped with a warning — including a symlinked *file* pointing out of the project (the hardlink staging would otherwise follow the link). If *you* need such a mount, add it to `~/.agent-vm/volumes` yourself — that file is user-owned and not subject to this restriction.
+
+| File | Scope | Notes |
+|------|-------|-------|
+| `~/.agent-vm/volumes` | Every VM | User-owned; paths must be absolute or start with `~` |
+| `.agent-vm.volumes` | Current project only | Relative paths resolve against the project dir; confined to the project |
+
+`--readonly` and `--git-read-only` also apply to the mount list: an entry requesting `rw` on a path inside the project (or inside `.git`) is forced to `ro` with a warning, since a second mount of the same host directory would otherwise bypass the remount.
+
+The flags are enforced **per session**, not only at VM creation: the mounts are baked into a VM when it is created, so a VM that was created without the flags may carry writable aliases of the project. On every start, agent-vm re-applies the read-only policy to any recorded writable mount aliasing a protected path, so switching an existing VM to `--readonly` (or `--git-read-only`) closes those aliases for that session too — and aborts the session rather than launching if an alias cannot be made read-only (`--reset` rebuilds the mount list). `--reset` also rebuilds the mount list from scratch.
+
+Changes to the volumes files take effect on new VMs (use `--reset` to re-apply to existing ones). Removing an entry does not unmount it from an existing VM either — the mounts are baked in at creation, so use `--reset` to revoke a mount.
+
 ### Per-user setup: `~/.agent-vm/setup.sh`
 
 Create this file to install extra tools into the base VM template. It runs once during `agent-vm setup`, as the default VM user (with sudo available):
@@ -269,7 +298,7 @@ pip install pandas numpy
 
 ### Per-user runtime: `~/.agent-vm/runtime.sh`
 
-Create this file to run commands inside every VM on each start. It runs **before** the per-project `.agent-vm.runtime.sh` script.
+Create this file to run commands inside every VM on each start. It runs **before** the per-project `.agent-vm.runtime.sh` script, and after the session's `--offline` / `--readonly` restrictions are applied (so a script cannot write through a mount the session promised to protect; under `--readonly` the project is already read-only).
 
 Use it for anything that should be available in all your VMs: SSH keys, git config, GitHub CLI auth, Claude Code skills, MCP servers, etc.
 
@@ -355,7 +384,7 @@ To add more MCP servers, add them to `~/.claude.json` in your `~/.agent-vm/setup
 ## How it works
 
 1. **`agent-vm setup`** creates a Debian 13 VM with Lima, runs `agent-vm.setup.sh` inside it to install dev tools + Chrome + agents, and stops it as a reusable base template
-2. **`agent-vm claude|opencode|codex [args]`** clones the base template into a persistent per-directory VM, mounts your working directory, runs optional runtime scripts (`~/.agent-vm/runtime.sh` then `.agent-vm.runtime.sh`), then launches the agent with full permissions
+2. **`agent-vm claude|opencode|codex [args]`** clones the base template into a persistent per-directory VM, mounts your working directory (plus any `~/.agent-vm/volumes` and `.agent-vm.volumes` entries), runs optional runtime scripts (`~/.agent-vm/runtime.sh` then `.agent-vm.runtime.sh`), then launches the agent with full permissions
 3. The VM persists after exit. Running any agent command or `agent-vm shell` in the same directory reuses the same VM
 4. Use `agent-vm stop` to stop the VM or `agent-vm rm` to delete it. Use `--rm` to auto-delete after the command exits
 
