@@ -2,7 +2,9 @@ name: www
 
 on:
   push:
-    branches: [main]
+    # 0.2.0 publishes until it is merged: remove it then, and from the
+    # github-pages environment's deployment branches.
+    branches: [main, 0.2.0]
     paths:
       - 'www/**'
       - '.github/workflows/www.yml'
