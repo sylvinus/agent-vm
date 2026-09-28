@@ -62,7 +62,12 @@ case "$1" in
         echo "agent-vm-proj-deadbeef"
         [ -n "${AGENT_VM_TEST_EXTRA_VM:-}" ] && echo "$AGENT_VM_TEST_EXTRA_VM" ;;
     esac ;;
-  shell) cat > "${AGENT_VM_TEST_CAPTURE:-/dev/null}" ;;
+  shell)
+    cat > "${AGENT_VM_TEST_CAPTURE:-/dev/null}"
+    if [ -n "${AGENT_VM_TEST_SHELL_FAIL:-}" ]; then echo "E: boom" >&2; exit 1; fi ;;
+  start)
+    echo 'time="2026-01-01T00:00:00Z" level=info msg="Attempting to download the image" arch=aarch64' >&2
+    if [ -n "${AGENT_VM_TEST_START_FAIL:-}" ]; then echo 'level=fatal msg="no start"' >&2; exit 1; fi ;;
   stop|delete) echo "$*" >> "${AGENT_VM_TEST_CALLS:-/dev/null}" ;;
   *) : ;;
 esac
@@ -315,6 +320,10 @@ check "all: ruby on"                "$(preinstall_exports all RUBY)"           "
 check "none: node off"              "$(preinstall_exports none NODE)"          "0"
 check "explicit subset: gh on"      "$(preinstall_exports node,gh GH)"         "1"
 check "explicit subset: docker off" "$(preinstall_exports node,gh DOCKER)"     "0"
+check "default leaves pi out"       "$(preinstall_exports default PI)"         "0"
+check "all installs pi"             "$(preinstall_exports all PI)"             "1"
+check "naming pi installs it"       "$(preinstall_exports default,pi PI)"      "1"
+check "pi pulls node in"            "$(preinstall_exports pi NODE)"            "1"
 
 section "--preinstall: MCP names"
 check "default wires the chrome MCP"      "$(preinstall_exports default MCP_CHROME)"     "1"
@@ -326,6 +335,91 @@ check "all wires playwright too"          "$(preinstall_exports all MCP_PLAYWRIG
 check "omitting mcp-chrome disables it"   "$(preinstall_exports node,gh,chromium,opencode MCP_CHROME)" "0"
 check "naming mcp-chrome enables it"      "$(preinstall_exports node,chromium,opencode,mcp-chrome MCP_CHROME)" "1"
 check "naming mcp-playwright enables it"  "$(preinstall_exports node,chromium,opencode,mcp-playwright MCP_PLAYWRIGHT)" "1"
+
+section "startup: the base VM's age"
+( AGENT_VM_STATE_DIR="$SB/base-age"; mkdir -p "$AGENT_VM_STATE_DIR"
+  _agent_vm_resources() { echo '1|3|10'; }
+  echo $(( $(date +%s) - 3 * 86400 - 60 )) > "$AGENT_VM_STATE_DIR/.agent-vm-version-vmx"
+  out="$(_agent_vm_print_resources vmx)"
+  case "$out" in
+    *"Base VM: built "[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]", 3 days ago") echo ok ;;
+    *) echo "3 days: $out" ;;
+  esac
+  date +%s > "$AGENT_VM_STATE_DIR/.agent-vm-version-vmx"
+  case "$(_agent_vm_print_resources vmx)" in *", today") echo ok ;; *) echo "today: wrong" ;; esac
+  case "$(_agent_vm_print_resources agent-vm-base)" in *"Base VM"*) echo "base: said" ;; *) echo ok ;; esac
+  echo junk > "$AGENT_VM_STATE_DIR/.agent-vm-version-vmx"
+  case "$(_agent_vm_print_resources vmx)" in *"Base VM"*) echo "junk: said" ;; *) echo ok ;; esac
+) > "$SB/base-age.out" 2>&1
+check "the date and age of the VM's base, nothing without a record" \
+  "$(cat "$SB/base-age.out")" "$(printf 'ok\nok\nok\nok')"
+
+section "boxed notices"
+check "a paragraph wraps at the width" \
+  "$(printf 'aaa bbb ccc ddd\n' | _agent_vm_wrap 8)" "$(printf 'aaa bbb\nccc ddd')"
+check "an indented command is kept whole" \
+  "$(printf '  git config --global x y\n' | _agent_vm_wrap 8)" "  git config --global x y"
+box="$(printf 'one two\n\n  cmd --flag\n' | _agent_vm_box "Title" 2>&1)"
+check "the box: title rule, body, bottom rule, on stderr" "$box" "$(printf '\n+- Title %s\n|\n| one two\n|\n|   cmd --flag\n|\n+%s' \
+  "$(printf '%*s' 63 '' | tr ' ' -)" "$(printf '%*s' 71 '' | tr ' ' -)")"
+check "nothing on stdout" "$(printf 'x\n' | _agent_vm_box "T" 2>/dev/null)" ""
+if script -qec true /dev/null >/dev/null 2>&1; then
+  narrow="$(script -qec "stty rows 40 cols 40; bash -c 'source \"$AGENT_VM_SH\"; _agent_vm_bare_repo_hint | _agent_vm_box \"Git: repositories not named .git\"'" /dev/null 2>&1 | tr -d '\r')"
+  # Wider lines than the terminal are only the commands, kept whole.
+  wide="$(printf '%s\n' "$narrow" | awk 'length($0) > 40 && $0 !~ /^\|   /')"
+  check "a 40-column terminal gets a 40-column box" "$wide" ""
+else
+  printf '  skip narrow box test (no util-linux script)\n'
+fi
+
+section "setup: the install output"
+# A pipe into the output window must not swallow the install's failure, and
+# the log must keep what the window drops.
+out="$(AGENT_VM_TEST_SHELL_FAIL=1 _agent_vm_setup --preinstall=none 2>&1)"
+check "a failed install still fails setup" "$?" "1"
+case "$out" in
+  *"Setup script failed. Full log: $HOME/.agent-vm/setup.log"*) pass "the failure names the log" ;;
+  *) fail "no log named: $out" ;;
+esac
+case "$(cat "$HOME/.agent-vm/setup.log")" in
+  *"Attempting to download the image"*"E: boom") pass "one log, every step in order: the start, then the install" ;;
+  *) fail "setup.log: $(cat "$HOME/.agent-vm/setup.log")" ;;
+esac
+out="$(AGENT_VM_TEST_START_FAIL=1 _agent_vm_setup --preinstall=none 2>&1)"
+check "a failed start fails setup" "$?" "1"
+case "$out" in
+  *"Failed to start base VM. Full log: $HOME/.agent-vm/setup.log"*) pass "and names the log" ;;
+  *) fail "start failure: $out" ;;
+esac
+case "$(cat "$HOME/.agent-vm/setup.log")" in
+  *'msg="no start"'*) pass "which has Lima's error" ;;
+  *) fail "setup.log after a failed start: $(cat "$HOME/.agent-vm/setup.log")" ;;
+esac
+_agent_vm_setup --preinstall=none >/dev/null 2>&1
+check "a good install passes" "$?" "0"
+check "no status file is left behind" "$([ -e "$HOME/.agent-vm/setup.log.status" ] && echo left || echo gone)" "gone"
+check "without a terminal, every line passes through" \
+  "$(printf 'a\nb' | _agent_vm_scroll_window "$SB/window.log")" "$(printf 'a\nb')"
+check "and reaches the log" "$(cat "$SB/window.log")" "$(printf 'a\nb')"
+# On a terminal: never more than 10 lines redrawn, and cleared at the end.
+if script -qec true /dev/null >/dev/null 2>&1; then
+  win="$(script -qec "stty rows 40 cols 80; bash -c 'source \"$AGENT_VM_SH\"; seq 1 30 | _agent_vm_scroll_window \"$SB/tty.log\"'" /dev/null 2>&1 | cat -v)"
+  case "$win" in
+    *'^[[11A'*) fail "the window grew past 10 lines" ;;
+    *'^[[10A'*'^[[10A^M^[[J') pass "a 10-line window, cleared at the end" ;;
+    *) fail "unexpected window output: $(printf '%s' "$win" | tail -c 200)" ;;
+  esac
+  check "the log keeps all 30 lines" "$(wc -l < "$SB/tty.log" | tr -d ' ')" "30"
+  lima_line='time="2026-01-01T00:00:00Z" level=info msg="Attempting to download the image" arch=aarch64 digest=sha256:0123'
+  win="$(script -qec "stty rows 40 cols 80; bash -c 'source \"$AGENT_VM_SH\"; printf \"%s\\n\" '\''$lima_line'\'' | _agent_vm_scroll_window \"$SB/lima.log\"'" /dev/null 2>&1 | cat -v)"
+  case "$win" in
+    *'[2mAttempting to download the image^M'*) pass "a Lima log line shows its message only" ;;
+    *) fail "Lima line in the window: $win" ;;
+  esac
+  check "and the log keeps it whole" "$(cat "$SB/lima.log")" "$lima_line"
+else
+  printf '  skip terminal window test (no util-linux script)\n'
+fi
 
 if _agent_vm_setup --preinstall=node,not-a-real-name >/dev/null 2>&1; then
   fail "an unknown --preinstall name should be fatal"
@@ -528,6 +622,13 @@ if [ $? -eq 0 ]; then
 else
   fail "wrong precedence between the shared env and the project env"
 fi
+# A shared file without a trailing newline must not glue onto the project's.
+( AGENT_VM_STATE_DIR="$PENV/state"
+  printf "SHARED_LAST='s'" > "$AGENT_VM_STATE_DIR/env"
+  printf "BOTH='project'\n" > "$PENV/pa/.agent-vm.env"
+  payload="$(_agent_vm_env_payload "$PENV/pa")"
+  printf '%s\n' "$payload" | grep -qx "BOTH='project'" )
+check "a shared file with no final newline stays separate" "$?" "0"
 
 # =============================================================================
 section "project-env: the file is in a repository, so say so"
@@ -616,6 +717,18 @@ check "AGENT_VM_HOST_SHARE=1 gives the whole host" \
   "$(AGENT_VM_HOST_SHARE=1 _agent_vm_cap_resource cpus 8)" "8"
 check "AGENT_VM_HOST_SHARE=4 clamps to a quarter" \
   "$(AGENT_VM_HOST_SHARE=4 _agent_vm_cap_resource cpus 8 2>/dev/null)" "2"
+# It goes into arithmetic: anything but a positive integer falls back to 2,
+# never to a division error, an empty value or an evaluated name.
+# HOME and not an unset name: under set -u that aborts before the subscript runs.
+for bad in 0 08 abc -1 '' 'HOME[$(touch '"$SB"'/pwned-share)]'; do
+  check "AGENT_VM_HOST_SHARE='$bad' falls back to half" \
+    "$(AGENT_VM_HOST_SHARE="$bad" _agent_vm_cap_resource cpus 8 2>/dev/null)" "4"
+done
+check "and nothing in it was evaluated" "$([ -e "$SB/pwned-share" ] && echo yes || echo no)" "no"
+case "$(AGENT_VM_HOST_SHARE=0 _agent_vm_host_share 8 1 2>&1 >/dev/null)" in
+  *"not a positive integer"*) pass "an invalid AGENT_VM_HOST_SHARE is reported" ;;
+  *) fail "an invalid AGENT_VM_HOST_SHARE was silent" ;;
+esac
 
 # An unreadable host must never shrink anything.
 _agent_vm_host_cpus()    { echo ""; }
@@ -637,11 +750,17 @@ section "version --min: a floor an integrator can oppose"
 # =============================================================================
 # Without this, every integrator reimplements the comparison — and some get
 # "1.10.0 > 1.9.0" wrong, which a string comparison does.
-check "1.2.3 compares as a number"  "$(_agent_vm_ver_num 1.2.3)"  "1002003"
-check "1.10.0 outranks 1.9.0" \
-  "$([ "$(_agent_vm_ver_num 1.10.0)" -gt "$(_agent_vm_ver_num 1.9.0)" ] && echo yes)" "yes"
-check "a short version is padded"   "$(_agent_vm_ver_num 1)"      "1000000"
-check "a -rc suffix is ignored"     "$(_agent_vm_ver_num 2.0.0-rc1)" "2000000"
+vge() { if _agent_vm_ver_ge "$1" "$2" 2>/dev/null; then echo yes; else echo no; fi; }
+check "1.10.0 outranks 1.9.0"          "$(vge 1.10.0 1.9.0)"     "yes"
+check "1.9.0 does not reach 1.10.0"    "$(vge 1.9.0 1.10.0)"     "no"
+check "equal versions pass"            "$(vge 1.2.3 1.2.3)"      "yes"
+check "a short version is padded"      "$(vge 1 1.0.0)"          "yes"
+check "and compared once padded"       "$(vge 1 1.0.1)"          "no"
+check "a -rc suffix is ignored"        "$(vge 2.0.0-rc1 2.0.0)"  "yes"
+check "0.08.0 is decimal, not octal"   "$(vge 0.8.0 0.08.0)"     "yes"
+check "0.09.0 outranks 0.8.0"          "$(vge 0.09.0 0.8.0)"     "yes"
+check "a component past 999 still orders" "$(vge 1.1000.0 2.0.0)" "no"
+check "and does not spill into the next"  "$(vge 1.0.1000 1.1.0)" "no"
 
 check "plain version still prints" "$(agent-vm version)" "$AGENT_VM_VERSION"
 
@@ -721,7 +840,7 @@ section "release hygiene"
 # is a command nobody uses. (`sh`/`destroy` are aliases documented inline.)
 help_text="$(agent-vm help)"
 missing=""
-for verb in setup claude opencode codex vibe shell run stop rm destroy-all \
+for verb in setup claude opencode codex vibe pi shell run stop rm destroy-all \
             list status name info env version help; do
   case "$help_text" in
     *"  $verb"*) ;;
@@ -815,6 +934,32 @@ else
     "$(grep -cF '[mcp_servers.playwright]' "$MCPHOME/.codex/config.toml")" "1"
   check "vibe: no duplicate entry after two runs" \
     "$(grep -c '^\[\[mcp_servers\]\]' "$MCPHOME/.vibe/config.toml")" "2"
+fi
+
+# =============================================================================
+section "Pi install block"
+# =============================================================================
+# Lifted out like configure_mcp, with sudo recorded instead of run.
+if ! command -v jq >/dev/null 2>&1; then
+  printf '  skip Pi install tests (jq not installed)\n'
+else
+  pi_block="$(awk '/^if \[\[ "\$INSTALL_PI" == "1" \]\]; then/,/^fi$/' "$SETUP_SH")"
+  run_pi_block() {
+    ( HOME="$1"; INSTALL_PI=1 INSTALL_NODE="$2"
+      sudo() { echo "sudo $*" >> "$HOME/sudo.log"; }
+      eval "$pi_block" ) >/dev/null 2>&1
+  }
+  PIH="$SB/pi-home"; mkdir -p "$PIH"
+  run_pi_block "$PIH" 1
+  check "pi: the maintained package, without install scripts" "$(cat "$PIH/sudo.log" 2>/dev/null)" \
+    "sudo npm i -g --ignore-scripts @earendil-works/pi-coding-agent"
+  check "pi: project files trusted" \
+    "$(jq -r .defaultProjectTrust "$PIH/.pi/agent/settings.json" 2>/dev/null)" "always"
+  check "pi: telemetry off" \
+    "$(jq -r .enableInstallTelemetry "$PIH/.pi/agent/settings.json" 2>/dev/null)" "false"
+  PIH0="$SB/pi-home-nonode"; mkdir -p "$PIH0"
+  run_pi_block "$PIH0" 0
+  check "pi: skipped without node" "$( [ -e "$PIH0/sudo.log" ] || [ -e "$PIH0/.pi" ]; echo $?)" "1"
 fi
 
 # =============================================================================
@@ -1164,7 +1309,9 @@ case "$1" in
   shell)
     case "$*" in
       *findmnt*) echo "${AGENT_VM_TEST_FSTYPE:-virtiofs}" ;;
-      *agent-vm-write-probe*) [ -z "${AGENT_VM_TEST_RO:-}" ] || exit 1 ;;
+      *agent-vm-write-probe*)
+        case "$*" in *'.agent-vm.env'*) cat >/dev/null; [ -n "${AGENT_VM_TEST_ENV_FAIL:-}" ] || echo env-ok ;; esac
+        [ -z "${AGENT_VM_TEST_RO:-}" ] || exit 1 ;;
     esac ;;
   stop|delete) cat >/dev/null ;;
 esac
@@ -1208,6 +1355,30 @@ rec_has "shell --workdir $PROJ --tty $PV" && pass "run --tty still allocates a P
   || fail "run --tty lost: $(grep ' zsh ' "$REC")"
 rec run -- --weird-name >/dev/null
 rec_has "agent-vm --weird-name" && pass "-- ends the options" || fail "-- not honoured"
+
+rec pi -p hi --rm >/dev/null
+rec_has "shell --workdir $PROJ --tty $PV" && rec_has "agent-vm pi -p hi --rm" \
+  && pass "pi: a TTY, and the arguments are pi's" || fail "pi: $(grep 'zsh' "$REC")"
+
+# With no env left on the host, the guest copy must go too, not keep old secrets.
+rm -f "$HOME/.agent-vm/env" "$PROJ/.agent-vm.env"
+rec run true >/dev/null
+rec_has 'cat > "$HOME/.agent-vm.env"' && pass "an empty env still replaces the guest file" \
+  || fail "an empty env left the guest file as it was"
+
+# Each `limactl shell` is a round trip: the env push and the write probe share one.
+out="$(rec run true)"
+# The script is multi-line, so one call spans lines of the record: the push's
+# line is followed by the probe's, which is not a new `shell …` call of its own.
+check "one round trip for the env push and the probe" \
+  "$(grep -c 'agent-vm.env' "$REC") $(grep -c 'agent-vm-write-probe' "$REC") $(grep -A1 'agent-vm.env' "$REC" | tail -1 | grep -v '^shell ' | grep -c 'agent-vm-write-probe')" "1 1 1"
+check "a push that worked is not warned about" \
+  "$(printf '%s\n' "$out" | grep -c 'failed to push the env')" "0"
+out="$(AGENT_VM_TEST_ENV_FAIL=1 rec run true)"
+case "$out" in
+  *"Warning: failed to push the env files"*) pass "a failed push is still said" ;;
+  *) fail "a failed push went unsaid: $out" ;;
+esac
 
 # `shell` takes no command, so a word it does not know is a mistake: it used to
 # be skipped, which reads to the caller as if the flag had applied.
@@ -1576,6 +1747,9 @@ if command -v setsid >/dev/null 2>&1; then
     0:*) pass "no terminal: the wizard is skipped and setup completes" ;;
     *) fail "setup with no terminal: '$out'" ;;
   esac
+  # Lima's containerd is never installed: Docker brings its own when chosen.
+  grep -q "^create .*--containerd=none" "$REC" && pass "Lima's containerd is off" \
+    || fail "Lima's containerd stays on: $(grep '^create' "$REC")"
   # A Lima that cannot keep .git read-only: said, with the command, and setup
   # goes on without installing anything.
   case "$out" in
@@ -1683,11 +1857,16 @@ check "already set: nothing said" "$(bare_offer)" ""
 git_set_called && fail "already set: git config was run" || pass "already set: git config is not run"
 check "no git on this machine: nothing to protect" "$(PATH="$SB/nolimactl" _agent_vm_bare_repo_state)" "nogit"
 check "setup makes the offer" "$(declare -f _agent_vm_setup | grep -c '_agent_vm_offer_bare_repo_setting')" "1"
+# A first run opens on the familiar questions: the security ones come after the
+# wizard, and before the VM exists.
+check "security checks: after the wizard, before the VM" \
+  "$(declare -f _agent_vm_setup | grep -o -e 'Use these defaults' -e 'Running security checks' -e 'Creating base VM' | tr '\n' '|')" \
+  "Use these defaults|Running security checks|Creating base VM|"
 
 # Against the real git, when it is recent enough: only the system and global
 # config count, as for git itself. A repository's own setting must not answer.
 real_git_ver="$(git --version 2>/dev/null)"; real_git_ver="${real_git_ver#git version }"; real_git_ver="${real_git_ver%% *}"
-if [ -n "$real_git_ver" ] && [ "$(_agent_vm_ver_num "$real_git_ver")" -ge "$(_agent_vm_ver_num 2.38.0)" ]; then
+if [ -n "$real_git_ver" ] && _agent_vm_ver_ge "$real_git_ver" 2.38.0; then
   mkdir -p "$SB/realgit/home" "$SB/realgit/repo"
   ( export HOME="$SB/realgit/home" GIT_CONFIG_NOSYSTEM=1 XDG_CONFIG_HOME="$SB/realgit/xdg"
     cd "$SB/realgit/repo" && git init -q . && git config safe.bareRepository explicit

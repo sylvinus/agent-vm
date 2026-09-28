@@ -58,8 +58,8 @@ export const fr: Dictionary = {
         body: 'Un serveur de dev lancé dans la VM répond sur localhost, au même port. C\'est Lima qui s\'en charge : aucune option, aucune configuration.',
       },
       {
-        title: 'Quatre agents, une commande',
-        body: 'OpenCode, Claude Code, Codex CLI et Mistral Vibe, chacun lancé avec son option d\'approbation automatique.',
+        title: 'Cinq agents, une commande',
+        body: 'OpenCode, Claude Code, Codex CLI et Mistral Vibe, chacun lancé avec son option d\'approbation automatique. Pi, en option, ne demande jamais rien.',
       },
     ],
   },
@@ -125,9 +125,9 @@ export const fr: Dictionary = {
     ],
     preinstallTitle: 'Choisir ce qui entre dans l\'image',
     preinstallBody:
-      'En minuscules, séparés par des virgules. `default` installe tout sauf Ruby, Rust, Go et le MCP Playwright, `all` installe tout, `none` rien. `codex` entraîne `node`, tout comme `mcp-chrome` quand `chromium` et un agent sont choisis, parce que ces installations passent par `npm` et `npx`. Les deux serveurs MCP sont ignorés sans `node` et `chromium`. Sans terminal, l\'assistant est sauté et la sélection par défaut est installée. `setup` accepte aussi `--disk`, `--memory` et `--cpus` pour l\'image elle-même.',
+      'En minuscules, séparés par des virgules. `default` installe tout sauf Ruby, Rust, Go, Pi et le MCP Playwright, `all` installe tout, `none` rien. `codex` et `pi` entraînent `node`, tout comme `mcp-chrome` quand `chromium` et un agent sont choisis, parce que ces installations passent par `npm` et `npx`. Les deux serveurs MCP sont ignorés sans `node` et `chromium`. Sans terminal, l\'assistant est sauté et la sélection par défaut est installée. `setup` accepte aussi `--disk`, `--memory` et `--cpus` pour l\'image elle-même.',
     preinstallNames:
-      'python · node · ruby · rust · golang · docker · chromium · gh · claude · opencode · codex · vibe · mcp-chrome · mcp-playwright',
+      'python · node · ruby · rust · golang · docker · chromium · gh · claude · opencode · codex · vibe · pi · mcp-chrome · mcp-playwright',
     preinstallCode:
       'agent-vm setup                                       # assistant interactif\nagent-vm setup --preinstall=default                  # sans question\nagent-vm setup --preinstall=default,rust             # avec Rust en plus\nagent-vm setup --preinstall=python,docker,claude     # Claude seul, minimal\nagent-vm setup --preinstall=node,chromium,opencode   # sans MCP\nagent-vm setup --disk 50 --memory 16 --cpus 8        # pour les gros projets',
     setupHeaders: ['Option', 'Rôle', 'Défaut'],
@@ -239,6 +239,7 @@ export const fr: Dictionary = {
           ['claude [args]', 'Lance Claude Code avec `--dangerously-skip-permissions`.'],
           ['codex [args]', 'Lance Codex CLI avec `--dangerously-bypass-approvals-and-sandbox`.'],
           ['vibe [args]', 'Lance Mistral Vibe avec `--agent auto-approve`.'],
+          ['pi [args]', 'Lance Pi, qui ne demande aucune permission. En option à l\'installation.'],
         ],
       },
       {
@@ -279,7 +280,7 @@ export const fr: Dictionary = {
       },
     ],
     optionsTitle: 'Options de VM',
-    optionsNote: 'Pour `claude`, `opencode`, `codex`, `vibe`, `shell` et `run`, à placer avant la commande ou juste après son nom. Tout ce qui suit appartient à la commande : dans `agent-vm run docker run --rm x`, `--rm` est l\'option de docker.',
+    optionsNote: 'Pour `claude`, `opencode`, `codex`, `vibe`, `pi`, `shell` et `run`, à placer avant la commande ou juste après son nom. Tout ce qui suit appartient à la commande : dans `agent-vm run docker run --rm x`, `--rm` est l\'option de docker.',
     optionsHeaders: ['Option', 'Rôle', 'Défaut'],
     options: [
       ['--disk GB', 'Taille du disque. Peut grandir, jamais rétrécir.', '10'],
@@ -353,7 +354,8 @@ export const fr: Dictionary = {
       ['Navigateur', 'Chromium headless, xvfb', 'chromium', 'oui'],
       ['Conteneurs', 'Docker Engine, Docker Compose', 'docker', 'oui'],
       ['Agents IA', 'Claude Code, OpenCode, Codex CLI, Mistral Vibe', 'claude, opencode, codex, vibe', 'oui'],
-      ['MCP', 'Chrome DevTools MCP, câblé dans chaque agent installé', 'mcp-chrome', 'oui'],
+      ['Agents IA', 'Pi', 'pi', 'non'],
+      ['MCP', 'Chrome DevTools MCP, câblé dans chaque agent installé sauf Pi (pas de support MCP)', 'mcp-chrome', 'oui'],
       ['MCP', 'Playwright MCP, réutilisant le même Chromium', 'mcp-playwright', 'non'],
     ],
     contentsNote:
@@ -475,6 +477,7 @@ export const fr: Dictionary = {
           { name: 'OpenCode', note: 'Agent terminal open source.', href: 'https://github.com/anomalyco/opencode' },
           { name: 'Codex CLI', note: 'OpenAI.', href: 'https://github.com/openai/codex' },
           { name: 'Mistral Vibe', note: 'Mistral AI.', href: 'https://docs.mistral.ai/vibe/code/cli/install-setup' },
+          { name: 'Pi', note: 'Harnais open source minimaliste. En option.', href: 'https://pi.dev' },
         ],
       },
       {

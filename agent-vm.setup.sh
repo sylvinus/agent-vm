@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # agent-vm.setup.sh: Package installation script that runs inside the base VM
-# Part of https://github.com/sylvinus/agent-vm
+# Part of https://www.agent-vm.org/
 #
 # This script is executed inside the VM during "agent-vm setup".
 #
@@ -26,7 +26,7 @@ apt_get() {
 
 # Component toggles. The host wizard prepends `export` lines for these before
 # piping the script in. Members of the default install set (everything except
-# Ruby/Rust/Go) default to 1 so running this script standalone (without the
+# Ruby/Rust/Go/Pi/Playwright MCP) default to 1 so running this script standalone (without the
 # wizard) produces the same install you'd get from `agent-vm setup --preinstall=default`.
 INSTALL_PYTHON="${AGENT_VM_INSTALL_PYTHON:-1}"
 INSTALL_NODE="${AGENT_VM_INSTALL_NODE:-1}"
@@ -40,6 +40,7 @@ INSTALL_CLAUDE="${AGENT_VM_INSTALL_CLAUDE:-1}"
 INSTALL_OPENCODE="${AGENT_VM_INSTALL_OPENCODE:-1}"
 INSTALL_CODEX="${AGENT_VM_INSTALL_CODEX:-1}"
 INSTALL_VIBE="${AGENT_VM_INSTALL_VIBE:-1}"
+INSTALL_PI="${AGENT_VM_INSTALL_PI:-0}"
 # MCP servers wired into every installed agent's config. Only servers with a
 # dependency worth baking into the image get a toggle; remote MCP servers are
 # a URL (and often a secret) and belong in per-project config, not in an image
@@ -209,6 +210,28 @@ if [[ "$INSTALL_VIBE" == "1" ]]; then
   # doesn't abort on its own PATH check.
   echo "Installing Mistral Vibe..."
   curl -LsSf https://mistral.ai/vibe/install.sh | bash
+fi
+
+if [[ "$INSTALL_PI" == "1" ]]; then
+  if [[ "$INSTALL_NODE" != "1" ]]; then
+    echo "Skipping Pi: requires Node.js (re-run setup with Node.js enabled)." >&2
+  else
+    # @earendil-works is the maintained scope; @mariozechner/pi-coding-agent is
+    # deprecated and misses security fixes. --ignore-scripts as Pi's docs say.
+    echo "Installing Pi..."
+    sudo npm i -g --ignore-scripts @earendil-works/pi-coding-agent
+    # Pi never asks before running tools. Its one gate is trust for a project's
+    # .pi/ extensions and skills, which the VM makes moot and which `pi -p`
+    # silently skips. Telemetry covers the install ping and the attribution
+    # headers Pi adds to some providers' requests.
+    mkdir -p "$HOME/.pi/agent"
+    cat > "$HOME/.pi/agent/settings.json" << 'JSON'
+{
+  "defaultProjectTrust": "always",
+  "enableInstallTelemetry": false
+}
+JSON
+  fi
 fi
 
 # Wire one stdio MCP server into every installed agent's config. Each agent

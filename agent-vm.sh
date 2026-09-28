@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # agent-vm: Run AI coding agents inside sandboxed Lima VMs
-# Part of https://github.com/sylvinus/agent-vm
+# Part of https://www.agent-vm.org/
 #
 # Source this file in your shell config:
 #   source /path/to/agent-vm/agent-vm.sh
@@ -12,6 +12,7 @@
 #   agent-vm opencode - Run OpenCode in a persistent VM for cwd
 #   agent-vm codex    - Run Codex CLI in a persistent VM for cwd
 #   agent-vm vibe     - Run Mistral Vibe in a persistent VM for cwd
+#   agent-vm pi       - Run Pi in a persistent VM for cwd
 #   agent-vm shell    - Open a shell in the persistent VM for cwd
 #                       (alias: 'sh'; add -c "..." for a one-shot command)
 #   agent-vm stop     - Stop the VM for cwd
@@ -102,6 +103,44 @@ _agent_vm_ask_yn() {
   esac
 }
 
+# _agent_vm_wrap <width> — word-wrap stdin to <width> columns. Lines indented
+# by two spaces are commands, kept whole so they can be copied.
+_agent_vm_wrap() {
+  awk -v w="$1" '
+    /^  / || length($0) <= w { print; next }
+    {
+      line = ""; n = split($0, word, " ")
+      for (i = 1; i <= n; i++) {
+        if (line == "") line = word[i]
+        else if (length(line) + 1 + length(word[i]) <= w) line = line " " word[i]
+        else { print line; line = word[i] }
+      }
+      print line
+    }'
+}
+
+# _agent_vm_box <title> — print stdin on stderr as a boxed notice, for setup's
+# warnings and offers: one paragraph per line, wrapped to the terminal (72
+# columns at most). A question asked right after reads as being about the box.
+# No right border: it would need every line padded to its display width, which
+# bash and zsh count differently for non-ASCII text.
+_agent_vm_box() {
+  local title="$1" size width rule n
+  size="$(stty size 2>/dev/null </dev/tty)"
+  width="${size#* }"
+  [[ "$width" =~ ^[0-9]+$ ]] || width=72
+  [[ "$width" -gt 72 ]] && width=72
+  [[ "$width" -lt 30 ]] && width=30
+  rule="$(printf '%*s' "$width" '' | tr ' ' '-')"
+  n=$((width - ${#title} - 4))
+  [[ "$n" -lt 1 ]] && n=1
+  {
+    printf '\n+- %s %s\n|\n' "$title" "${rule:0:$n}"
+    _agent_vm_wrap $((width - 2)) | sed 's/^/| /; s/ *$//'
+    printf '|\n+%s\n' "${rule:0:$((width - 1))}"
+  } >&2
+}
+
 # Prompt for a positive integer with default. Re-prompts on invalid input.
 # Used for disk/memory/cpus where a typo (e.g. "10G") would otherwise produce
 # a cryptic limactl error several seconds later.
@@ -150,10 +189,16 @@ _agent_vm_host_mem_gib() {
 }
 
 # _agent_vm_host_share <total> <floor> — the share of <total> this host will
-# give a VM, never below <floor>.
+# give a VM, never below <floor>. An AGENT_VM_HOST_SHARE that is not a positive
+# integer falls back to 2: it goes into arithmetic, where 0 divides by zero,
+# "08" is bad octal and a name is evaluated as a variable.
 _agent_vm_host_share() {
-  local total="$1" floor="$2" share
-  share=$((total / AGENT_VM_HOST_SHARE))
+  local total="$1" floor="$2" div="$AGENT_VM_HOST_SHARE" share
+  if [[ ! "$div" =~ ^[1-9][0-9]*$ ]]; then
+    echo "Warning: AGENT_VM_HOST_SHARE='$div' is not a positive integer; using 2." >&2
+    div=2
+  fi
+  share=$((10#$total / 10#$div))
   [[ "$share" -lt "$floor" ]] && share="$floor"
   printf '%s\n' "$share"
 }
@@ -201,16 +246,22 @@ _agent_vm_warn_disk_space() {
 }
 
 # --- version ------------------------------------------------------------------
-# "1.2.3" -> 1002003, so versions compare as numbers. A string comparison gets
-# "1.10.0" < "1.9.0" wrong, which is the whole reason this exists. Tolerates
-# "1", "1.2" and a "-rc1" suffix.
-_agent_vm_ver_num() {
-  local v="${1%%-*}.0.0" a b c
-  a="${v%%.*}"; v="${v#*.}"
-  b="${v%%.*}"; v="${v#*.}"
-  c="${v%%.*}"
-  a="${a//[!0-9]/}"; b="${b//[!0-9]/}"; c="${c//[!0-9]/}"
-  printf '%d\n' "$(( ${a:-0} * 1000000 + ${b:-0} * 1000 + ${c:-0} ))"
+# _agent_vm_ver_ge <a> <b> — status 0 when version a >= b. Components compare
+# one by one as base-10 numbers: a string comparison gets "1.10.0" < "1.9.0"
+# wrong, and "08" must not be read as octal. Missing components count as 0, a
+# "-rc1" suffix is ignored. No arrays: this file is also sourced by zsh.
+_agent_vm_ver_ge() {
+  local a="${1%%-*}" b="${2%%-*}" x y
+  while [[ -n "$a" || -n "$b" ]]; do
+    x="${a%%.*}"; y="${b%%.*}"
+    if [[ "$a" == *.* ]]; then a="${a#*.}"; else a=""; fi
+    if [[ "$b" == *.* ]]; then b="${b#*.}"; else b=""; fi
+    x="${x//[!0-9]/}"; y="${y//[!0-9]/}"
+    x=$((10#${x:-0})); y=$((10#${y:-0}))
+    [[ "$x" -gt "$y" ]] && return 0
+    [[ "$x" -lt "$y" ]] && return 1
+  done
+  return 0
 }
 
 # `version` prints the version. `version --min X.Y.Z` turns it into a check an
@@ -254,7 +305,7 @@ _agent_vm_version() {
     return 2
   fi
 
-  [[ "$(_agent_vm_ver_num "$AGENT_VM_VERSION")" -ge "$(_agent_vm_ver_num "$want")" ]] && return 0
+  _agent_vm_ver_ge "$AGENT_VM_VERSION" "$want" && return 0
 
   echo "Error: agent-vm $AGENT_VM_VERSION is older than the required $want." >&2
   echo "  Update it:  cd \"$AGENT_VM_SCRIPT_DIR\" && git pull" >&2
@@ -752,13 +803,12 @@ _agent_vm_mounts_expr() {
 # Why .git is not protected, and how to install a Lima that does it, on stdout.
 # With Homebrew (macOS, or Linux): the formula, which conflicts with brew's own
 # lima, hence the unlink. Without: a build from source, as the formula does it.
+# One paragraph per line: _agent_vm_wrap and _agent_vm_box fit it to the screen.
 _agent_vm_git_protection_hint() {
   cat <<EOF
-This Lima cannot keep .git read-only for the VMs: an agent could write
-.git/config or .git/hooks in your projects, and git on this machine would run
-them, including when your editor or shell prompt calls git. A Lima build with
-sshfs.readonlyNames prevents it, until that is merged upstream
-($AGENT_VM_LIMA_ISSUE).
+An agent could write .git/config or .git/hooks in your projects, and git on this machine would run them, even when your editor or shell prompt calls git.
+
+A Lima build with sshfs.readonlyNames prevents it, until upstream merges it ($AGENT_VM_LIMA_ISSUE):
 EOF
   if command -v brew >/dev/null 2>&1; then
     echo "  brew unlink lima 2>/dev/null; brew install $AGENT_VM_LIMA_FORMULA"
@@ -817,6 +867,25 @@ _agent_vm_project_writable() {
     sh "$host_dir" &>/dev/null
 }
 
+# _agent_vm_push_env_and_probe <vm> <dir> <payload> — the same probe, in the
+# same `limactl shell` as the env push every start makes: each one is a round
+# trip. Prints env-ok once the env file is written; returns the probe's answer.
+#
+# The payload (~/.agent-vm/env, then the project's env, see
+# _agent_vm_env_payload) becomes $HOME/.agent-vm.env, which the base VM's
+# ~/.zshenv sources with `set -a`: plain KEY=value lines, the project's last so
+# it wins. On every start, so edits on the host need no --reset, and when
+# empty too, so env removed on the host goes from the VM. `umask 077`: it
+# usually holds secrets.
+_agent_vm_push_env_and_probe() {
+  local vm_name="$1" host_dir="$2" payload="$3"
+  { [ -z "$payload" ] || printf '%s\n' "$payload"; } \
+    | limactl shell "$vm_name" sh -c '
+        (umask 077 && rm -f "$HOME/.agent-vm.env" && cat > "$HOME/.agent-vm.env") && echo env-ok
+        p="$1/.agent-vm-write-probe.$$"; touch "$p" 2>/dev/null || exit 1; rm -f "$p"' \
+      sh "$host_dir" 2>/dev/null
+}
+
 # Is the project share one whose read-only flag is enforced outside the guest?
 # Answers from the mount that is actually there, not from the configured
 # mountType: what matters is what got mounted, and a stale VM can disagree with
@@ -867,13 +936,27 @@ _agent_vm_resources() {
   return 1
 }
 
-# Print VM resource details (CPUs, memory, disk)
+# Print VM resource details (CPUs, memory, disk), and when the base the VM was
+# cloned from was built: its agents and packages are that old.
 _agent_vm_print_resources() {
-  local res cpus mem_gib disk_gib
+  local res cpus mem_gib disk_gib built day age
   if res="$(_agent_vm_resources "$1")"; then
     IFS='|' read -r cpus mem_gib disk_gib <<< "$res"
     echo "  Resources: CPUs: ${cpus}, Memory: ${mem_gib} GiB, Disk: ${disk_gib} GiB"
   fi
+  # The base's timestamp, copied when this VM was cloned. None for the base
+  # itself, or for a VM cloned before it was recorded.
+  built="$(cat "$AGENT_VM_STATE_DIR/.agent-vm-version-$1" 2>/dev/null)"
+  [[ "$built" =~ ^[0-9]+$ ]] || return 0
+  # BSD date first: GNU date takes -r for a file, and fails on a number.
+  day="$(date -r "$built" +%F 2>/dev/null || date -d "@$built" +%F 2>/dev/null)" || return 0
+  age=$(( ($(date +%s) - built) / 86400 ))
+  case "$age" in
+    0) age="today" ;;
+    1) age="1 day ago" ;;
+    *) age="$age days ago" ;;
+  esac
+  echo "  Base VM: built $day, $age"
 }
 
 # Would the requested resources actually change anything on <vm_name>?
@@ -1146,8 +1229,13 @@ _agent_vm_ensure_running() {
   # treated as having a writable share: one extra restart, never a silent gap.
   #
   # On the common path both agree and nothing happens.
-  local is_writable="false"
-  _agent_vm_project_writable "$vm_name" "$host_dir" && is_writable="true"
+  # The env push rides along with the first probe: see
+  # _agent_vm_push_env_and_probe. The file is on the VM's disk, so a restart
+  # below keeps it.
+  local is_writable="false" probe_out
+  probe_out="$(_agent_vm_push_env_and_probe "$vm_name" "$host_dir" "$(_agent_vm_env_payload "$host_dir")")" \
+    && is_writable="true"
+  [[ "$probe_out" == *env-ok* ]] || echo "Warning: failed to push the env files into VM '$vm_name'." >&2
   local needs_remount=""
   [[ "$is_writable" != "$want_writable" ]] && needs_remount=1
   if [[ "$want_writable" == "false" ]] && ! _agent_vm_mounts_all_readonly "$vm_name"; then
@@ -1245,27 +1333,6 @@ _agent_vm_ensure_running() {
       echo "$TERM" > "$term_cache"
     else
       echo "Warning: failed to install '$TERM' terminfo inside VM." >&2
-    fi
-  fi
-
-  # Push ~/.agent-vm/env (a dotenv-style file of tokens / API keys) into the VM
-  # at $HOME/.agent-vm.env on every start, so updates on the host propagate
-  # without --reset. The base VM's ~/.zshenv auto-sources it via `set -a`, so
-  # the contents stay a plain KEY=value file (no `export` needed). `umask 077`
-  # creates the file mode-600 since it usually holds secrets.
-  #
-  # The project's own env (agent-vm project-env) is appended AFTER the shared
-  # one, into the same guest file: the file is sourced, so a key set in both
-  # ends up with the project's value — which is what "per project" has to mean.
-  # One guest file and not two, because the base VM's ~/.zshenv sources exactly
-  # that one; a second file would need every existing base VM rebuilt.
-  local env_payload
-  env_payload="$(_agent_vm_env_payload "$host_dir")"
-  if [ -n "$env_payload" ]; then
-    if ! printf '%s\n' "$env_payload" \
-         | limactl shell "$vm_name" sh -c 'umask 077 && rm -f "$HOME/.agent-vm.env" && cat > "$HOME/.agent-vm.env"' \
-           2>/dev/null; then
-      echo "Warning: failed to push the env files into VM '$vm_name'." >&2
     fi
   fi
 
@@ -1414,6 +1481,9 @@ agent-vm() {
       ;;
     vibe)
       _agent_vm_vibe ${vm_opts[@]+"${vm_opts[@]}"} "$@"
+      ;;
+    pi)
+      _agent_vm_pi ${vm_opts[@]+"${vm_opts[@]}"} "$@"
       ;;
     shell|sh)
       _agent_vm_shell ${vm_opts[@]+"${vm_opts[@]}"} "$@"
@@ -1713,7 +1783,7 @@ _agent_vm_doctor() {
     lima_ver="${lima_ver##* }"
     if [[ -z "$lima_ver" ]]; then
       $d warn "limactl is installed but did not report a version"
-    elif [[ "$(_agent_vm_ver_num "$lima_ver")" -lt "$(_agent_vm_ver_num 1.0.0)" ]]; then
+    elif ! _agent_vm_ver_ge "$lima_ver" 1.0.0; then
       $d warn "Lima $lima_ver is older than 1.0" \
         "Before 1.0 the default mount type can be reverse-sshfs, where --readonly is refused."
     else
@@ -1723,7 +1793,7 @@ _agent_vm_doctor() {
       $d ok "Lima keeps every .git read-only for the VMs (sshfs.readonlyNames)"
     else
       $d warn "this Lima cannot keep .git read-only for the VMs"
-      _agent_vm_git_protection_hint | sed 's/^/        /'
+      _agent_vm_git_protection_hint | _agent_vm_wrap 70 | sed 's/^/        /'
     fi
     if _agent_vm_writable_git_optout; then
       $d warn "AGENT_VM_UNSAFE_WRITABLE_GIT=1: the VMs can write .git, and git on this machine runs what .git/config and hooks name" \
@@ -2044,7 +2114,9 @@ _agent_vm_warn_unignored() {
 _agent_vm_env_payload() {
   local host_dir="${1:-$(pwd)}" project_env
   project_env="$(_agent_vm_project_env_file "$host_dir")"
-  [ -f "$AGENT_VM_STATE_DIR/env" ] && cat "$AGENT_VM_STATE_DIR/env"
+  # The echo keeps a shared file with no trailing newline from gluing its last
+  # line to the project's first one.
+  [ -f "$AGENT_VM_STATE_DIR/env" ] && { cat "$AGENT_VM_STATE_DIR/env"; echo; }
   [ -f "$project_env" ] && cat "$project_env"
   return 0
 }
@@ -2162,6 +2234,8 @@ Commands:
   opencode [args]    Run OpenCode in the VM for the current directory
   codex [args]       Run Codex CLI in the VM for the current directory
   vibe [args]        Run Mistral Vibe in the VM for the current directory
+  pi [args]          Run Pi in the VM for the current directory (opt-in at
+                     setup: --preinstall=default,pi)
   shell, sh          Open a shell in the VM. Add -c "..." to run a one-shot
                      command via login zsh and exit.
   run <cmd> [args]   Run a command in the VM (no shell — for pipes/redirects
@@ -2205,7 +2279,7 @@ Commands:
                      (2 when the call itself is wrong). For integrators.
   help               Show this help
 
-VM options (for claude, opencode, codex, vibe, shell, run), read before the
+VM options (for claude, opencode, codex, vibe, pi, shell, run), read before the
 command or right after its name, never later: in 'agent-vm run docker run
 --rm x', --rm belongs to docker.
   --disk GB          VM disk size (default: 10)
@@ -2230,6 +2304,7 @@ Examples:
   agent-vm opencode                          # Run OpenCode in a VM
   agent-vm codex                             # Run Codex in a VM
   agent-vm vibe                              # Run Mistral Vibe in a VM
+  agent-vm pi                                # Run Pi in a VM
   agent-vm --disk 50 --memory 16 --cpus 8 claude  # Custom resources
   agent-vm --reset claude                    # Fresh VM from base template
   agent-vm --rm claude                       # Destroy VM after Claude exits
@@ -2270,7 +2345,7 @@ Customization:
                                     Runtimes run under the shell their shebang
                                     names (bash, sh; zsh otherwise).
 
-More info: https://github.com/sylvinus/agent-vm
+More info: https://www.agent-vm.org/
 EOF
 }
 
@@ -2285,8 +2360,7 @@ EOF
 # touched either way. This never fails setup: the VMs work without it.
 _agent_vm_offer_git_protection() {
   _agent_vm_lima_protects_git && return 0
-  echo "" >&2
-  _agent_vm_git_protection_hint >&2
+  _agent_vm_git_protection_hint | _agent_vm_box "Lima cannot keep .git read-only"
   if ! command -v brew >/dev/null 2>&1 || ! _agent_vm_have_tty \
      || [[ "$(_agent_vm_ask_yn "Install $AGENT_VM_LIMA_FORMULA now (built from source, takes a few minutes)?" Y)" != "1" ]]; then
     echo "Continuing without .git protection." >&2
@@ -2328,7 +2402,7 @@ _agent_vm_bare_repo_state() {
   v="$(git --version 2>/dev/null)"
   v="${v#git version }"
   v="${v%% *}"
-  if [[ "$(_agent_vm_ver_num "$v")" -lt "$(_agent_vm_ver_num 2.38.0)" ]]; then
+  if ! _agent_vm_ver_ge "$v" 2.38.0; then
     echo old
   elif [[ "$(cd / && git config --get safe.bareRepository 2>/dev/null)" == "explicit" ]]; then
     echo ok
@@ -2337,14 +2411,12 @@ _agent_vm_bare_repo_state() {
   fi
 }
 
+# One paragraph per line, as for _agent_vm_git_protection_hint.
 _agent_vm_bare_repo_hint() {
   cat <<'EOF'
-Git on this machine takes any folder holding HEAD, objects/ and refs/ for a
-repository when you run git inside it, even with no .git, and runs the
-commands its config names: the one set to display output, for example, as
-soon as you type `git log` there. A VM can create such a folder in your
-projects, and the .git protection does not cover it: its name is not .git.
-This makes git ignore those folders unless you name one with --git-dir:
+Git treats any folder with HEAD, objects/ and refs/ as a repository, even without .git, and runs commands its config names (on `git log`, for one). A VM could create one in your projects, and the .git protection does not cover it.
+
+This makes git ignore such folders unless named with --git-dir:
   git config --global safe.bareRepository explicit
 EOF
 }
@@ -2355,15 +2427,13 @@ _agent_vm_offer_bare_repo_setting() {
   case "$(_agent_vm_bare_repo_state)" in
     ok|nogit) return 0 ;;
     old)
-      echo "" >&2
-      _agent_vm_bare_repo_hint >&2
+      _agent_vm_bare_repo_hint | _agent_vm_box "Recommended: one git setting"
       echo "Warning: $(git --version) is older than 2.38 and ignores that setting. Upgrade git, then run the command above." >&2
       return 0 ;;
   esac
-  echo "" >&2
-  _agent_vm_bare_repo_hint >&2
+  _agent_vm_bare_repo_hint | _agent_vm_box "Recommended: one git setting"
   if ! _agent_vm_have_tty \
-     || [[ "$(_agent_vm_ask_yn "Run it now (it changes your global git config)?" Y)" != "1" ]]; then
+     || [[ "$(_agent_vm_ask_yn "Run it now? It changes your global git config." Y)" != "1" ]]; then
     echo "Warning: not set. Until you run the command above, git on this machine can run what a VM writes." >&2
     return 0
   fi
@@ -2381,6 +2451,73 @@ _agent_vm_offer_bare_repo_setting() {
 _agent_vm_setup_aborted() {
   echo "Error: $1" >&2
   limactl stop "$AGENT_VM_TEMPLATE" &>/dev/null
+}
+
+# _agent_vm_scroll_window <log> — copy stdin to <log>. On a terminal, show only
+# the last 10 lines, redrawn in place and cleared at the end; otherwise pass
+# every line through. Lines are cut to the terminal width, since a wrapped line
+# would break the redraw, and colour codes are dropped, since a cut one would
+# leave the terminal coloured. No arrays and no fork per line: this file is also
+# sourced by zsh, and apt prints thousands of lines.
+_agent_vm_scroll_window() {
+  local log="$1"
+  if [[ ! -t 1 ]]; then
+    tee -a "$log"
+    return 0
+  fi
+  local height=10 size width rows line rest buf="" n=0 drawn=0
+  # "rows cols". Not tput: with stdout captured and stderr silenced it has no
+  # terminal left to ask, and answers 80.
+  size="$(stty size 2>/dev/null </dev/tty)"
+  rows="${size% *}"; width="${size#* }"
+  [[ "$width" =~ ^[0-9]+$ && "$width" -gt 1 ]] || width=80
+  [[ "$rows" =~ ^[0-9]+$ ]] && [[ "$rows" -lt $((height + 2)) ]] && height=$((rows > 3 ? rows - 2 : 1))
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    printf '%s\n' "$line" >&3
+    # A progress bar redraws with \r: keep what the last redraw left.
+    line="${line%$'\r'}"; line="${line##*$'\r'}"
+    # Lima logs `time="…" level=info msg="…" key=value`: the message is what
+    # fits and what says something.
+    if [[ "$line" == time=*' msg="'* ]]; then
+      line="${line#* msg=\"}"; line="${line%%\"*}"
+    fi
+    while [[ "$line" == *$'\e'* ]]; do
+      rest="${line#*$'\e'}"
+      line="${line%%$'\e'*}${rest#\[*[A-Za-z]}"
+    done
+    line="${line//$'\t'/ }"
+    line="${line:0:$((width - 1))}"
+    if [[ "$n" -lt "$height" ]]; then
+      n=$((n + 1))
+    else
+      buf="${buf#*$'\n'}"
+    fi
+    buf="$buf$line"$'\n'
+    [[ "$drawn" -gt 0 ]] && printf '\e[%dA' "$drawn"
+    printf '\r\e[J\e[2m%s\e[0m' "$buf"
+    drawn="$n"
+  done 3>>"$log"
+  [[ "$drawn" -gt 0 ]] && printf '\e[%dA\r\e[J' "$drawn"
+  return 0
+}
+
+# _agent_vm_windowed <log> <command> [args...] — run the command, stdin
+# included, with its output in _agent_vm_scroll_window and appended to <log>.
+# Returns the command's status, which goes through a file: a pipeline returns
+# its last command's, and bash's PIPESTATUS is zsh's pipestatus. On failure,
+# the end of the log is shown again, since the window is gone.
+_agent_vm_windowed() {
+  local log="$1" status_file="$1.status" rc
+  shift
+  echo 1 > "$status_file"
+  { "$@" 2>&1; echo $? > "$status_file"; } | _agent_vm_scroll_window "$log"
+  rc="$(cat "$status_file" 2>/dev/null)"
+  rm -f "$status_file"
+  if [[ "$rc" != "0" ]]; then
+    [[ -t 1 ]] && tail -n 20 "$log" >&2
+    return 1
+  fi
+  return 0
 }
 
 # The agent-vm VMs other than the base template, one per line. Empty when
@@ -2406,6 +2543,8 @@ _agent_vm_setup() {
   local install_ruby=0 install_rust=0 install_golang=0
   local install_docker=1 install_chromium=1 install_gh=1
   local install_claude=1 install_opencode=1 install_codex=1 install_vibe=1
+  # Pi is opt-in: still 0.x, with releases several times a week.
+  local install_pi=0
   # MCP servers wired into the agents' configs. Named mcp-* in --preinstall so
   # future MCP servers share one obvious namespace. Only servers with a
   # dependency worth baking into the image belong here: a remote MCP server is
@@ -2424,7 +2563,7 @@ Usage: agent-vm setup [options]
 
 Create a base VM template with dev tools and agents pre-installed. Runs an
 interactive wizard by default; the first prompt offers a "default install"
-(everything except the opt-in languages Ruby, Rust, Go). Answer 'n' for
+(everything except the opt-in Ruby, Rust, Go, Pi, Playwright MCP). Answer 'n' for
 per-component prompts. Pass --preinstall=... to skip the wizard and pick a
 specific subset non-interactively. When no terminal is available (e.g. CI),
 the wizard is skipped automatically and the default set is installed.
@@ -2437,21 +2576,23 @@ Options:
                       VM image (skips the wizard). Anything not listed is
                       skipped. Use:
                         'default' for the default set
-                                  (everything except Ruby, Rust, Go),
+                                  (everything except Ruby, Rust, Go, Pi,
+                                  mcp-playwright),
                         'all' for everything,
                         'none' for nothing.
                       Available names:
                         python, node, ruby, rust, golang, docker, chromium,
-                        gh, claude, opencode, codex, vibe, mcp-chrome,
+                        gh, claude, opencode, codex, vibe, pi, mcp-chrome,
                         mcp-playwright
-                      Selecting codex also installs node (npm). So does
+                      Selecting codex or pi also installs node (npm). So does
                       mcp-chrome when chromium and an agent are selected
                       (npx). mcp-playwright does not: list node yourself.
                       The mcp-* names wire an MCP server into each installed
                       agent's config. Both 'mcp-chrome' (Chrome DevTools) and
                       'mcp-playwright' drive the preinstalled Chromium, so
                       both need node and chromium and are skipped, with a
-                      notice, without them. 'mcp-playwright' is opt-in and not
+                      notice, without them. Pi has no MCP support, so they
+                      are not wired into it. 'mcp-playwright' is opt-in and not
                       part of 'default' — a second browser-driving server is
                       redundant for most users. Omit them to leave the agents'
                       MCP config untouched — useful when MCP servers are
@@ -2530,6 +2671,7 @@ EOF
     install_python=0 install_node=0 install_ruby=0 install_rust=0 install_golang=0
     install_docker=0 install_chromium=0 install_gh=0
     install_claude=0 install_opencode=0 install_codex=0 install_vibe=0
+    install_pi=0
     install_mcp_chrome=0 install_mcp_playwright=0
     [[ -z "$preinstall" ]] && preinstall="default"
     # Iterate the comma-list portably across bash and zsh by appending a
@@ -2547,6 +2689,7 @@ EOF
           install_rust=1 install_golang=1
           install_docker=1 install_chromium=1 install_gh=1
           install_claude=1 install_opencode=1 install_codex=1 install_vibe=1
+          install_pi=1
           install_mcp_chrome=1 install_mcp_playwright=1
           ;;
         default)
@@ -2569,11 +2712,12 @@ EOF
         opencode) install_opencode=1 ;;
         codex)    install_codex=1 ;;
         vibe)     install_vibe=1 ;;
+        pi)       install_pi=1 ;;
         mcp-chrome)     install_mcp_chrome=1 ;;
         mcp-playwright) install_mcp_playwright=1 ;;
         *)
           echo "Unknown preinstall name: $f (names are lowercase)" >&2
-          echo "Valid: python, node, ruby, rust, golang, docker, chromium, gh, claude, opencode, codex, vibe, mcp-chrome, mcp-playwright, default, all, none" >&2
+          echo "Valid: python, node, ruby, rust, golang, docker, chromium, gh, claude, opencode, codex, vibe, pi, mcp-chrome, mcp-playwright, default, all, none" >&2
           return 1
           ;;
       esac
@@ -2586,6 +2730,7 @@ EOF
   # terminal to ask on, say what to run instead.
   # The Lima that keeps .git read-only is offered first, so that it is not
   # brew's lima installed now and replaced a minute later.
+  echo "Starting agent-vm setup..."
   local declined_protection=""
   if ! command -v limactl &>/dev/null; then
     if command -v brew &>/dev/null && _agent_vm_have_tty; then
@@ -2612,10 +2757,6 @@ EOF
 
   _agent_vm_check_linux_prereqs || return 1
 
-  # Before the wizard, whose answers they do not depend on.
-  [[ -n "$declined_protection" ]] || _agent_vm_offer_git_protection
-  _agent_vm_offer_bare_repo_setting
-
   # Interactive wizard, unless --preinstall was passed or no terminal is
   # attached (e.g. running under CI). Defaults shown in [] are prefilled from
   # any --disk/--memory/--cpus flags the user already passed, so they can
@@ -2629,15 +2770,15 @@ EOF
     printf 'cloned from it, so anything preinstalled here is available in all\n' >&2
     printf 'future agent VMs. You can still install extra tools inside any\n' >&2
     printf 'individual VM later (e.g. via `agent-vm shell`).\n\n' >&2
-    printf 'For more: https://github.com/sylvinus/agent-vm\n\n' >&2
+    printf 'For more: https://www.agent-vm.org/\n\n' >&2
 
     # Software first — the more interesting choice for most users.
     printf 'Software\n' >&2
     printf '────────\n' >&2
-    printf '  Install:  Python, Node.js, Docker, Chromium, gh,\n' >&2
-    printf '            Claude Code, OpenCode, Codex CLI, Mistral Vibe,\n' >&2
+    printf '  Agents:   Claude Code, OpenCode, Codex CLI, Mistral Vibe\n' >&2
+    printf '  Tools:    Python, Node.js, Docker, Chromium, gh,\n' >&2
     printf '            Chrome DevTools MCP\n' >&2
-    printf '  Skip:     Ruby, Rust, Go, Playwright MCP\n\n' >&2
+    printf '  Skip:     Pi, Ruby, Rust, Go, Playwright MCP\n\n' >&2
     local use_default_software
     use_default_software=$(_agent_vm_ask_yn "Use this default" Y)
     if [[ "$use_default_software" != "1" ]]; then
@@ -2647,6 +2788,7 @@ EOF
       install_opencode=$(_agent_vm_ask_yn "OpenCode" Y)
       install_codex=$(_agent_vm_ask_yn "Codex CLI" Y)
       install_vibe=$(_agent_vm_ask_yn "Mistral Vibe" Y)
+      install_pi=$(_agent_vm_ask_yn "Pi" N)
 
       printf '\nSystem tools\n' >&2
       printf '────────────\n' >&2
@@ -2671,6 +2813,8 @@ EOF
       local node_forced_reason=""
       if [[ "$install_codex" == "1" ]]; then
         node_forced_reason="Codex CLI requires Node.js"
+      elif [[ "$install_pi" == "1" ]]; then
+        node_forced_reason="Pi requires Node.js"
       elif [[ "$install_chromium" == "1" && "$install_mcp_chrome" == "1" && ( "$install_claude" == "1" || "$install_opencode" == "1" || "$install_vibe" == "1" ) ]]; then
         node_forced_reason="Chrome DevTools MCP uses npx"
       fi
@@ -2709,6 +2853,14 @@ EOF
     printf '\n' >&2
   fi
 
+  # After the wizard: its questions are the familiar ones (which agents, how
+  # much RAM), these are not, and a first run should not open on them. Still
+  # before the VM is created, since one of them can replace Lima. Announced, so
+  # a warning reads as the result of a check and not out of the blue.
+  echo "Running security checks..."
+  [[ -n "$declined_protection" ]] || _agent_vm_offer_git_protection
+  _agent_vm_offer_bare_repo_setting
+
   if [[ "$install_chromium" == "1" && "$install_mcp_chrome" == "1" ]]; then
     local wants_chrome_mcp=0
     [[ "$install_claude" == "1" || "$install_opencode" == "1" || "$install_codex" == "1" || "$install_vibe" == "1" ]] && wants_chrome_mcp=1
@@ -2720,6 +2872,11 @@ EOF
 
   if [[ "$install_codex" == "1" && "$install_node" != "1" ]]; then
     echo "Enabling Node.js because Codex CLI requires npm." >&2
+    install_node=1
+  fi
+
+  if [[ "$install_pi" == "1" && "$install_node" != "1" ]]; then
+    echo "Enabling Node.js because Pi requires npm." >&2
     install_node=1
   fi
 
@@ -2749,23 +2906,27 @@ EOF
     --memory="$memory"
     --cpus="$cpus"
     --tty=false
+    # No Lima containerd: Docker (optional) ships its own, and Lima's unit in
+    # /usr/local shadows Docker's. Also skips unpacking nerdctl on every boot.
+    --containerd=none
   )
-  local create_log
-  if ! create_log=$(limactl create --name="$AGENT_VM_TEMPLATE" template:debian-13 "${create_args[@]}" 2>&1); then
-    echo "Error: Failed to create base VM." >&2
-    echo "--- limactl create output ---" >&2
-    echo "$create_log" >&2
+  # Every step from here shows its output in a 10-line window, all of it kept
+  # in one log for when something fails.
+  mkdir -p "$AGENT_VM_STATE_DIR"
+  local setup_log="$AGENT_VM_STATE_DIR/setup.log"
+  : > "$setup_log"
+  if ! _agent_vm_windowed "$setup_log" \
+       limactl create --name="$AGENT_VM_TEMPLATE" template:debian-13 "${create_args[@]}" </dev/null; then
+    echo "Error: Failed to create base VM. Full log: $setup_log" >&2
     return 1
   fi
 
   _agent_vm_print_resources "$AGENT_VM_TEMPLATE"
 
-  local start_log
-  if ! start_log=$(limactl start "$AGENT_VM_TEMPLATE" 2>&1); then
-    echo "Error: Failed to start base VM." >&2
-    echo "--- limactl start output ---" >&2
-    echo "$start_log" >&2
-    echo "Full log: ~/.lima/$AGENT_VM_TEMPLATE/ha.stderr.log" >&2
+  echo "Starting base VM (the first run downloads a Debian image)..."
+  if ! _agent_vm_windowed "$setup_log" limactl start "$AGENT_VM_TEMPLATE" </dev/null; then
+    echo "Error: Failed to start base VM. Full log: $setup_log" >&2
+    echo "Lima's own log: ~/.lima/$AGENT_VM_TEMPLATE/ha.stderr.log" >&2
     return 1
   fi
 
@@ -2794,10 +2955,12 @@ EOF
     printf 'export AGENT_VM_INSTALL_OPENCODE=%s\n'  "$install_opencode"
     printf 'export AGENT_VM_INSTALL_CODEX=%s\n'     "$install_codex"
     printf 'export AGENT_VM_INSTALL_VIBE=%s\n'      "$install_vibe"
+    printf 'export AGENT_VM_INSTALL_PI=%s\n'        "$install_pi"
     printf 'export AGENT_VM_INSTALL_MCP_CHROME=%s\n'     "$install_mcp_chrome"
     printf 'export AGENT_VM_INSTALL_MCP_PLAYWRIGHT=%s\n' "$install_mcp_playwright"
     cat "${AGENT_VM_SCRIPT_DIR}/agent-vm.setup.sh"
-  } | limactl shell "$AGENT_VM_TEMPLATE" bash -l || { _agent_vm_setup_aborted "Setup script failed."; return 1; }
+  } | _agent_vm_windowed "$setup_log" limactl shell "$AGENT_VM_TEMPLATE" bash -l \
+    || { _agent_vm_setup_aborted "Setup script failed. Full log: $setup_log"; return 1; }
 
   # Run user's custom setup script if it exists
   local user_setup="$AGENT_VM_STATE_DIR/setup.sh"
@@ -2819,6 +2982,7 @@ EOF
   [[ "$install_opencode" == "1" ]] && echo "  agent-vm opencode"
   [[ "$install_codex"    == "1" ]] && echo "  agent-vm codex"
   [[ "$install_vibe"     == "1" ]] && echo "  agent-vm vibe"
+  [[ "$install_pi"       == "1" ]] && echo "  agent-vm pi"
   # Only worth saying to someone who has a VM to re-clone: on a first install
   # there is nothing to reset, and the advice reads like a missed step.
   if [[ -n "$(_agent_vm_project_vms)" ]]; then
@@ -2986,6 +3150,42 @@ _agent_vm_vibe() {
   # --agent auto-approve gives full autonomy (safe inside the sandbox).
   local exit_code=0
   _agent_vm_lima_run "$vm_name" "$host_dir" 1 vibe --agent auto-approve ${args[@]+"${args[@]}"}
+  exit_code=$?
+  [[ -n "$rm" ]] && { echo "Removing VM..."; _agent_vm_destroy; }
+  return $exit_code
+}
+
+_agent_vm_pi() {
+  local vm_opts=()
+  local args=()
+  local rm=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --disk)     vm_opts+=(--disk "$2"); shift 2 ;;
+      --memory|--ram)   vm_opts+=(--memory "$2"); shift 2 ;;
+      --cpus)     vm_opts+=(--cpus "$2"); shift 2 ;;
+      --reset)    vm_opts+=(--reset); shift ;;
+      --readonly) vm_opts+=(--readonly); shift ;;
+      --unsafe-writable-git|--unsafe-writable-git=1) vm_opts+=(--unsafe-writable-git); shift ;;
+      --rm)       rm=1; shift ;;
+      # Options are only read before the command: everything from the first
+      # other word on belongs to it, so `run docker run --rm x` keeps its --rm.
+      --)         shift; args=("$@"); break ;;
+      *)          args=("$@"); break ;;
+    esac
+  done
+  local host_dir
+  host_dir="$(pwd)"
+  local vm_name
+  vm_name="$(_agent_vm_name "$host_dir")" || return 1
+
+  _agent_vm_ensure_running "$vm_name" "$host_dir" ${vm_opts[@]+"${vm_opts[@]}"} || return 1
+  _agent_vm_print_resources "$vm_name"
+
+  # Pi has no permission prompts, so no flag: it runs every tool as asked.
+  # Full-screen TUI, so allocate a tty (like opencode).
+  local exit_code=0
+  _agent_vm_lima_run "$vm_name" "$host_dir" 1 pi ${args[@]+"${args[@]}"}
   exit_code=$?
   [[ -n "$rm" ]] && { echo "Removing VM..."; _agent_vm_destroy; }
   return $exit_code

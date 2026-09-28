@@ -56,8 +56,8 @@ export const en = {
         body: 'A dev server started in the VM answers on localhost at the same port. Lima does it; there is no flag and no config.',
       },
       {
-        title: 'Four agents, one command',
-        body: 'OpenCode, Claude Code, Codex CLI and Mistral Vibe, each launched with its own auto-approve flag.',
+        title: 'Five agents, one command',
+        body: 'OpenCode, Claude Code, Codex CLI and Mistral Vibe, each launched with its own auto-approve flag. Pi, opt-in, never asks in the first place.',
       },
     ],
   },
@@ -123,9 +123,9 @@ export const en = {
     ],
     preinstallTitle: 'Choosing what goes in the template',
     preinstallBody:
-      'Lowercase, comma-separated. `default` is everything except Ruby, Rust, Go and the Playwright MCP. `all` is everything, `none` is nothing. `codex` pulls in `node`, and so does `mcp-chrome` when `chromium` and an agent are selected, because those installs use `npm` and `npx`. Both MCP servers are skipped without `node` and `chromium`. With no terminal attached, the wizard is skipped and the default set is installed. `setup` also takes `--disk`, `--memory` and `--cpus` for the template itself.',
+      'Lowercase, comma-separated. `default` is everything except Ruby, Rust, Go, Pi and the Playwright MCP. `all` is everything, `none` is nothing. `codex` and `pi` pull in `node`, and so does `mcp-chrome` when `chromium` and an agent are selected, because those installs use `npm` and `npx`. Both MCP servers are skipped without `node` and `chromium`. With no terminal attached, the wizard is skipped and the default set is installed. `setup` also takes `--disk`, `--memory` and `--cpus` for the template itself.',
     preinstallNames:
-      'python · node · ruby · rust · golang · docker · chromium · gh · claude · opencode · codex · vibe · mcp-chrome · mcp-playwright',
+      'python · node · ruby · rust · golang · docker · chromium · gh · claude · opencode · codex · vibe · pi · mcp-chrome · mcp-playwright',
     preinstallCode:
       'agent-vm setup                                       # interactive wizard\nagent-vm setup --preinstall=default                  # no prompts\nagent-vm setup --preinstall=default,rust             # plus Rust\nagent-vm setup --preinstall=python,docker,claude     # minimal Claude setup\nagent-vm setup --preinstall=node,chromium,opencode   # no MCP wired in\nagent-vm setup --disk 50 --memory 16 --cpus 8        # heavier workloads',
     setupHeaders: ['Flag', 'What it does', 'Default'],
@@ -237,6 +237,7 @@ export const en = {
           ['claude [args]', 'Run Claude Code with `--dangerously-skip-permissions`.'],
           ['codex [args]', 'Run Codex CLI with `--dangerously-bypass-approvals-and-sandbox`.'],
           ['vibe [args]', 'Run Mistral Vibe with `--agent auto-approve`.'],
+          ['pi [args]', 'Run Pi, which has no permission prompts. Opt-in at setup.'],
         ],
       },
       {
@@ -278,7 +279,7 @@ export const en = {
       },
     ],
     optionsTitle: 'VM options',
-    optionsNote: 'For `claude`, `opencode`, `codex`, `vibe`, `shell` and `run`, placed before the command or right after its name. Anything later belongs to the command: in `agent-vm run docker run --rm x`, `--rm` is docker’s.',
+    optionsNote: 'For `claude`, `opencode`, `codex`, `vibe`, `pi`, `shell` and `run`, placed before the command or right after its name. Anything later belongs to the command: in `agent-vm run docker run --rm x`, `--rm` is docker’s.',
     optionsHeaders: ['Flag', 'What it does', 'Default'],
     options: [
       ['--disk GB', 'VM disk size. Can grow, never shrink.', '10'],
@@ -352,7 +353,8 @@ export const en = {
       ['Browser', 'Chromium headless, xvfb', 'chromium', 'yes'],
       ['Containers', 'Docker Engine, Docker Compose', 'docker', 'yes'],
       ['AI agents', 'Claude Code, OpenCode, Codex CLI, Mistral Vibe', 'claude, opencode, codex, vibe', 'yes'],
-      ['MCP', 'Chrome DevTools MCP, wired into every installed agent', 'mcp-chrome', 'yes'],
+      ['AI agents', 'Pi', 'pi', 'no'],
+      ['MCP', 'Chrome DevTools MCP, wired into every installed agent but Pi (no MCP support)', 'mcp-chrome', 'yes'],
       ['MCP', 'Playwright MCP, reusing the same Chromium', 'mcp-playwright', 'no'],
     ],
     contentsNote:
@@ -474,6 +476,7 @@ export const en = {
           { name: 'OpenCode', note: 'Open-source terminal agent.', href: 'https://github.com/anomalyco/opencode' },
           { name: 'Codex CLI', note: 'OpenAI.', href: 'https://github.com/openai/codex' },
           { name: 'Mistral Vibe', note: 'Mistral AI.', href: 'https://docs.mistral.ai/vibe/code/cli/install-setup' },
+          { name: 'Pi', note: 'Minimal open-source harness. Opt-in.', href: 'https://pi.dev' },
         ],
       },
       {

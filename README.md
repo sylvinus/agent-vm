@@ -4,7 +4,7 @@ Run AI coding agents inside sandboxed Linux VMs. The agent runs with permissions
 
 Uses [Lima](https://lima-vm.io/) to create lightweight Debian VMs on macOS and Linux. Ships with dev tools, Docker, and a headless Chrome browser with [Chrome DevTools MCP](https://github.com/ChromeDevTools/chrome-devtools-mcp) pre-configured.
 
-Supports [Claude Code](https://claude.ai/code), [OpenCode](https://github.com/anomalyco/opencode), [Codex CLI](https://github.com/openai/codex), and [Mistral Vibe](https://docs.mistral.ai/vibe/code/cli/install-setup) out of the box. Other agents can be run via `agent-vm shell`.
+Supports [Claude Code](https://claude.ai/code), [OpenCode](https://github.com/anomalyco/opencode), [Codex CLI](https://github.com/openai/codex) and [Mistral Vibe](https://docs.mistral.ai/vibe/code/cli/install-setup) out of the box, and [Pi](https://pi.dev) as an opt-in. Other agents can be run via `agent-vm shell`.
 
 Never install potential attack vectors such as npm, claude or even Docker on your host machine again!
 
@@ -43,7 +43,9 @@ agent-vm from a script needs the `PATH` entry anyway.
 agent-vm setup
 ```
 
-Creates a base VM template with dev tools, Docker, Chromium, and AI coding agents pre-installed. Run interactively to open the wizard; its first prompt offers a one-tap "default install" (everything except the opt-in languages Ruby, Rust, Go), answer `n` for per-component prompts. Pass `--preinstall=...` to skip the wizard. When no terminal is available (CI), the wizard is skipped and the default set is installed.
+Creates a base VM template with dev tools, Docker, Chromium, and AI coding agents pre-installed. Run interactively to open the wizard; its first prompt offers a one-tap "default install" (everything except the opt-in Ruby, Rust, Go, Pi and Playwright MCP), answer `n` for per-component prompts. Pass `--preinstall=...` to skip the wizard. When no terminal is available (CI), the wizard is skipped and the default set is installed.
+
+Creating the base VM (the first run downloads a Debian image) and installing its packages show their last 10 lines only, scrolling in place; the full output is in `~/.agent-vm/setup.log`.
 
 Options:
 
@@ -54,15 +56,16 @@ Options:
 | `--cpus N` | Number of CPUs | 1 |
 | `--preinstall=LIST` | Preinstall only this comma-separated subset in the base image (skips the wizard) | — |
 
-Names are lowercase: `python`, `node`, `ruby`, `rust`, `golang`, `docker`, `chromium`, `gh`, `claude`, `opencode`, `codex`, `vibe`, `mcp-chrome`, `mcp-playwright`. Use `default` for the default set (everything except Ruby/Rust/Go and `mcp-playwright`), `all` for everything, or `none` for nothing. Selecting `codex` also installs `node` (it needs `npm`), and so does `mcp-chrome` when `chromium` and an agent are selected (it needs `npx`). `mcp-playwright` does not pull `node` in: list it yourself.
+Names are lowercase: `python`, `node`, `ruby`, `rust`, `golang`, `docker`, `chromium`, `gh`, `claude`, `opencode`, `codex`, `vibe`, `pi`, `mcp-chrome`, `mcp-playwright`. Use `default` for the default set (everything except Ruby/Rust/Go, `pi` and `mcp-playwright`), `all` for everything, or `none` for nothing. Selecting `codex` or `pi` also installs `node` (they need `npm`), and so does `mcp-chrome` when `chromium` and an agent are selected (it needs `npx`). `mcp-playwright` does not pull `node` in: list it yourself.
 
-The `mcp-*` names wire an MCP server into every installed agent's config. Both current ones drive the preinstalled Chromium, so both need `node` and `chromium` and are skipped with a notice without them. Omit them to leave the agents' MCP config untouched — useful when MCP servers are managed per project rather than baked into the base image.
+The `mcp-*` names wire an MCP server into every installed agent's config, Pi excepted: it has no MCP support. Both current ones drive the preinstalled Chromium, so both need `node` and `chromium` and are skipped with a notice without them. Omit them to leave the agents' MCP config untouched — useful when MCP servers are managed per project rather than baked into the base image.
 
 ```bash
 agent-vm setup                                       # Interactive wizard
 agent-vm setup --preinstall=default                  # Default set, no prompts
 agent-vm setup --preinstall=default,rust             # Default set plus Rust
 agent-vm setup --preinstall=default,mcp-playwright   # Default set plus Playwright MCP
+agent-vm setup --preinstall=default,pi               # Default set plus Pi
 agent-vm setup --preinstall=python,docker,claude     # Minimal Claude-only setup
 agent-vm setup --preinstall=node,chromium,opencode   # OpenCode, no MCP wired in
 agent-vm setup --disk 50 --memory 16 --cpus 8        # Larger VM for heavy workloads
@@ -76,6 +79,7 @@ agent-vm claude                # Claude Code
 agent-vm opencode              # OpenCode
 agent-vm codex                 # Codex CLI
 agent-vm vibe                  # Mistral Vibe
+agent-vm pi                    # Pi (opt-in at setup)
 ```
 
 Creates a persistent VM for the current directory (or reuses it if one already exists), mounts your working directory, and runs the agent with full permissions. The VM persists after the agent exits so you can reconnect later. Ports opened inside the VM (e.g. by Docker containers or dev servers) are automatically forwarded to your host by Lima.
@@ -85,6 +89,9 @@ Each agent runs with its respective auto-approve flag:
 - `opencode` runs with `--auto` (auto-approves permission prompts that aren't explicitly denied)
 - `codex` runs with `--dangerously-bypass-approvals-and-sandbox`
 - `vibe` runs with `--agent auto-approve`
+- `pi` needs no flag: it has no permission prompts. Setup sets `defaultProjectTrust: "always"` in `~/.pi/agent/settings.json`, so a project's `.pi/` extensions and skills load (`pi -p` skips them otherwise)
+
+Lima passes your terminal's `COLORTERM` into the VM, so TUIs draw 24-bit colour when it says `truecolor`. On a terminal that has 24-bit colour but does not set it (Terminal.app on macOS 26 may not), `export COLORTERM=truecolor` in your shell.
 
 Any extra arguments are forwarded to the agent command:
 
@@ -94,6 +101,7 @@ agent-vm claude --resume                         # Resume previous session
 agent-vm opencode -p "refactor auth module"      # OpenCode with a prompt
 agent-vm codex -q "explain this codebase"        # Codex with a query
 agent-vm vibe -p "fix all lint errors"           # Mistral Vibe with a prompt
+agent-vm pi -p "fix all lint errors"             # Pi with a prompt
 ```
 
 agent-vm's own options (`--rm`, `--readonly`, `--disk`…) go before the command
@@ -592,6 +600,7 @@ The wizard's "default install" and `--preinstall=default` produce the same set: 
 | Browser | Chromium (headless), xvfb | `chromium` | yes |
 | Containers | Docker Engine, Docker Compose | `docker` | yes |
 | AI agents | Claude Code, OpenCode, Codex CLI, Mistral Vibe | `claude`, `opencode`, `codex`, `vibe` | yes |
+| AI agents | Pi | `pi` | no |
 | MCP | Chrome DevTools MCP (Claude/OpenCode/Codex/Vibe) | `mcp-chrome` | yes, when Node.js + Chromium + an agent are installed |
 | MCP | Playwright MCP, reusing the Chromium above | `mcp-playwright` | no |
 

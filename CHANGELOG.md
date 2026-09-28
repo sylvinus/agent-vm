@@ -1,5 +1,46 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- `agent-vm pi` runs [Pi](https://pi.dev), opt-in at setup (`pi` in
+  `--preinstall`, not in `default`). It pulls in `node`. Pi has no permission
+  prompts, so it takes no flag; setup trusts a project's `.pi/` extensions and
+  skills, which `pi -p` would skip otherwise. Pi has no MCP support, so the
+  `mcp-*` servers are not wired into it.
+- Starting a VM prints when its base VM was built (`Base VM: built
+  2026-09-28, 3 days ago`): its agents and packages are that old.
+
+### Changed
+
+- The base VM is created without Lima's containerd. Its unit shadowed Docker's
+  `containerd.service`, and `docker` could not reach its daemon. Existing VMs
+  keep it until `agent-vm setup` and `--reset`.
+- Every agent-vm command that uses a VM makes one `limactl shell` round trip
+  fewer: the env push and the check that the project share is writable share
+  one.
+- `setup` shows the creation and first start of the base VM (which downloads
+  the Debian image) and the package install in a 10-line window that scrolls
+  in place and is cleared when done. The full output goes to
+  `~/.agent-vm/setup.log`, whose end is printed again if a step fails. Without
+  a terminal, the output is printed as before.
+- `setup` opens on the wizard, agents first, and runs its security checks
+  (`.git` protection, `safe.bareRepository`) last, before creating the VM.
+  Their warnings are shorter, in a box fitted to the terminal, with the
+  question right below.
+
+### Fixed
+
+- Version checks compare each component as a decimal number: `1.0.1000` no
+  longer outranks `1.1.0`, and `08` is no longer an octal error.
+- `AGENT_VM_HOST_SHARE` that is not a positive integer falls back to 2 with a
+  warning, instead of a division error or being evaluated as a variable name.
+- A shared env file without a final newline no longer merges its last line
+  into the project env's first one.
+- Removing every env entry on the host now empties `~/.agent-vm.env` in the
+  VM, instead of leaving the previous values there.
+
 ## 0.2.0
 
 ### Security
