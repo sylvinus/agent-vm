@@ -336,7 +336,7 @@ fi
 # =============================================================================
 section "script dir resolves through symlinks"
 # =============================================================================
-# install.sh puts a symlink on PATH. Without following it, AGENT_VM_SCRIPT_DIR
+# `agent-vm install` puts a symlink on PATH. Without following it, AGENT_VM_SCRIPT_DIR
 # points at the link's directory and `agent-vm setup` cannot find
 # agent-vm.setup.sh, which lives next to the real file.
 REALDIR="$(CDPATH= cd -P -- "$(dirname "$AGENT_VM_SH")" >/dev/null && pwd)"
@@ -351,6 +351,62 @@ script_dir_of() {
 check "direct symlink"                     "$(script_dir_of "$SB/link1/agent-vm")" "$REALDIR"
 check "chain of two symlinks"              "$(script_dir_of "$SB/link2/agent-vm")" "$REALDIR"
 check "no symlink (the historical sourcing)" "$(script_dir_of "$AGENT_VM_SH")"     "$REALDIR"
+
+# =============================================================================
+section "install / uninstall"
+# =============================================================================
+# A throwaway HOME and bin directory. TTY=1 stands for a terminal to ask on,
+# ANSWER for the reply (1 yes, 0 no).
+IH="$SB/ihome"; IBIN="$SB/ibin"
+mkdir -p "$IH"
+inst() {
+  ( export HOME="$IH" AGENT_VM_BIN_DIR="$IBIN" SHELL=/bin/zsh PATH="$IBIN:$PATH"
+    _agent_vm_have_tty() { [ -n "${TTY:-}" ]; }
+    _agent_vm_ask_yn() { echo "${ANSWER:-1}"; }
+    agent-vm "$@" ) 2>&1
+}
+out="$(inst install)"
+check "install: the link points at this agent-vm.sh" "$(readlink "$IBIN/agent-vm" 2>/dev/null)" "$REALDIR/agent-vm.sh"
+case "$out" in *"not on your PATH"*) fail "install: PATH hint while the directory is on PATH" ;; *) pass "install: no PATH hint when the directory is on PATH" ;; esac
+[ -e "$IH/.zshrc" ] && fail "install: rc written without a terminal to ask on" || pass "install: no terminal, the rc is left alone"
+out="$( ( export HOME="$IH" AGENT_VM_BIN_DIR="$IBIN"; _agent_vm_have_tty() { return 1; }; agent-vm install ) 2>&1)"
+case "$out" in *"already linked"*"$IBIN is not on your PATH"*'export PATH="'"$IBIN"':$PATH"'*) pass "install again: already linked, and the PATH line to add" ;; *) fail "install again: $out" ;; esac
+out="$(TTY=1 inst install)"
+check "yes: the rc sources agent-vm.sh" "$(grep -c "source \"$REALDIR/agent-vm.sh\"" "$IH/.zshrc" 2>/dev/null)" "1"
+TTY=1 inst install >/dev/null
+check "yes, twice: one source line" "$(grep -c 'agent-vm.sh' "$IH/.zshrc")" "1"
+rm -f "$IH/.zshrc"
+TTY=1 ANSWER=0 inst install >/dev/null
+[ -e "$IH/.zshrc" ] && fail "no: the rc was written" || pass "no: the rc is left alone"
+check "install takes no argument (exit 2)" "$(inst install --force >/dev/null; echo $?)" "2"
+
+# Someone else's file or link at that path is never replaced.
+rm -f "$IBIN/agent-vm"; echo mine > "$IBIN/agent-vm"
+check "a file of the user's: refused" "$(inst install >/dev/null; echo $?)" "1"
+check "and left as it was" "$(cat "$IBIN/agent-vm")" "mine"
+out="$(inst uninstall)"
+check "uninstall: a file of the user's is left" "$(cat "$IBIN/agent-vm")" "mine"
+rm -f "$IBIN/agent-vm"; ln -s "$SB/nowhere" "$IBIN/agent-vm"
+out="$(inst install)"
+check "a dangling link: refused, not overwritten" "$(inst install >/dev/null; echo $?):$(readlink "$IBIN/agent-vm")" "1:$SB/nowhere"
+case "$out" in *"already exists and is not a link to"*"AGENT_VM_BIN_DIR"*) pass "and says why, with the way out" ;; *) fail "dangling link: $out" ;; esac
+rm -f "$IBIN/agent-vm"
+
+# uninstall removes our link and names the rc line it leaves.
+inst install >/dev/null
+printf 'source "%s"\n' "$REALDIR/agent-vm.sh" > "$IH/.zshrc"
+out="$(inst uninstall)"
+[ ! -e "$IBIN/agent-vm" ] && [ ! -L "$IBIN/agent-vm" ] && pass "uninstall: our link is removed" || fail "uninstall: the link is still there"
+case "$out" in *"still sources agent-vm.sh"*) pass "uninstall: names the rc line it leaves" ;; *) fail "uninstall: $out" ;; esac
+check "uninstall: the rc is not edited" "$(cat "$IH/.zshrc")" "source \"$REALDIR/agent-vm.sh\""
+case "$(inst uninstall)" in *"No link to remove"*) pass "uninstall again: nothing to remove, said" ;; *) fail "uninstall twice" ;; esac
+
+# The wrapper kept for the previous way: install.sh, and --uninstall. The rc
+# already sources agent-vm.sh here, so nothing asks on a terminal.
+( export HOME="$IH" AGENT_VM_BIN_DIR="$IBIN"; bash "$REALDIR/install.sh" >/dev/null 2>&1 )
+check "install.sh: installs" "$(readlink "$IBIN/agent-vm" 2>/dev/null)" "$REALDIR/agent-vm.sh"
+( export HOME="$IH" AGENT_VM_BIN_DIR="$IBIN"; bash "$REALDIR/install.sh" --uninstall >/dev/null 2>&1 )
+[ ! -L "$IBIN/agent-vm" ] && pass "install.sh --uninstall: uninstalls" || fail "install.sh --uninstall left the link"
 
 # =============================================================================
 section "env: the shared secrets file"
@@ -831,6 +887,818 @@ else
     *) fail "unexpected message for a directory with no VM: $out" ;;
   esac
 fi
+
+# =============================================================================
+section "project mount mode (--readonly is a host-side flag)"
+# =============================================================================
+# The read-only decision has to reach Lima's mount config, the only place the
+# guest cannot undo it. Assert on the JSON handed to limactl, so a revert to a
+# guest-side `mount -o remount,ro` fails here instead of passing quietly.
+mounts_default="$(_agent_vm_build_mounts_json agent-vm-t "$PROJ")"
+mounts_rw="$(_agent_vm_build_mounts_json agent-vm-t "$PROJ" true)"
+mounts_ro="$(_agent_vm_build_mounts_json agent-vm-t "$PROJ" false)"
+
+check "default is a writable project mount" \
+  "$mounts_default" "[{\"location\": \"$PROJ\", \"writable\": true}]"
+check "an explicit true agrees with the default" "$mounts_rw" "$mounts_default"
+check "false marks the project mount read-only" \
+  "$mounts_ro" "[{\"location\": \"$PROJ\", \"writable\": false}]"
+
+# The mode must ride on the project entry, not on whatever happens to be first
+# once ~/.agent-vm/volumes contributes extra mounts.
+mkdir -p "$SB/extra-vol"
+printf '%s:ro\n' "$SB/extra-vol" > "$HOME/.agent-vm/volumes"
+mounts_ro_vols="$(_agent_vm_build_mounts_json agent-vm-t "$PROJ" false)"
+rm -f "$HOME/.agent-vm/volumes"
+case "$mounts_ro_vols" in
+  "[{\"location\": \"$PROJ\", \"writable\": false},"*"extra-vol"*)
+    pass "read-only project mount keeps the ~/.agent-vm/volumes entries" ;;
+  *) fail "volumes entries lost or reordered: $mounts_ro_vols" ;;
+esac
+
+# .git protection: Lima refuses readonlyNames unless EVERY mount uses the
+# builtin driver, so the volumes entries need it as much as the project.
+SSHFS_RO='"sshfs": {"sftpDriver": "builtin", "readonlyNames": [".git"]}'
+printf '%s:/mnt/v:rw\n' "$SB/extra-vol" > "$HOME/.agent-vm/volumes"
+mounts_prot="$(_agent_vm_build_mounts_json agent-vm-t "$PROJ" true 1)"
+rm -f "$HOME/.agent-vm/volumes"
+case "$mounts_prot" in
+  "[{\"location\": \"$PROJ\", \"writable\": true, $SSHFS_RO}, "*) pass "protected: the project entry carries readonlyNames" ;;
+  *) fail "protected project entry: $mounts_prot" ;;
+esac
+check "protected: every entry has the builtin driver" \
+  "$(printf '%s' "$mounts_prot" | grep -o '"sftpDriver": "builtin"' | wc -l | tr -d ' ')" "2"
+case "$(_agent_vm_mounts_expr '[]' 1)" in
+  '.mountType = "reverse-sshfs" | .mounts = []') pass "protected: the mount type is reverse-sshfs" ;;
+  *) fail "protected expression: $(_agent_vm_mounts_expr '[]' 1)" ;;
+esac
+# Without the protection, a reverse-sshfs left by a Lima that had it must go:
+# without readonlyNames it is the weaker mount type.
+case "$(_agent_vm_mounts_expr '[]' '')" in
+  'del(.mountType) | .mounts = []') pass "unprotected: back to Lima's default mount type" ;;
+  *) fail "unprotected expression: $(_agent_vm_mounts_expr '[]' '')" ;;
+esac
+
+# Read-only is only a real boundary for mount types the host enforces. Lima
+# applies it inside the guest for reverse-sshfs and for virtiofs under QEMU,
+# where root can remount it rw. $2: the VM type `limactl list` reports.
+mount_fstype() {
+  cat > "$SB/bin/limactl" <<STUB
+#!/usr/bin/env bash
+[ "\$1" = shell ] && { printf '%s\n' "$1"; exit 0; }
+[ "\$1" = list ] && { printf '%s\n' "${2:-}"; exit 0; }
+exit 1
+STUB
+  chmod +x "$SB/bin/limactl"
+  _agent_vm_mount_is_host_enforced agent-vm-t "$PROJ"
+  printf '%s' "$?"
+}
+check "virtiofs on vz is host-enforced"  "$(mount_fstype virtiofs vz)"   "0"
+check "virtiofs under QEMU is not"      "$(mount_fstype virtiofs qemu)" "1"
+check "virtiofs, VM type unknown: undecided" "$(mount_fstype virtiofs '')" "2"
+check "9p is host-enforced"            "$(mount_fstype 9p)"         "0"
+check "reverse-sshfs is not"           "$(mount_fstype fuse.sshfs)" "1"
+check "an empty answer is undecided"   "$(mount_fstype '')"         "2"
+# Served by the builtin server of a Lima with readonlyNames, it is. The guest
+# cannot tell the servers apart: the record of the applied mounts does.
+mkdir -p "$HOME/.agent-vm"
+printf '[{"location": "%s", "writable": false, %s}]\n' "$PROJ" "$SSHFS_RO" > "$HOME/.agent-vm/.agent-vm-mounts-agent-vm-t"
+check "reverse-sshfs with readonlyNames is" "$(mount_fstype fuse.sshfs)" "0"
+rm -f "$HOME/.agent-vm/.agent-vm-mounts-agent-vm-t"
+# Restore the shared stub: mount_fstype replaced it with its own.
+cat > "$SB/bin/limactl" <<'STUB'
+#!/usr/bin/env bash
+exit 0
+STUB
+chmod +x "$SB/bin/limactl"
+
+# The prompt before restarting a VM to apply --readonly must key off whether
+# the VM was ALREADY running, not off whether it is running by the time we
+# ask — the reconcile step sits after `limactl start`, so asking then always
+# answers yes and every scripted --readonly on an existing VM would abort on
+# a prompt nobody can answer.
+ro_guard="$(sed -n '/want_writable" == "false" \]\] &&/p' "$AGENT_VM_SH")"
+case "$ro_guard" in
+  *'-n "$was_running"'*) pass "the --readonly prompt keys off was_running" ;;
+  *_agent_vm_running*)   fail "the --readonly prompt re-asks after we started the VM" ;;
+  *)                     fail "could not find the --readonly prompt guard" ;;
+esac
+case "$(sed -n '/^  local was_running=""/,/^  if \[\[ -z "$was_running" \]\]/p' "$AGENT_VM_SH")" in
+  *'_agent_vm_running "$vm_name" && was_running=1'*)
+    pass "was_running is sampled before the VM is started" ;;
+  *) fail "was_running is not sampled before the start" ;;
+esac
+
+# =============================================================================
+section "unenforceable flags are gone, not just hidden"
+# =============================================================================
+# Both were removed for the same reason: they were applied inside the VM, where
+# the agent has passwordless sudo and could undo them. --offline was iptables
+# rules, --git-read-only a bind mount. Neither can come back without the
+# enforcement moving to the host, so fail here if one reappears — including as
+# a silently-ignored argument, which reads to a caller like it worked.
+for flag in --offline --git-read-only --git-ro; do
+  if grep -q -- "$flag" "$AGENT_VM_SH"; then
+    fail "$flag still referenced in agent-vm.sh"
+  else
+    pass "no $flag left in agent-vm.sh"
+  fi
+  if agent-vm "$flag" shell >/dev/null 2>&1; then
+    fail "$flag was silently accepted"
+  else
+    pass "$flag is rejected rather than ignored"
+  fi
+done
+
+# =============================================================================
+section "env get/has read the file, they never run it"
+# =============================================================================
+# The project env file sits in a directory the VM can write to, and can arrive
+# with a cloned repository. Sourcing it on the host to answer `get` ran
+# whatever it contained, as the user, outside the sandbox.
+RD="$SB/envread"; mkdir -p "$RD"
+rd() { ( cd "$RD" && AGENT_VM_STATE_DIR="$SB/envread-state" bash "$AGENT_VM_SH" project-env "$@" ); }
+
+printf 'X=$(touch %s/pwned-dollar)\nY=`touch %s/pwned-tick`\n' "$SB" "$SB" > "$RD/.agent-vm.env"
+rd get X >/dev/null 2>&1
+check "get refuses a \$(...) value (exit 2)" "$?" "2"
+rd has Y >/dev/null 2>&1
+check "has refuses a backquoted value (exit 2)" "$?" "2"
+if [ -e "$SB/pwned-dollar" ] || [ -e "$SB/pwned-tick" ]; then
+  fail "a value in the project env file was executed on the host"
+else
+  pass "nothing in the project env file was executed on the host"
+fi
+case "$(rd get X 2>&1)" in
+  *"Rewrite it with 'agent-vm project-env set'"*) pass "the refusal says how to fix the entry" ;;
+  *) fail "the refusal does not say what to do" ;;
+esac
+
+# Everything `set` can write must read back unchanged, including the values
+# that would be code if the reader evaluated them.
+: > "$RD/.agent-vm.env"
+for v in "O'Brien" '$(echo hi)' '`id`' 'a\b' 'two words' '"dq"' '~/x' "line1
+line2"; do
+  rd set K "$v" >/dev/null 2>&1
+  check "set/get round trip: $(printf '%s' "$v" | tr '\n' '|')" "$(rd get K)" "$v"
+done
+rd set EMPTY "" >/dev/null 2>&1
+rd has EMPTY && pass "an empty value is present" || fail "an empty value reads as absent"
+check "an empty value reads back empty" "$(rd get EMPTY)" ""
+
+# A value spanning lines must not create keys out of its own content.
+rd set MULTI "first
+PHANTOM=injected" >/dev/null 2>&1
+rd has PHANTOM && fail "a line inside a quoted value was read as a key" \
+  || pass "a line inside a quoted value is not a key"
+
+# Plain dotenv lines written by hand.
+cat > "$RD/.agent-vm.env" <<'EOF'
+# a comment
+A=plain
+export B=exported
+  C="double quoted"
+D=value # trailing comment
+E='a'"b"c
+F=first
+F=second
+H=~/somewhere
+I="$HOME"
+EOF
+printf 'G=crlf\r\n' >> "$RD/.agent-vm.env"
+check "plain value"                  "$(rd get A)" "plain"
+check "export prefix"                "$(rd get B)" "exported"
+check "leading blanks, double quotes" "$(rd get C)" "double quoted"
+check "trailing comment"             "$(rd get D)" "value"
+check "concatenated quoting"         "$(rd get E)" "abc"
+check "the last assignment wins"     "$(rd get F)" "second"
+check "a CRLF line ending is dropped" "$(rd get G)" "crlf"
+rd get H >/dev/null 2>&1
+check "an unquoted ~ (host-dependent) is refused" "$?" "2"
+rd get I >/dev/null 2>&1
+check "an expansion inside double quotes is refused" "$?" "2"
+rd get NOT_THERE >/dev/null 2>&1
+check "an absent key exits 1" "$?" "1"
+
+# =============================================================================
+section "project paths that would rewrite the mount config are refused"
+# =============================================================================
+# The path is spliced into the yq expression given to `limactl edit --set`. A
+# quote in a directory name used to end the string and let the name add mounts
+# of its own: `a","writable":true},{"location":"~",...` mounted the home
+# directory read-write, --readonly or not.
+for d in "$SB/"'q"uote' "$SB/"'back\slash'; do
+  mkdir -p "$d"
+  out="$(_agent_vm_ensure_running agent-vm-x "$d" 2>&1)"
+  rc=$?
+  case "$rc:$out" in
+    1:*"a quote, a backslash or a control character"*) pass "refused: $(basename "$d")" ;;
+    *) fail "not refused: $(basename "$d") ($rc: $out)" ;;
+  esac
+done
+
+# =============================================================================
+section "VM names need a hash, and get one without shasum"
+# =============================================================================
+# Without a hash, every directory named `proj` shared the VM `agent-vm-proj-`.
+HB="$SB/hashbin"; mkdir -p "$HB/none" "$HB/sha256sum-only"
+for t in cut basename tr sed; do
+  ln -sf "$(command -v "$t")" "$HB/none/$t"
+  ln -sf "$(command -v "$t")" "$HB/sha256sum-only/$t"
+done
+out="$(PATH="$HB/none"; _agent_vm_name /x/proj 2>&1)"
+rc=$?
+case "$rc:$out" in
+  1:*"install shasum or sha256sum"*) pass "no hash tool: naming fails instead of dropping the hash" ;;
+  *) fail "no hash tool: got $rc '$out'" ;;
+esac
+if command -v sha256sum >/dev/null 2>&1; then
+  ln -sf "$(command -v sha256sum)" "$HB/sha256sum-only/sha256sum"
+  check "sha256sum gives the same name as shasum" \
+    "$(PATH="$HB/sha256sum-only"; _agent_vm_name /x/proj)" "$(_agent_vm_name /x/proj)"
+else
+  printf '  skip sha256sum fallback (not installed here)\n'
+fi
+
+# =============================================================================
+section "commands against a recording limactl"
+# =============================================================================
+# One stub for the sections below. It logs every call, lists the base template
+# and the VM named by AGENT_VM_TEST_VM, and reports the project share as
+# virtiofs (AGENT_VM_TEST_FSTYPE to change it) on vz (AGENT_VM_TEST_VMTYPE). With AGENT_VM_TEST_CLONED set,
+# that VM only exists once `clone` has created the file. AGENT_VM_TEST_STOPPED
+# lists it as stopped, and AGENT_VM_TEST_RO makes the project write probe fail,
+# as a read-only share would. `validate` answers like stock Lima 2.2 does to
+# readonlyNames, or, while the file $PROTECTS exists, like a Lima that has it
+# (both messages copied from the real binaries).
+REC="$SB/rec.log"
+PROTECTS="$SB/lima-protects"
+cat > "$SB/bin/limactl" <<'STUB'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$AGENT_VM_TEST_REC"
+listed() { [ -z "${AGENT_VM_TEST_CLONED:-}" ] || [ -e "$AGENT_VM_TEST_CLONED" ]; }
+case "$1" in
+  --version) echo "limactl version 2.0.3" ;;
+  validate)
+    if [ -e "${AGENT_VM_TEST_PROTECTS:-/nonexistent}" ]; then
+      echo 'level=fatal msg="failed to validate YAML file `probe.yaml`: field `mounts[*].sshfs.readonlyNames` requires `mountType` to be `reverse-sshfs`"' >&2
+      exit 1
+    fi
+    echo 'level=warning msg="Non-strict YAML detected; please check for typos" error="[3:158] unknown field \"readonlyNames\""' >&2
+    echo 'level=info msg="`probe.yaml`: OK"' >&2 ;;
+  clone) [ -n "${AGENT_VM_TEST_CLONED:-}" ] && touch "$AGENT_VM_TEST_CLONED" ;;
+  list)
+    case "$*" in
+      *"{{.VMType}}"*) echo "${AGENT_VM_TEST_VMTYPE:-vz}" ;;
+      *"{{.CPUs}}"*"{{.Disk}}"*) listed && echo "$AGENT_VM_TEST_VM|1|3221225472|10737418240" ;;
+      *"{{.Status}}|"*) listed && echo "$AGENT_VM_TEST_VM|Running|1|3221225472" ;;
+      *"{{.Status}}"*)
+        echo "agent-vm-base Stopped"
+        listed && echo "$AGENT_VM_TEST_VM ${AGENT_VM_TEST_STOPPED:+Stopped}${AGENT_VM_TEST_STOPPED:-Running}" ;;
+      *-q*) echo "agent-vm-base"; listed && echo "$AGENT_VM_TEST_VM" ;;
+      *)
+        echo "NAME STATUS"
+        [ -n "${AGENT_VM_TEST_NOVMS:-}" ] && exit 0
+        echo "agent-vm-base Stopped"; listed && echo "$AGENT_VM_TEST_VM Running" ;;
+    esac ;;
+  shell)
+    case "$*" in
+      *findmnt*) echo "${AGENT_VM_TEST_FSTYPE:-virtiofs}" ;;
+      *agent-vm-write-probe*) [ -z "${AGENT_VM_TEST_RO:-}" ] || exit 1 ;;
+    esac ;;
+  stop|delete) cat >/dev/null ;;
+esac
+exit 0
+STUB
+chmod +x "$SB/bin/limactl"
+mkdir -p "$HOME/.agent-vm"
+echo 1 > "$HOME/.agent-vm/.agent-vm-base-version"
+PV="$(_agent_vm_name "$PROJ")"
+# Re-sourced by an earlier section, so stubbed again: no KVM on a test runner.
+_agent_vm_check_linux_prereqs() { return 0; }
+rec() {
+  : > "$REC"
+  ( cd "$PROJ" || exit 1
+    export AGENT_VM_TEST_REC="$REC" AGENT_VM_TEST_VM="$PV" AGENT_VM_TEST_PROTECTS="$PROTECTS"
+    agent-vm "$@" </dev/null 2>&1 )
+}
+rec_has() { grep -qF -- "$1" "$REC"; }
+
+section "VM options are read before the command only"
+# `agent-vm run docker run --rm x` used to take docker's --rm for its own: the
+# container ran without it, and the VM was deleted afterwards.
+rec run docker run --rm hello >/dev/null
+rec_has "agent-vm docker run --rm hello" && pass "run: --rm reaches the command" \
+  || fail "run: --rm was taken from the command: $(grep ' zsh ' "$REC")"
+rec_has "delete" && fail "run: the VM was deleted" || pass "run: the VM is kept"
+
+rec claude -p hi --rm >/dev/null
+rec_has "claude --dangerously-skip-permissions -p hi --rm" && pass "claude: a later --rm is claude's" \
+  || fail "claude: arguments changed: $(grep ' zsh ' "$REC")"
+rec_has "delete" && fail "claude: the VM was deleted" || pass "claude: the VM is kept"
+
+rec --rm run true >/dev/null
+rec_has "delete $PV" && pass "--rm before the command still deletes the VM" \
+  || fail "--rm before the command was lost"
+rec claude --rm >/dev/null
+rec_has "delete $PV" && pass "--rm right after the agent name is still agent-vm's" \
+  || fail "--rm right after the agent name was passed to the agent"
+rec run --tty htop >/dev/null
+rec_has "shell --workdir $PROJ --tty $PV" && pass "run --tty still allocates a PTY" \
+  || fail "run --tty lost: $(grep ' zsh ' "$REC")"
+rec run -- --weird-name >/dev/null
+rec_has "agent-vm --weird-name" && pass "-- ends the options" || fail "-- not honoured"
+
+# `shell` takes no command, so a word it does not know is a mistake: it used to
+# be skipped, which reads to the caller as if the flag had applied.
+out="$(rec shell --offline)"
+case "$out" in
+  *"unknown argument for shell: --offline"*) pass "shell rejects an unknown argument" ;;
+  *) fail "shell accepted --offline: $out" ;;
+esac
+rec_has "shell --workdir" && fail "shell opened a session anyway" || pass "no session is opened"
+
+section "--readonly makes every share read-only"
+# The hypervisor enforces read-only per share, not per host file. A writable
+# volume containing the project (~/work:/mnt/work:rw) was a way to write the
+# project under --readonly without root.
+mkdir -p "$SB/vol-rw" "$SB/vol-ro"
+printf '%s:/mnt/rw:rw\n%s:/mnt/ro\n' "$SB/vol-rw" "$SB/vol-ro" > "$HOME/.agent-vm/volumes"
+ro_json="$(_agent_vm_build_mounts_json "$PV" "$PROJ" false 2>"$SB/ro-notice")"
+rw_json="$(_agent_vm_build_mounts_json "$PV" "$PROJ" true 2>/dev/null)"
+case "$ro_json" in
+  *'"writable": true'*) fail "a share stays writable under --readonly: $ro_json" ;;
+  *) pass "no share is writable under --readonly" ;;
+esac
+case "$rw_json" in
+  *"\"location\": \"$SB/vol-rw\", \"mountPoint\": \"/mnt/rw\", \"writable\": true"*)
+    pass "without it, an rw volume is writable again" ;;
+  *) fail "rw volume not restored: $rw_json" ;;
+esac
+case "$(cat "$SB/ro-notice")" in
+  *"'$SB/vol-rw' (rw in ~/.agent-vm/volumes) is mounted read-only too"*) pass "the downgrade is announced" ;;
+  *) fail "no notice for the downgraded volume" ;;
+esac
+
+# An existing VM whose project is already read-only: the probe agrees with
+# --readonly, so only the record of applied mounts can say a volume is still
+# writable. Stopped, so no prompt is needed.
+REC_MOUNTS="$HOME/.agent-vm/.agent-vm-mounts-$PV"
+ro_run() { AGENT_VM_TEST_STOPPED=1 AGENT_VM_TEST_RO=1 rec --readonly run true >/dev/null; }
+printf '%s\n' "[{\"location\": \"$PROJ\", \"writable\": false}, {\"location\": \"$SB/vol-rw\", \"writable\": true}]" > "$REC_MOUNTS"
+ro_run
+rec_has "edit $PV --set del(.mountType) | .mounts" && pass "a recorded writable volume forces a remount" \
+  || fail "a writable volume survived --readonly"
+_agent_vm_mounts_all_readonly "$PV" && pass "the new record has no writable share" \
+  || fail "the record still has a writable share: $(cat "$REC_MOUNTS")"
+ro_run
+rec_has "edit $PV" && fail "an all read-only VM was remounted again" \
+  || pass "an all read-only VM is left alone"
+# Back to writable: the end of a --readonly session is said as such, not as a
+# broken mount being repaired.
+out="$(AGENT_VM_TEST_RO=1 rec run true)"
+case "$out" in *"left read-only by --readonly; making it writable again"*) pass "after --readonly: says it is making the VM writable again" ;; *) fail "after --readonly: $out" ;; esac
+printf '[{"location": "%s", "writable": true}]\n' "$PROJ" > "$REC_MOUNTS"
+out="$(AGENT_VM_TEST_RO=1 rec run true)"
+case "$out" in *"Project mount is not writable; repairing"*) pass "a writable VM that cannot write: a repair" ;; *) fail "broken mount: $out" ;; esac
+rm -f "$REC_MOUNTS"
+ro_run
+rec_has "edit $PV --set del(.mountType) | .mounts" && pass "no record (an older VM): remounted to be sure" \
+  || fail "an unrecorded VM was trusted"
+_agent_vm_cleanup_state "$PV"
+[ -e "$REC_MOUNTS" ] && fail "rm/--reset left the mounts record" || pass "rm/--reset drops the mounts record"
+rm -f "$HOME/.agent-vm/volumes"
+
+section ".git protection follows what Lima can do"
+# Stock Lima accepts readonlyNames with a warning and ignores it, so only a
+# refusal that names the field counts. Stock Lima failing for another reason
+# still names it, in its "unknown field" warning: that is not support either.
+probe() {
+  ( export AGENT_VM_TEST_REC="$SB/probe.log" AGENT_VM_TEST_PROTECTS="$PROTECTS" TMPDIR="$SB/probe-tmp"
+    _agent_vm_lima_protects_git ) && echo yes || echo no
+}
+mkdir -p "$SB/probe-tmp"
+rm -f "$PROTECTS"
+check "stock Lima: no protection" "$(probe)" "no"
+touch "$PROTECTS"
+check "a Lima with readonlyNames: protection" "$(probe)" "yes"
+check "the probe leaves no temporary file" "$(ls -A "$SB/probe-tmp")" ""
+mkdir -p "$SB/stock-err"
+cat > "$SB/stock-err/limactl" <<'STUB'
+#!/usr/bin/env bash
+echo 'level=warning msg="Non-strict YAML detected" error="[2:47] unknown field \"readonlyNames\""' >&2
+echo 'level=fatal msg="failed to validate YAML file `probe.yaml`: field `images` must be set"' >&2
+exit 1
+STUB
+chmod +x "$SB/stock-err/limactl"
+check "stock Lima failing for another reason: no protection" "$(PATH="$SB/stock-err:$PATH" probe)" "no"
+mkdir -p "$SB/nolimactl"
+for t in mktemp rm; do ln -sf "$(command -v "$t")" "$SB/nolimactl/$t"; done
+check "no limactl: no protection" "$(PATH="$SB/nolimactl" probe)" "no"
+
+# A new VM gets reverse-sshfs and readonlyNames on every share.
+CLONED="$SB/cloned-prot"; rm -f "$CLONED" "$REC_MOUNTS"
+AGENT_VM_TEST_CLONED="$CLONED" rec run true >/dev/null
+rec_has "edit $PV --set .mountType = \"reverse-sshfs\" | .mounts = [{\"location\": \"$PROJ\", \"writable\": true, $SSHFS_RO}]" \
+  && pass "new VM: reverse-sshfs, every .git read-only" || fail "new VM not protected: $(grep '^edit' "$REC")"
+_agent_vm_mounts_protect_git "$PV" && pass "new VM: recorded as protected" || fail "new VM: record not protected"
+
+# An existing VM set up before: changed while it is stopped, before it starts,
+# so it is not started a second time.
+unprotected_rec() { printf '[{"location": "%s", "writable": true}]\n' "$PROJ" > "$REC_MOUNTS"; }
+protected_rec() { printf '[{"location": "%s", "writable": %s, %s}]\n' "$PROJ" "${1:-true}" "$SSHFS_RO" > "$REC_MOUNTS"; }
+unprotected_rec
+out="$(AGENT_VM_TEST_STOPPED=1 rec run true)"
+e="$(grep -n "^edit $PV --set .mountType = \"reverse-sshfs\"" "$REC" | head -1 | cut -d: -f1)"
+s="$(grep -n "^start $PV" "$REC" | head -1 | cut -d: -f1)"
+if [ -n "$e" ] && [ -n "$s" ] && [ "$e" -lt "$s" ]; then
+  pass "stopped VM from before: protected before it starts"
+else
+  fail "stopped VM from before: edit at '${e:-none}', start at '${s:-none}'"
+fi
+check "stopped VM from before: started once" "$(grep -c "^start $PV" "$REC")" "1"
+case "$out" in *"Making every .git read-only for VM '$PV'"*) pass "and it says so" ;; *) fail "no notice: $out" ;; esac
+
+# A running one is not restarted behind another session's back: warned.
+unprotected_rec
+out="$(rec run true)"
+rec_has "edit $PV" && fail "a running VM was changed" || pass "running VM from before: left running"
+case "$out" in *"can still write .git"*"'agent-vm stop'"*) pass "running VM from before: says how to protect it" ;; *) fail "no warning: $out" ;; esac
+
+# Back to a Lima without readonlyNames: reverse-sshfs goes, before the start.
+rm -f "$PROTECTS"
+protected_rec
+AGENT_VM_TEST_STOPPED=1 rec run true >/dev/null
+rec_has "edit $PV --set del(.mountType) | .mounts = [{\"location\": \"$PROJ\", \"writable\": true}]" \
+  && pass "Lima without readonlyNames: the VM goes back to the default mount type" \
+  || fail "reverse-sshfs kept without readonlyNames: $(grep '^edit' "$REC")"
+_agent_vm_mounts_protect_git "$PV" && fail "the record still says protected" || pass "and the record says so"
+
+# --readonly on reverse-sshfs: enforced on the host by the builtin server of a
+# Lima with readonlyNames, and refused otherwise.
+touch "$PROTECTS"
+protected_rec false
+out="$(AGENT_VM_TEST_STOPPED=1 AGENT_VM_TEST_RO=1 AGENT_VM_TEST_FSTYPE=fuse.sshfs rec --readonly run true)"
+case "$out" in *"enforced on the host"*) pass "--readonly on protected reverse-sshfs: accepted" ;; *) fail "--readonly on protected reverse-sshfs: $out" ;; esac
+rm -f "$PROTECTS"
+printf '[{"location": "%s", "writable": false}]\n' "$PROJ" > "$REC_MOUNTS"
+out="$(AGENT_VM_TEST_STOPPED=1 AGENT_VM_TEST_RO=1 AGENT_VM_TEST_FSTYPE=fuse.sshfs rec --readonly run true)"
+case "$out" in *"--readonly cannot be enforced"*) pass "--readonly on plain reverse-sshfs: refused" ;; *) fail "--readonly on plain reverse-sshfs: $out" ;; esac
+
+# The opt-out: .git writable although this Lima could protect it, said on
+# every run.
+touch "$PROTECTS"
+protected_rec
+out="$(AGENT_VM_UNSAFE_WRITABLE_GIT=1 rec run true)"
+rec_has "edit $PV" && fail "opt-out: a running VM was changed" || pass "opt-out: a running VM is left running"
+case "$out" in *"keeps .git read-only until it stops"*) pass "and it says .git stays read-only until then" ;; *) fail "opt-out, running VM: $out" ;; esac
+out="$(AGENT_VM_UNSAFE_WRITABLE_GIT=1 AGENT_VM_TEST_STOPPED=1 rec run true)"
+rec_has "edit $PV --set del(.mountType) | .mounts = [{\"location\": \"$PROJ\", \"writable\": true}]" \
+  && pass "opt-out: a stopped protected VM gets .git writable, on the default mount type" \
+  || fail "opt-out: shares kept protected: $(grep '^edit' "$REC")"
+case "$out" in *"WARNING: AGENT_VM_UNSAFE_WRITABLE_GIT=1"*) pass "opt-out: the warning is printed" ;; *) fail "opt-out: no warning: $out" ;; esac
+out="$(AGENT_VM_UNSAFE_WRITABLE_GIT=1 rec run true)"
+rec_has "edit $PV" && fail "opt-out: an unprotected VM was edited again" || pass "opt-out: nothing to change the next time"
+case "$out" in *"WARNING: AGENT_VM_UNSAFE_WRITABLE_GIT=1"*) pass "opt-out: the warning is printed on every run" ;; *) fail "opt-out: no warning the next time: $out" ;; esac
+AGENT_VM_UNSAFE_WRITABLE_GIT=yes AGENT_VM_TEST_STOPPED=1 rec run true >/dev/null
+rec_has "edit $PV --set .mountType = \"reverse-sshfs\"" && pass "only 1 is the opt-out: 'yes' keeps .git protected" \
+  || fail "AGENT_VM_UNSAFE_WRITABLE_GIT=yes turned the protection off"
+
+# The same as a VM option, before the command or right after its name.
+out="$(AGENT_VM_TEST_STOPPED=1 rec --unsafe-writable-git run true)"
+rec_has "edit $PV --set del(.mountType) | .mounts = [{\"location\": \"$PROJ\", \"writable\": true}]" \
+  && pass "--unsafe-writable-git: .git writable" || fail "--unsafe-writable-git ignored: $(grep '^edit' "$REC")"
+case "$out" in *"WARNING: --unsafe-writable-git."*) pass "--unsafe-writable-git: the warning names the flag" ;; *) fail "--unsafe-writable-git: $out" ;; esac
+protected_rec
+AGENT_VM_TEST_STOPPED=1 rec run --unsafe-writable-git=1 true >/dev/null
+rec_has "edit $PV --set del(.mountType)" && pass "run --unsafe-writable-git=1: .git writable" \
+  || fail "run --unsafe-writable-git=1 ignored: $(grep '^edit' "$REC")"
+rec_has "agent-vm-write-probe" && ! rec_has "unsafe-writable-git" && pass "and the flag does not reach the command" \
+  || fail "the flag reached the command: $(grep -v '^edit' "$REC" | tail -2)"
+# Without it, the next run protects again. agent-vm is a shell function too,
+# where a flag leaking out of its call would stay on for the rest of the shell.
+unset _agent_vm_unsafe_git_flag
+( cd "$PROJ" && export AGENT_VM_TEST_REC="$REC" AGENT_VM_TEST_VM="$PV" AGENT_VM_TEST_PROTECTS="$PROTECTS" AGENT_VM_TEST_STOPPED=1
+  agent-vm --unsafe-writable-git run true >/dev/null 2>&1
+  [ -z "${_agent_vm_unsafe_git_flag:-}" ] || echo leaked
+  : > "$REC"
+  agent-vm run true >/dev/null 2>&1 ) > "$SB/leak.out"
+check "the flag does not outlive its command" "$(cat "$SB/leak.out")" ""
+rec_has "edit $PV --set .mountType = \"reverse-sshfs\"" && pass "the next run without it protects .git again" \
+  || fail "not protected after the flag: $(grep '^edit' "$REC")"
+case "$(agent-vm setup --unsafe-writable-git 2>&1 </dev/null)" in
+  *"Unknown option: --unsafe-writable-git"*) pass "setup rejects --unsafe-writable-git" ;;
+  *) fail "setup accepted --unsafe-writable-git" ;;
+esac
+rm -f "$PROTECTS"
+_agent_vm_cleanup_state "$PV"
+
+section "a new VM prints its resources once"
+CLONED="$SB/cloned"; rm -f "$CLONED"
+out="$(AGENT_VM_TEST_CLONED="$CLONED" rec run true)"
+check "one Resources line on the first run" "$(printf '%s\n' "$out" | grep -c 'Resources:')" "1"
+
+section "status"
+out="$(rec status)"
+case "$out" in
+  *"> $PV Running"*) pass "the current directory's VM is marked" ;;
+  *) fail "current VM not marked: $out" ;;
+esac
+case "$out" in *"(no VMs)"*) fail "(no VMs) printed next to VMs" ;; *) pass "no '(no VMs)' when there are VMs" ;; esac
+# Without pipefail, as in an interactive shell: the old piped loop only said
+# "(no VMs)" when the caller happened to have pipefail on.
+out="$(set +o pipefail; AGENT_VM_TEST_NOVMS=1 rec status)"
+case "$out" in
+  *"(no VMs)"*) pass "no VM: says so" ;;
+  *) fail "no VM: nothing said: $out" ;;
+esac
+
+section "destroy-all"
+# The names are read on stdin; each limactl call must not eat the next ones.
+echo 1 > "$HOME/.agent-vm/.agent-vm-base-version"
+: > "$REC"
+( export AGENT_VM_TEST_REC="$REC"
+  _agent_vm_destroy_vms "$(printf 'agent-vm-a\nagent-vm-b\nagent-vm-base\n')" >/dev/null )
+check "every listed VM is deleted" "$(grep -c '^delete' "$REC")" "3"
+if [ -e "$HOME/.agent-vm/.agent-vm-base-version" ]; then
+  fail "deleting the base template left its ready marker"
+else
+  pass "deleting the base template retires its ready marker"
+fi
+echo 1 > "$HOME/.agent-vm/.agent-vm-base-version"
+
+section "doctor"
+date +%s > "$HOME/.agent-vm/.agent-vm-base-version"
+# A stub git that keeps safe.bareRepository in a file; FAKE_GIT_VERSION and
+# FAKE_GIT_SET_FAILS change its answers. Used here and by the setup offer.
+mkdir -p "$SB/fakegit"
+cat > "$SB/fakegit/git" <<STUB
+#!/usr/bin/env bash
+echo "git \$*" >> "$SB/git.log"
+case "\$*" in
+  --version) echo "git version \${FAKE_GIT_VERSION:-2.47.0}" ;;
+  "config --get safe.bareRepository") cat "$SB/git-bare" 2>/dev/null || exit 1 ;;
+  "config --global safe.bareRepository explicit")
+    [ -n "\${FAKE_GIT_SET_FAILS:-}" ] && exit 1
+    echo explicit > "$SB/git-bare" ;;
+  *) exit 1 ;;
+esac
+STUB
+chmod +x "$SB/fakegit/git"
+# With the setting made: a healthy host has it.
+DOCTOR_OLD_PATH="$PATH"
+export PATH="$SB/fakegit:$PATH"
+echo explicit > "$SB/git-bare"
+out="$(rec doctor)"
+rc=$?
+check "doctor exits 0 on a healthy setup" "$rc" "0"
+[ "$rc" = 0 ] || printf '%s\n' "$out" | sed 's/^/         /'
+for want in "ok    Lima 2.0.3" "ok    agent-vm-base is ready" "(--readonly works)" "No problems found"; do
+  case "$out" in
+    *"$want"*) pass "doctor: $want" ;;
+    *) fail "doctor: missing '$want'"; printf '%s\n' "$out" | tail -3 | sed 's/^/         /' ;;
+  esac
+done
+if grep -Eq '^(start|stop|delete|clone|create|edit)( |$)' "$REC"; then
+  fail "doctor changed something: $(grep -E '^(start|stop|delete|clone|create|edit)' "$REC" | head -1)"
+else
+  pass "doctor is read-only"
+fi
+case "$out" in
+  *"warn  this Lima cannot keep .git read-only"*"$AGENT_VM_LIMA_ISSUE"*) pass "doctor: a Lima without readonlyNames is a warning, with the way out" ;;
+  *) fail "doctor: no warning about .git protection" ;;
+esac
+case "$out" in *"warn  its shares leave .git writable"*) pass "doctor: a VM with a writable .git is a warning" ;; *) fail "doctor: VM shares not reported" ;; esac
+touch "$PROTECTS"
+printf '[{"location": "%s", "writable": true, %s}]\n' "$PROJ" "$SSHFS_RO" > "$HOME/.agent-vm/.agent-vm-mounts-$PV"
+out="$(rec doctor)"
+case "$out" in *"ok    Lima keeps every .git read-only"*) pass "doctor: a Lima with readonlyNames is ok" ;; *) fail "doctor: protection not reported" ;; esac
+case "$out" in *"ok    its shares keep every .git read-only"*) pass "doctor: a protected VM is ok" ;; *) fail "doctor: protected VM not reported" ;; esac
+case "$out" in *"AGENT_VM_UNSAFE_WRITABLE_GIT"*) fail "doctor: opt-out reported while unset" ;; *) pass "doctor: no opt-out reported while unset" ;; esac
+out="$(AGENT_VM_UNSAFE_WRITABLE_GIT=1 rec doctor)"
+case "$out" in *"warn  AGENT_VM_UNSAFE_WRITABLE_GIT=1: the VMs can write .git"*) pass "doctor: the opt-out is a warning" ;; *) fail "doctor: opt-out not reported" ;; esac
+rm -f "$PROTECTS" "$HOME/.agent-vm/.agent-vm-mounts-$PV"
+case "$out" in *"ok    safe.bareRepository = explicit"*) pass "doctor: safe.bareRepository set is ok" ;; *) fail "doctor: safe.bareRepository not reported" ;; esac
+rm -f "$SB/git-bare"
+out="$(rec doctor)"
+case "$out" in
+  *"warn  safe.bareRepository is not 'explicit'"*"git config --global safe.bareRepository explicit"*) pass "doctor: safe.bareRepository unset is a warning, with the command" ;;
+  *) fail "doctor: unset safe.bareRepository not a warning" ;;
+esac
+out="$(FAKE_GIT_VERSION=2.30.1 rec doctor)"
+case "$out" in *"warn  git version 2.30.1 is older than 2.38"*) pass "doctor: a git older than 2.38 is a warning" ;; *) fail "doctor: old git not reported" ;; esac
+export PATH="$DOCTOR_OLD_PATH"
+# PATH without any limactl. Commands run under it are called by absolute path,
+# in case the directory that held limactl also held them.
+nolima_path() {
+  local rest="$PATH:" p out=""
+  while [ -n "$rest" ]; do
+    p="${rest%%:*}"; rest="${rest#*:}"
+    [ -x "$p/limactl" ] || out="${out:+$out:}$p"
+  done
+  printf '%s' "$out"
+}
+BASH_BIN="$(command -v bash)"
+out="$(cd "$PROJ" && PATH="$(nolima_path)" "$BASH_BIN" "$AGENT_VM_SH" doctor 2>&1)"
+rc=$?
+case "$rc:$out" in
+  1:*"FAIL  Lima is not installed"*) pass "doctor without Lima: fails and says so" ;;
+  *) fail "doctor without Lima: $rc" ;;
+esac
+agent-vm doctor extra >/dev/null 2>&1
+check "doctor takes no argument (exit 2)" "$?" "2"
+
+section "setup options"
+case "$(agent-vm setup --reset 2>&1 </dev/null)" in
+  *"Unknown option: --reset"*) pass "setup rejects --reset instead of ignoring it" ;;
+  *) fail "setup accepted --reset" ;;
+esac
+
+section "release.sh"
+REL="$SELF_DIR/release.sh"
+notes="$("$REL" notes "$AGENT_VM_VERSION" 2>&1)"
+case "$notes" in
+  ""|*"has no '## "*) fail "CHANGELOG.md has no section for $AGENT_VM_VERSION, the version agent-vm.sh reports" ;;
+  *) pass "CHANGELOG.md has a section for $AGENT_VM_VERSION" ;;
+esac
+# On a changelog of our own: the section stops at the next heading and loses
+# its surrounding blank lines.
+mkdir -p "$SB/rel"
+cp "$REL" "$SB/rel/release.sh"
+printf '# Changelog\n\n## 2.0.0\n\n- two\n\n## 1.0.0\n\n- one\n' > "$SB/rel/CHANGELOG.md"
+check "notes: only that version's section" "$("$SB/rel/release.sh" notes 2.0.0)" "- two"
+check "notes: the last section too"        "$("$SB/rel/release.sh" notes 1.0.0)" "- one"
+"$SB/rel/release.sh" notes 3.0.0 >/dev/null 2>&1
+check "notes: an absent version fails" "$?" "1"
+"$REL" 1.2 >/dev/null 2>&1
+check "a malformed version is refused before anything else" "$?" "1"
+"$REL" >/dev/null 2>&1
+check "no argument prints the usage (exit 2)" "$?" "2"
+
+section "no terminal: detected by opening it"
+# `-r /dev/tty` is true with no controlling terminal; only opening it fails.
+# setsid gives a process no controlling terminal, which is the CI case.
+if command -v setsid >/dev/null 2>&1; then
+  SETSID="$(command -v setsid)"
+  # Runs $1 in bash with no controlling terminal. The exit status comes back as
+  # a last `rc=N` line: busybox setsid has no -w to wait and pass it through.
+  notty() {
+    "$SETSID" "$BASH_BIN" -c "source '$AGENT_VM_SH'; $1"'; echo "rc=$?"' </dev/null 2>&1
+  }
+
+  out="$(notty '_agent_vm_have_tty')"
+  check "no controlling terminal: _agent_vm_have_tty says no" "${out##*rc=}" "1"
+
+  # Lima missing, brew present, nobody to ask: say what to run, install nothing.
+  mkdir -p "$SB/fakebrew"
+  printf '#!/bin/sh\necho "brew $*" >> "%s/brew.log"\n' "$SB" > "$SB/fakebrew/brew"
+  chmod +x "$SB/fakebrew/brew"
+  rm -f "$SB/brew.log"
+  out="$(PATH="$SB/fakebrew:$(nolima_path)" notty 'agent-vm setup --preinstall=none')"
+  [ ! -e "$SB/brew.log" ] && pass "no terminal: brew is not run without asking" \
+    || fail "brew ran without a prompt: $(cat "$SB/brew.log")"
+  case "${out##*rc=}:$out" in
+    1:*"Install it with: brew install sylvinus/tap/lima-sylvinus"*"brew install lima"*) pass "no terminal: says how to install Lima, the one keeping .git read-only first" ;;
+    *) fail "no terminal: '$out'" ;;
+  esac
+  case "$out" in
+    */dev/tty*) fail "a /dev/tty error leaked: $out" ;;
+    *) pass "no /dev/tty error is printed" ;;
+  esac
+
+  # The wizard is skipped too, rather than run and answered with its defaults
+  # because every read fails.
+  rm -f "$SB/brew.log" "$PROTECTS"
+  out="$(AGENT_VM_STATE_DIR="$SB/wizard-state" AGENT_VM_TEST_REC="$REC" AGENT_VM_TEST_PROTECTS="$PROTECTS" \
+         PATH="$SB/fakebrew:$PATH" notty '_agent_vm_check_linux_prereqs() { return 0; }; agent-vm setup')"
+  case "${out##*rc=}:$out" in
+    *"setup wizard"*) fail "the wizard ran with no terminal" ;;
+    0:*) pass "no terminal: the wizard is skipped and setup completes" ;;
+    *) fail "setup with no terminal: '$out'" ;;
+  esac
+  # A Lima that cannot keep .git read-only: said, with the command, and setup
+  # goes on without installing anything.
+  case "$out" in
+    *"cannot keep .git read-only"*"brew install sylvinus/tap/lima-sylvinus"*"Continuing without .git protection"*)
+      pass "no terminal: setup says .git is not protected, and how to fix it" ;;
+    *) fail "no terminal: no .git protection warning: '$out'" ;;
+  esac
+  [ ! -e "$SB/brew.log" ] && pass "no terminal: nothing is installed" \
+    || fail "brew ran without a prompt: $(cat "$SB/brew.log")"
+else
+  printf '  skip terminal detection (no setsid here)\n'
+fi
+
+# =============================================================================
+section "setup offers a Lima that keeps .git read-only"
+# =============================================================================
+# With a terminal and Homebrew. A stub brew records its calls; installing the
+# formula makes the limactl stub answer like a Lima with readonlyNames.
+# FAKE_BREW_HAS_LIMA: brew's own lima is installed. FAKE_BREW_FAIL: the
+# install fails.
+mkdir -p "$SB/fakebrew"
+cat > "$SB/fakebrew/brew" <<STUB
+#!/bin/sh
+echo "brew \$*" >> "$SB/brew.log"
+case "\$1 \$2" in
+  "list --formula") [ -n "\${FAKE_BREW_HAS_LIMA:-}" ] ;;
+  "install sylvinus/tap/lima-sylvinus") [ -z "\${FAKE_BREW_FAIL:-}" ] && touch "$PROTECTS" ;;
+esac
+STUB
+chmod +x "$SB/fakebrew/brew"
+# ANSWER is the reply to the prompt (1 yes, 0 no).
+offer() {
+  rm -f "$SB/brew.log"
+  ( export AGENT_VM_TEST_REC="$REC" AGENT_VM_TEST_PROTECTS="$PROTECTS" PATH="$SB/fakebrew:$PATH"
+    _agent_vm_have_tty() { return 0; }
+    _agent_vm_ask_yn() { echo "${ANSWER:-1}"; }
+    _agent_vm_offer_git_protection ) 2>&1
+}
+brew_calls() { tr '\n' ';' < "$SB/brew.log" 2>/dev/null; }
+
+rm -f "$PROTECTS"
+out="$(FAKE_BREW_HAS_LIMA=1 offer)"
+check "yes, over brew's lima: unlink it, then install the formula" \
+  "$(brew_calls)" "brew list --formula lima;brew unlink lima;brew install sylvinus/tap/lima-sylvinus;"
+case "$out" in *"Lima now keeps every .git read-only"*) pass "yes: says it worked, checked afresh" ;; *) fail "yes: $out" ;; esac
+
+rm -f "$PROTECTS"
+offer >/dev/null
+check "yes, no brew lima: nothing to unlink" \
+  "$(brew_calls)" "brew list --formula lima;brew install sylvinus/tap/lima-sylvinus;"
+
+rm -f "$PROTECTS"
+out="$(FAKE_BREW_HAS_LIMA=1 FAKE_BREW_FAIL=1 offer)"
+case "$(brew_calls)" in
+  *"brew install sylvinus/tap/lima-sylvinus;brew link lima;") pass "a failed install links brew's lima back" ;;
+  *) fail "failed install: $(brew_calls)" ;;
+esac
+case "$out" in *"the install failed. Continuing without .git protection"*) pass "and says so" ;; *) fail "failed install: $out" ;; esac
+
+rm -f "$PROTECTS"
+out="$(ANSWER=0 offer)"
+[ ! -e "$SB/brew.log" ] && pass "no: brew is not run" || fail "no: brew ran: $(brew_calls)"
+case "$out" in *"cannot keep .git read-only"*"Continuing without .git protection"*) pass "no: the risk is said" ;; *) fail "no: $out" ;; esac
+
+touch "$PROTECTS"
+out="$(offer)"
+check "already protected: nothing said" "$out" ""
+[ ! -e "$SB/brew.log" ] && pass "already protected: brew is not run" || fail "already protected: brew ran: $(brew_calls)"
+
+section "setup: git on this machine ignores bare repositories"
+# A folder holding HEAD, objects/ and refs/ is a repository to git, whatever
+# its name, so .git protection does not cover it. Setup asks to set
+# safe.bareRepository=explicit. The stub git is the doctor section's.
+# ANSWER is the reply (1 yes, 0 no); NOTTY=1 means no terminal to ask on.
+bare_offer() {
+  rm -f "$SB/git.log"
+  ( export PATH="$SB/fakegit:$PATH"
+    _agent_vm_have_tty() { [ -z "${NOTTY:-}" ]; }
+    _agent_vm_ask_yn() { echo "${ANSWER:-1}"; }
+    _agent_vm_offer_bare_repo_setting ) 2>&1
+}
+git_set_called() { grep -q 'config --global safe.bareRepository explicit' "$SB/git.log" 2>/dev/null; }
+
+rm -f "$SB/git-bare"
+out="$(bare_offer)"
+[ "$(cat "$SB/git-bare" 2>/dev/null)" = "explicit" ] && pass "yes: the setting is made" || fail "yes: not set: $out"
+case "$out" in
+  *"HEAD, objects/ and refs/"*"git config --global safe.bareRepository explicit"*"now ignores"*) pass "yes: the risk, the command, then the result" ;;
+  *) fail "yes: $out" ;;
+esac
+rm -f "$SB/git-bare"
+out="$(ANSWER=0 bare_offer)"
+git_set_called && fail "no: the setting was made anyway" || pass "no: git config is not run"
+case "$out" in *"Warning: not set"*) pass "no: says what is left open" ;; *) fail "no: $out" ;; esac
+out="$(NOTTY=1 bare_offer)"
+git_set_called && fail "no terminal: the setting was made without asking" || pass "no terminal: nothing is changed"
+case "$out" in *"git config --global safe.bareRepository explicit"*"Warning: not set"*) pass "no terminal: the command is printed" ;; *) fail "no terminal: $out" ;; esac
+out="$(FAKE_GIT_SET_FAILS=1 bare_offer)"
+case "$out" in *"did not take"*) pass "a failed git config is said" ;; *) fail "failed git config: $out" ;; esac
+out="$(FAKE_GIT_VERSION=2.30.1 bare_offer)"
+git_set_called && fail "old git: set on a git that ignores it" || pass "old git: nothing is set"
+case "$out" in *"older than 2.38"*"Upgrade git"*) pass "old git: says to upgrade" ;; *) fail "old git: $out" ;; esac
+echo explicit > "$SB/git-bare"
+check "already set: nothing said" "$(bare_offer)" ""
+git_set_called && fail "already set: git config was run" || pass "already set: git config is not run"
+check "no git on this machine: nothing to protect" "$(PATH="$SB/nolimactl" _agent_vm_bare_repo_state)" "nogit"
+check "setup makes the offer" "$(declare -f _agent_vm_setup | grep -c '_agent_vm_offer_bare_repo_setting')" "1"
+
+# Against the real git, when it is recent enough: only the system and global
+# config count, as for git itself. A repository's own setting must not answer.
+real_git_ver="$(git --version 2>/dev/null)"; real_git_ver="${real_git_ver#git version }"; real_git_ver="${real_git_ver%% *}"
+if [ -n "$real_git_ver" ] && [ "$(_agent_vm_ver_num "$real_git_ver")" -ge "$(_agent_vm_ver_num 2.38.0)" ]; then
+  mkdir -p "$SB/realgit/home" "$SB/realgit/repo"
+  ( export HOME="$SB/realgit/home" GIT_CONFIG_NOSYSTEM=1 XDG_CONFIG_HOME="$SB/realgit/xdg"
+    cd "$SB/realgit/repo" && git init -q . && git config safe.bareRepository explicit
+    printf '%s ' "$(_agent_vm_bare_repo_state)"
+    git config --global safe.bareRepository explicit
+    printf '%s' "$(_agent_vm_bare_repo_state)" ) > "$SB/realgit/out"
+  check "real git: a repository's own setting does not count, the global one does" "$(cat "$SB/realgit/out")" "unset ok"
+else
+  printf '  skip real git (absent or older than 2.38)\n'
+fi
+rm -f "$PROTECTS"
 
 # =============================================================================
 printf '\n%s passed, %s failed\n' "$PASSED" "$FAIL"

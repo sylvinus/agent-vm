@@ -1,0 +1,477 @@
+---
+import { inline } from '../lib/inline';
+import Heading from './Heading.astro';
+import { slug } from '../lib/slug';
+import { en } from '../i18n/en';
+import { t, type Locale } from '../i18n';
+
+interface Props {
+  locale: Locale;
+}
+
+const { locale } = Astro.props;
+const d = t(locale);
+const dg = d.architecture.diagram;
+---
+
+<section class="section" id="architecture">
+  <div class="container">
+    <div class="section-head">
+      <p class="eyebrow">{d.architecture.eyebrow}</p>
+      <Heading as="h2" id="architecture" own={false} locale={locale}>{d.architecture.title}</Heading>
+      <p class="lede" set:html={inline(d.architecture.lede)} />
+    </div>
+
+    <ol class="arch__steps">
+      {
+        d.architecture.steps.map((step, index) => (
+          <li class="arch__step">
+            <span class="arch__step-n" aria-hidden="true">
+              {step.n}
+            </span>
+            <Heading as="h3" id={slug(en.architecture.steps[index]!.title)} locale={locale} class="arch__step-title">{step.title}</Heading>
+            <p class="prose arch__step-body" set:html={inline(step.body)} />
+          </li>
+        ))
+      }
+    </ol>
+
+    <div class="arch__diagram">
+      <div class="arch__panel arch__panel--host">
+        <div class="arch__panel-head">
+          <h3 class="arch__panel-title">{dg.hostTitle}</h3>
+          <span class="arch__panel-note">{dg.hostNote}</span>
+        </div>
+        <ul class="arch__items">
+          {dg.hostItems.map((item) => <li class="arch__item arch__item--locked">{item}</li>)}
+        </ul>
+      </div>
+
+      <div class="arch__boundary">
+        <span class="arch__boundary-label">{dg.boundaryLabel}</span>
+      </div>
+
+      <div class="arch__panel arch__panel--vm">
+        <div class="arch__panel-head">
+          <h3 class="arch__panel-title">{dg.vmTitle}</h3>
+          <span class="arch__panel-note arch__panel-note--safe">{dg.vmNote}</span>
+        </div>
+        <ul class="arch__items">
+          {dg.vmItems.map((item) => <li class="arch__item">{item}</li>)}
+        </ul>
+      </div>
+
+      {/* Spans both columns on purpose: the project directory is the one
+          thing that exists on both sides of the boundary at once. */}
+      <div class="arch__shared">
+        <div class="arch__shared-stems" aria-hidden="true">
+          <span class="arch__stem"></span>
+          <span class="arch__stem"></span>
+        </div>
+        <div class="arch__shared-box">
+          <div class="arch__panel-head">
+            <h3 class="arch__shared-title">{dg.sharedTitle}</h3>
+            <span class="arch__shared-label">{dg.sharedLabel}</span>
+          </div>
+          <p class="prose arch__shared-body" set:html={inline(dg.sharedBody)} />
+        </div>
+      </div>
+    </div>
+
+    <p class="prose arch__isolation" set:html={inline(d.architecture.isolationNote)} />
+
+    <div class="arch__tables">
+      <div class="arch__table-block">
+        <Heading as="h3" id={slug(en.architecture.contentsTitle)} locale={locale} class="arch__sub">{d.architecture.contentsTitle}</Heading>
+        <p class="prose arch__sub-body" set:html={inline(d.architecture.contentsLede)} />
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                {d.architecture.contentsHeaders.map((header) => <th scope="col">{header}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {
+                d.architecture.contents.map(([category, packages, name, standard]) => (
+                  <tr>
+                    <td>{category}</td>
+                    <td class="arch__packages">{packages}</td>
+                    <td class="arch__name">{name}</td>
+                    <td class="arch__flag">{standard}</td>
+                  </tr>
+                ))
+              }
+            </tbody>
+          </table>
+        </div>
+        <p class="prose arch__sub-note" set:html={inline(d.architecture.contentsNote)} />
+      </div>
+
+      <div class="arch__table-block">
+        <Heading as="h3" id={slug(en.architecture.dockerTitle)} locale={locale} class="arch__sub">{d.architecture.dockerTitle}</Heading>
+        <p class="prose arch__sub-body" set:html={inline(d.architecture.dockerLede)} />
+        <div class="table-wrap">
+          <table class="arch__compare">
+            <thead>
+              <tr>
+                {
+                  d.architecture.dockerHeaders.map((header, index) => (
+                    <th scope="col" class:list={[index === 3 && 'arch__col-win']}>
+                      {header}
+                    </th>
+                  ))
+                }
+              </tr>
+            </thead>
+            <tbody>
+              {
+                d.architecture.docker.map((row) => (
+                  <tr>
+                    <th scope="row">{row[0]}</th>
+                    <td set:html={inline(row[1] ?? '')} />
+                    <td set:html={inline(row[2] ?? '')} />
+                    <td class="arch__col-win" set:html={inline(row[3] ?? '')} />
+                  </tr>
+                ))
+              }
+            </tbody>
+          </table>
+        </div>
+        <p class="prose arch__sub-note" set:html={inline(d.architecture.dockerNote)} />
+      </div>
+    </div>
+  </div>
+</section>
+
+<style>
+  .arch__steps {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr));
+    gap: 0;
+    list-style: none;
+    border-top: 1px solid var(--line);
+    margin-bottom: clamp(2.75rem, 5.5vw, 4.5rem);
+  }
+
+  .arch__step {
+    padding: 1.6rem clamp(1rem, 2vw, 1.75rem) 1.75rem;
+    border-left: 1px solid var(--line);
+  }
+
+  .arch__step:first-child {
+    padding-left: 0;
+    border-left: 0;
+  }
+
+  .arch__step-n {
+    display: block;
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.12em;
+    color: var(--accent);
+    margin-bottom: 0.8rem;
+  }
+
+  .arch__step-title {
+    font-size: 0.98rem;
+    margin-bottom: 0.45rem;
+  }
+
+  .arch__step-body {
+    font-size: 0.89rem;
+  }
+
+  /* Diagram ----------------------------------------------------------------- */
+
+  .arch__diagram {
+    --diagram-gap: clamp(1rem, 2.5vw, 2rem);
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    gap: var(--diagram-gap);
+    align-items: stretch;
+    padding: clamp(1.5rem, 3vw, 2.5rem);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+    background: var(--surface);
+  }
+
+  .arch__panel {
+    display: grid;
+    align-content: start;
+    gap: 1.1rem;
+    padding: clamp(1.1rem, 2vw, 1.5rem);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--surface-2);
+  }
+
+  .arch__panel--vm {
+    border-color: var(--safe-line);
+    background: var(--safe-wash);
+  }
+
+  .arch__panel-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.5rem;
+  }
+
+  .arch__panel-title {
+    font-size: 1rem;
+  }
+
+  .arch__panel-note {
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+  }
+
+  .arch__panel-note--safe {
+    color: var(--safe);
+  }
+
+  .arch__items {
+    display: grid;
+    gap: 0.4rem;
+    list-style: none;
+  }
+
+  .arch__item {
+    position: relative;
+    padding-left: 1.15rem;
+    font-size: 0.89rem;
+    color: var(--ink-2);
+  }
+
+  .arch__item::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0.62em;
+    width: 0.4rem;
+    height: 0.4rem;
+    border-radius: 50%;
+    background: var(--safe);
+  }
+
+  .arch__item--locked::before {
+    background: var(--ink-4);
+  }
+
+  .arch__boundary {
+    position: relative;
+    display: grid;
+    place-items: center;
+    min-width: 2.5rem;
+  }
+
+  .arch__boundary::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 50%;
+    width: 0;
+    border-left: 2px dashed var(--line-strong);
+  }
+
+  .arch__boundary-label {
+    position: relative;
+    padding: 0.5rem 0.25rem;
+    background: var(--surface);
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    writing-mode: vertical-rl;
+    text-orientation: mixed;
+  }
+
+  /* The shared band sits under both panels and grows a stem up into each,
+     so the project directory reads as one thing touching both sides. */
+  .arch__shared {
+    grid-column: 1 / -1;
+    /* Cancel the row gap so the stems start at the panels' bottom edge
+       instead of floating below it. */
+    margin-top: calc(-1 * var(--diagram-gap));
+  }
+
+  .arch__shared-stems {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    gap: var(--diagram-gap);
+    height: calc(var(--diagram-gap) + 1.4rem);
+  }
+
+  .arch__stem {
+    justify-self: center;
+    width: 0;
+    height: 100%;
+    border-left: 2px solid var(--accent);
+  }
+
+  /* The middle track is the hypervisor boundary column: nothing crosses it
+     here, the two stems flank it. */
+  .arch__stem:nth-child(2) {
+    grid-column: 3;
+  }
+
+  .arch__shared-box {
+    display: grid;
+    gap: 0.65rem;
+    padding: clamp(1.1rem, 2vw, 1.5rem);
+    border: 1px solid var(--accent-line);
+    border-radius: var(--radius);
+    background: var(--accent-wash);
+  }
+
+  .arch__shared-title {
+    font-family: var(--font-mono);
+    font-size: 0.92rem;
+    color: var(--accent);
+  }
+
+  .arch__shared-label {
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+
+  .arch__shared-body {
+    font-size: 0.88rem;
+  }
+
+  .arch__isolation {
+    max-width: 48rem;
+    margin-top: 1.5rem;
+    font-size: 0.92rem;
+  }
+
+  /* Tables ------------------------------------------------------------------ */
+
+  .arch__tables {
+    display: grid;
+    gap: clamp(2.5rem, 5vw, 4rem);
+    margin-top: clamp(2.75rem, 5.5vw, 4.5rem);
+  }
+
+  .arch__table-block {
+    display: grid;
+    gap: 1rem;
+    align-content: start;
+    min-width: 0;
+  }
+
+  .arch__sub {
+    font-size: 1.05rem;
+  }
+
+  .arch__sub-body {
+    font-size: 0.93rem;
+    margin-top: -0.35rem;
+    max-width: 48rem;
+  }
+
+  .arch__sub-note {
+    font-size: 0.88rem;
+    max-width: 48rem;
+  }
+
+  .arch__packages {
+    font-size: 0.84rem;
+  }
+
+  .arch__name {
+    font-family: var(--font-mono);
+    font-size: 0.79rem;
+    color: var(--accent);
+  }
+
+  .arch__flag {
+    font-variant-caps: all-small-caps;
+    letter-spacing: 0.06em;
+    color: var(--ink-3);
+  }
+
+  .arch__compare th[scope='row'] {
+    padding: 0.72rem 1rem;
+    text-align: left;
+    font-weight: 500;
+    color: var(--ink);
+    border-bottom: 1px solid var(--line);
+    vertical-align: top;
+  }
+
+  .arch__compare tbody tr:last-child th[scope='row'] {
+    border-bottom: 0;
+  }
+
+  /* Marks our own column, nothing more. A green "we win" tint on a table of
+     plain facts reads as a scorecard and costs the table its credibility. */
+  .arch__col-win {
+    background: var(--surface-2);
+    color: var(--ink);
+    font-weight: 500;
+  }
+
+  thead .arch__col-win {
+    color: var(--ink-2);
+  }
+
+  @media (max-width: 62rem) {
+    .arch__steps {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .arch__step {
+      padding: 1.35rem 0;
+      border-left: 0;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .arch__step:last-child {
+      border-bottom: 0;
+    }
+
+    .arch__diagram {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .arch__boundary {
+      min-height: 3.5rem;
+    }
+
+    .arch__boundary::before {
+      top: 50%;
+      bottom: auto;
+      left: 0;
+      right: 0;
+      width: auto;
+      border-left: 0;
+      border-top: 2px dashed var(--line-strong);
+    }
+
+    .arch__boundary-label {
+      writing-mode: horizontal-tb;
+      padding: 0.25rem 0.75rem;
+    }
+
+    /* One column: the two stems would point at nothing. */
+    .arch__shared-stems {
+      grid-template-columns: minmax(0, 1fr);
+      height: 1rem;
+    }
+
+    .arch__stem:nth-child(2) {
+      display: none;
+    }
+  }
+</style>

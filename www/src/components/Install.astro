@@ -1,0 +1,252 @@
+---
+import CodeBlock from './CodeBlock.astro';
+import { inline } from '../lib/inline';
+import Heading from './Heading.astro';
+import { slug } from '../lib/slug';
+import { en } from '../i18n/en';
+import { t, type Locale } from '../i18n';
+
+interface Props {
+  locale: Locale;
+}
+
+const { locale } = Astro.props;
+const d = t(locale);
+---
+
+<section class="section" id="install">
+  <div class="container">
+    <div class="section-head">
+      <p class="eyebrow">{d.install.eyebrow}</p>
+      <Heading as="h2" id="install" own={false} locale={locale}>{d.install.title}</Heading>
+      <p class="lede" set:html={inline(d.install.lede)} />
+    </div>
+
+    <div class="install__layout">
+      <aside class="install__prereq card card--sunk">
+        <h3 class="install__prereq-title">{d.install.prerequisitesTitle}</h3>
+        <ul class="install__prereq-list">
+          {
+            d.install.prerequisites.map((item) => (
+              <li class="install__prereq-item">
+                <span class="install__prereq-name">
+                  {item.href ? (
+                    <a href={item.href} rel="noopener noreferrer" target="_blank">
+                      {item.name}
+                    </a>
+                  ) : (
+                    item.name
+                  )}
+                </span>
+                <span class="install__prereq-note">{item.note}</span>
+              </li>
+            ))
+          }
+        </ul>
+      </aside>
+
+      <ol class="install__steps">
+        {
+          d.install.steps.map((step, index) => (
+            <li class="install__step">
+              <div class="install__step-head">
+                <span class="install__step-n" aria-hidden="true">
+                  {String(index + 1).padStart(2, '0')}
+                </span>
+                <div>
+                  <Heading as="h3" id={slug(en.install.steps[index]!.title)} locale={locale} class="install__step-title">{step.title}</Heading>
+                  <p class="prose install__step-body" set:html={inline(step.body)} />
+                </div>
+              </div>
+              <CodeBlock locale={locale} code={step.code} prompt />
+            </li>
+          ))
+        }
+      </ol>
+    </div>
+
+    {/* Sits with step 2 rather than in its own reference section: it is only
+        ever about `agent-vm setup`, which is on this page. */}
+    <div class="install__preinstall">
+      <Heading as="h3" id={slug(en.install.preinstallTitle)} locale={locale} class="install__sub">{d.install.preinstallTitle}</Heading>
+      <p class="prose install__sub-body" set:html={inline(d.install.preinstallBody)} />
+      <p class="install__names">{d.install.preinstallNames}</p>
+      <div class="table-wrap">
+        <table class="table--code table--grid">
+          <thead>
+            <tr>{d.install.setupHeaders.map((header) => <th scope="col">{header}</th>)}</tr>
+          </thead>
+          <tbody>
+            {
+              d.install.setup.map(([flag, description, fallback]) => (
+                <tr>
+                  <td>{flag}</td>
+                  <td set:html={inline(description ?? '')} />
+                  <td class="install__default">{fallback}</td>
+                </tr>
+              ))
+            }
+          </tbody>
+        </table>
+      </div>
+      <CodeBlock locale={locale} code={d.install.preinstallCode} />
+    </div>
+
+    <div class="install__extras">
+      <div class="note">
+        <strong class="note__title">{d.install.updateTitle}</strong>
+        <p class="prose" set:html={inline(d.install.updateBody)} />
+      </div>
+    </div>
+  </div>
+</section>
+
+<style>
+  .install__layout {
+    display: grid;
+    grid-template-columns: minmax(0, 0.62fr) minmax(0, 1.38fr);
+    gap: clamp(1.5rem, 3.5vw, 3rem);
+    align-items: start;
+  }
+
+  .install__prereq {
+    position: sticky;
+    top: calc(var(--nav-h) + 2rem);
+  }
+
+  .install__prereq-title {
+    font-size: 0.72rem;
+    font-family: var(--font-mono);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    font-weight: 500;
+    margin-bottom: 1.1rem;
+  }
+
+  .install__prereq-list {
+    list-style: none;
+    display: grid;
+    gap: 1.05rem;
+  }
+
+  .install__prereq-item {
+    display: grid;
+    gap: 0.2rem;
+    padding-left: 0.9rem;
+    border-left: 2px solid var(--accent-line);
+  }
+
+  .install__prereq-name {
+    font-size: 0.95rem;
+    font-weight: 560;
+    color: var(--ink);
+  }
+
+  .install__prereq-note {
+    font-size: 0.86rem;
+    color: var(--ink-3);
+  }
+
+  .install__steps {
+    list-style: none;
+    display: grid;
+    gap: clamp(1.75rem, 3vw, 2.5rem);
+    min-width: 0;
+  }
+
+  .install__step {
+    display: grid;
+    gap: 1rem;
+    min-width: 0;
+  }
+
+  .install__step-head {
+    display: flex;
+    gap: 1rem;
+    align-items: start;
+  }
+
+  .install__step-n {
+    flex: none;
+    width: 2.1rem;
+    height: 2.1rem;
+    display: grid;
+    place-items: center;
+    border: 1px solid var(--line-strong);
+    border-radius: 50%;
+    font-family: var(--font-mono);
+    font-size: 0.74rem;
+    color: var(--accent);
+    background: var(--surface);
+  }
+
+  .install__step-title {
+    margin-bottom: 0.3rem;
+  }
+
+  .install__step-body {
+    font-size: 0.94rem;
+    max-width: 44rem;
+  }
+
+  .install__preinstall {
+    display: grid;
+    gap: 1rem;
+    min-width: 0;
+    margin-top: clamp(2.5rem, 5vw, 4rem);
+  }
+
+  .install__sub {
+    font-size: 1.05rem;
+  }
+
+  .install__sub-body {
+    font-size: 0.93rem;
+    margin-top: -0.35rem;
+    max-width: 48rem;
+  }
+
+  .install__names {
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    line-height: 2;
+    color: var(--accent);
+    padding: 0.9rem 1.1rem;
+    border: 1px solid var(--accent-line);
+    border-radius: var(--radius);
+    background: var(--accent-wash);
+    overflow-wrap: anywhere;
+  }
+
+  .install__default {
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+    color: var(--ink-3);
+    white-space: nowrap;
+  }
+
+  .install__extras {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: clamp(1.25rem, 3vw, 2.5rem);
+    margin-top: clamp(2.5rem, 5vw, 4rem);
+    align-items: start;
+    max-width: 52rem;
+  }
+
+  .install__extras .prose {
+    font-size: 0.93rem;
+  }
+
+  @media (max-width: 62rem) {
+    .install__layout,
+    .install__extras {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .install__prereq {
+      position: static;
+    }
+  }
+</style>

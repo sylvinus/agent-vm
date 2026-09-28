@@ -1,0 +1,304 @@
+---
+import CodeBlock from './CodeBlock.astro';
+import { inline } from '../lib/inline';
+import Heading from './Heading.astro';
+import { slug } from '../lib/slug';
+import { en } from '../i18n/en';
+import { t, type Locale } from '../i18n';
+
+interface Props {
+  locale: Locale;
+}
+
+const { locale } = Astro.props;
+const d = t(locale);
+---
+
+<section class="section" id="usage">
+  <div class="container">
+    <div class="section-head">
+      <p class="eyebrow">{d.usage.eyebrow}</p>
+      <Heading as="h2" id="usage" own={false} locale={locale}>{d.usage.title}</Heading>
+      <p class="lede" set:html={inline(d.usage.lede)} />
+    </div>
+
+    <div class="usage__cards">
+      {
+        d.usage.cards.map((card, index) => (
+          <article class="usage__card">
+            <Heading as="h3" id={slug(en.usage.cards[index]!.title)} locale={locale} class="usage__card-title">{card.title}</Heading>
+            <p class="prose usage__card-body" set:html={inline(card.body)} />
+            <CodeBlock locale={locale} code={card.code} class="usage__card-code" />
+          </article>
+        ))
+      }
+    </div>
+
+    <div class="usage__split">
+      <div class="usage__custom">
+        <Heading as="h3" id={slug(en.usage.customTitle)} locale={locale} class="usage__sub">{d.usage.customTitle}</Heading>
+        <p class="prose usage__sub-body" set:html={inline(d.usage.customLede)} />
+        <div class="table-wrap">
+          <table class="table--code">
+            <thead>
+              <tr>{d.usage.customTable.headers.map((header) => <th scope="col">{header}</th>)}</tr>
+            </thead>
+            <tbody>
+              {
+                d.usage.customTable.rows.map((row) => (
+                  <tr>
+                    {row.map((cell, index) =>
+                      index === 0 ? (
+                        <th scope="row">
+                          <code>{cell}</code>
+                        </th>
+                      ) : (
+                        <td>{cell}</td>
+                      ),
+                    )}
+                  </tr>
+                ))
+              }
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="usage__git">
+        <Heading as="h3" id={slug(en.usage.gitTitle)} locale={locale} class="usage__sub">{d.usage.gitTitle}</Heading>
+        <p class="prose usage__sub-body" set:html={inline(d.usage.gitBody)} />
+        <CodeBlock locale={locale} code={d.usage.gitCode} />
+        <p class="prose usage__note" set:html={inline(d.usage.gitNote)} />
+
+        <div class="note note--accent">
+          <strong class="note__title">{d.usage.gitHumanTitle}</strong>
+          <p class="prose usage__note" set:html={inline(d.usage.gitHumanBody)} />
+        </div>
+      </div>
+    </div>
+
+    {/* The reference tail. The cards above show the commands in use; this is
+        the exhaustive list, with the details prose would bury. */}
+    <div class="usage__ref">
+      <Heading as="h3" id={slug(en.usage.refTitle)} locale={locale} class="usage__sub">{d.usage.refTitle}</Heading>
+      <p class="prose usage__sub-body" set:html={inline(d.usage.refNote)} />
+
+      <div class="usage__groups">
+        {
+          d.usage.commandGroups.map((group) => (
+            <div class="usage__group">
+              <h4 class="usage__group-title">{group.title}</h4>
+              <div class="table-wrap">
+                <table class="usage__commands">
+                  <tbody>
+                    {group.rows.map(([command, description]) => (
+                      <tr>
+                        <th scope="row">{command}</th>
+                        <td set:html={inline(description ?? '')} />
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ))
+        }
+      </div>
+
+      <h4 class="usage__group-title usage__group-title--spaced">{d.usage.optionsTitle}</h4>
+      <p class="prose usage__note" set:html={inline(d.usage.optionsNote)} />
+      <div class="table-wrap">
+        <table class="table--code table--grid">
+          <thead>
+            <tr>{d.usage.optionsHeaders.map((header) => <th scope="col">{header}</th>)}</tr>
+          </thead>
+          <tbody>
+            {
+              d.usage.options.map(([flag, description, fallback]) => (
+                <tr>
+                  <td>{flag}</td>
+                  <td set:html={inline(description ?? '')} />
+                  <td class="usage__default">{fallback}</td>
+                </tr>
+              ))
+            }
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="usage__split">
+      <div class="usage__git">
+        <Heading as="h3" id="git" locale={locale} class="usage__sub">{d.usage.gitGuardTitle}</Heading>
+        <p class="prose usage__sub-body" set:html={inline(d.usage.gitGuardBody)} />
+        <CodeBlock locale={locale} code={d.usage.gitGuardCode} />
+        <p class="prose usage__note" set:html={inline(d.usage.gitGuardNote)} />
+        <p class="prose usage__note" set:html={inline(d.usage.gitGuardEditor)} />
+      </div>
+
+      <div class="usage__git">
+        <Heading as="h3" id="node" locale={locale} class="usage__sub">{d.usage.nodeTitle}</Heading>
+        <p class="prose usage__sub-body" set:html={inline(d.usage.nodeBody)} />
+        <CodeBlock locale={locale} code={d.usage.nodeCode} />
+        <p class="prose usage__note" set:html={inline(d.usage.nodeNote)} />
+      </div>
+    </div>
+  </div>
+</section>
+
+<style>
+  .usage__cards {
+    display: grid;
+    /* 28rem so two columns fit the container: at three, the trailing `#`
+       comments in the samples get clipped and need sideways scrolling. */
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 28rem), 1fr));
+    gap: 1px;
+    background: var(--line);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+  }
+
+  .usage__card {
+    display: grid;
+    align-content: start;
+    /* Without this a grid item keeps min-width:auto and a wide code block
+       pushes the card past its track, over the neighbouring column. */
+    min-width: 0;
+    gap: 0.85rem;
+    padding: clamp(1.25rem, 2.4vw, 1.75rem);
+    background: var(--surface);
+  }
+
+  .usage__card-title {
+    font-size: 1.02rem;
+  }
+
+  .usage__card-body {
+    font-size: 0.91rem;
+  }
+
+  .usage__card-code {
+    margin-top: 0.15rem;
+  }
+
+  /* An odd card count would otherwise leave a hole in the last row. */
+  .usage__card:last-child:nth-child(odd) {
+    grid-column: 1 / -1;
+  }
+
+  .usage__split {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: clamp(1.75rem, 4vw, 3.25rem);
+    margin-top: clamp(2.5rem, 5vw, 4rem);
+    align-items: start;
+  }
+
+  .usage__custom,
+  .usage__git {
+    display: grid;
+    gap: 1rem;
+    align-content: start;
+    min-width: 0;
+  }
+
+  .usage__sub {
+    font-size: 1.05rem;
+  }
+
+  .usage__sub-body {
+    font-size: 0.93rem;
+    margin-top: -0.35rem;
+  }
+
+  .usage__note {
+    font-size: 0.88rem;
+  }
+
+  .usage__split th[scope='row'] {
+    padding: 0.72rem 1rem;
+    border-bottom: 1px solid var(--line);
+    text-align: left;
+    font-weight: 500;
+    vertical-align: top;
+  }
+
+  .usage__split tbody tr:last-child th[scope='row'] {
+    border-bottom: 0;
+  }
+
+  .usage__split th[scope='row'] code {
+    font-size: 0.8rem;
+    color: var(--accent);
+    white-space: nowrap;
+  }
+
+  /* Reference tail ---------------------------------------------------------- */
+
+  .usage__ref {
+    display: grid;
+    gap: 1rem;
+    align-content: start;
+    min-width: 0;
+    margin-top: clamp(2.5rem, 5vw, 4rem);
+  }
+
+  .usage__groups {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 24rem), 1fr));
+    gap: clamp(1.5rem, 3vw, 2.5rem);
+    align-items: start;
+  }
+
+  .usage__group {
+    display: grid;
+    align-content: start;
+    min-width: 0;
+  }
+
+  .usage__group-title {
+    margin-bottom: 0.75rem;
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    font-weight: 500;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+  }
+
+  .usage__group-title--spaced {
+    margin-top: clamp(1.5rem, 3vw, 2.25rem);
+  }
+
+  /* No thead on the command tables: the group title names the block, and a
+     repeated "Command / What it does" row on five tables is noise. */
+  .usage__commands th[scope='row'] {
+    padding: 0.72rem 1rem;
+    border-bottom: 1px solid var(--line);
+    text-align: left;
+    vertical-align: top;
+    font-family: var(--font-mono);
+    font-size: 0.83rem;
+    font-weight: 450;
+    white-space: nowrap;
+    color: var(--accent);
+  }
+
+  .usage__commands tbody tr:last-child th[scope='row'] {
+    border-bottom: 0;
+  }
+
+  .usage__default {
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+    color: var(--ink-3);
+    white-space: nowrap;
+  }
+
+  @media (max-width: 62rem) {
+    .usage__split {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+</style>

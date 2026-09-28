@@ -8,15 +8,18 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # The steps below run test.sh from the PR branch. Leaving the checkout
           # token in .git/config would put it within reach of that code.
           persist-credentials: false
 
+      - name: Install zsh
+        run: sudo apt-get update && sudo apt-get install -y zsh
+
       - name: Syntax check
         run: |
-          for f in agent-vm.sh agent-vm.setup.sh runtime.example.sh test.sh; do
+          for f in agent-vm.sh agent-vm.setup.sh runtime.example.sh test.sh test-e2e.sh install.sh release.sh; do
             echo "bash -n $f"
             bash -n "$f"
           done
@@ -31,6 +34,4 @@ jobs:
         run: docker run --rm -v "$PWD:/w" -w /w bash:3.2 ./test.sh
 
       - name: Test suite under zsh (the usual way it is sourced)
-        run: |
-          sudo apt-get update && sudo apt-get install -y zsh
-          zsh ./test.sh
+        run: zsh ./test.sh

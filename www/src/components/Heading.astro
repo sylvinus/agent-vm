@@ -1,0 +1,109 @@
+---
+// A heading with a link to itself, shown on hover. Clicking it follows the
+// link, as any anchor, and copies the full URL.
+//
+// `id` is the anchor. With `own` false the heading does not carry it: a
+// section title, whose <section> already has the id.
+import { t, type Locale } from '../i18n';
+
+interface Props {
+  as: 'h2' | 'h3' | 'h4';
+  id: string;
+  locale: Locale;
+  own?: boolean;
+  class?: string;
+  [key: string]: unknown;
+}
+
+// `...rest` carries the caller's scoped-style attribute, so the class it
+// passes keeps its styles.
+const { as: Tag, id, locale, own = true, class: className, ...rest } = Astro.props;
+const d = t(locale);
+---
+
+<Tag id={own ? id : undefined} class:list={['anchored', className]} {...rest}>
+  <slot /><a
+    class="anchored__link"
+    href={`#${id}`}
+    data-anchor
+    aria-label={d.ui.anchorLabel}
+    data-copied-label={d.ui.linkCopied}
+    ><svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"
+      ><path
+        d="M6.9 9.1a3 3 0 0 0 4.2 0l2.2-2.2a3 3 0 0 0-4.2-4.2l-.9.9M9.1 6.9a3 3 0 0 0-4.2 0L2.7 9.1a3 3 0 0 0 4.2 4.2l.9-.9"
+      ></path></svg
+    ></a
+  >
+</Tag>
+
+<style>
+  .anchored__link {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    margin-left: 0.4em;
+    vertical-align: middle;
+    color: var(--ink-4);
+    text-decoration: none;
+    opacity: 0;
+    transition: opacity 0.14s ease, color 0.14s ease;
+  }
+
+  .anchored__link svg {
+    width: 0.8em;
+    height: 0.8em;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.6;
+    stroke-linecap: round;
+  }
+
+  .anchored:hover .anchored__link,
+  .anchored__link:focus-visible {
+    opacity: 1;
+  }
+
+  .anchored__link:hover {
+    color: var(--accent);
+  }
+
+  .anchored__link[data-state='done'] {
+    opacity: 1;
+    color: var(--safe);
+  }
+
+  .anchored__link[data-state='done']::after {
+    content: attr(data-copied-label);
+    position: absolute;
+    left: calc(100% + 0.4rem);
+    white-space: nowrap;
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    font-weight: 400;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  /* Coarse pointers never hover: keep the link findable. */
+  @media (hover: none) {
+    .anchored__link {
+      opacity: 0.45;
+    }
+  }
+</style>
+
+<script>
+  // One listener for every heading on the page. The link is followed as
+  // usual; this only adds the copy.
+  document.addEventListener('click', (event) => {
+    const link = (event.target as Element | null)?.closest<HTMLAnchorElement>('[data-anchor]');
+    if (!link || !navigator.clipboard) return;
+    navigator.clipboard.writeText(link.href).then(
+      () => {
+        link.dataset.state = 'done';
+        window.setTimeout(() => delete link.dataset.state, 1600);
+      },
+      () => {},
+    );
+  });
+</script>

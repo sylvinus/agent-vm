@@ -1,0 +1,49 @@
+---
+import Base from '../layouts/Base.astro';
+import { t } from '../i18n';
+
+// GitHub Pages serves this for any unknown path, in either language tree, so
+// it stays bilingual rather than picking one.
+const en = t('en');
+const fr = t('fr');
+---
+
+<Base locale="en">
+  <section class="section section--flush notfound">
+    <div class="container notfound__inner">
+      <p class="eyebrow">404</p>
+      <h1 class="notfound__title">This page does not exist.</h1>
+      <p class="lede">Cette page n’existe pas.</p>
+      <div class="notfound__links">
+        <a class="btn btn--primary" href="/">{en.meta.label}</a>
+        <a class="btn btn--ghost" href="/fr/">{fr.meta.label}</a>
+      </div>
+    </div>
+  </section>
+</Base>
+
+<style>
+  .notfound {
+    min-height: 60vh;
+    display: grid;
+    align-items: center;
+  }
+
+  .notfound__inner {
+    display: grid;
+    gap: 1.25rem;
+    justify-items: start;
+    max-width: 36rem;
+  }
+
+  .notfound__title {
+    font-size: clamp(2rem, 5vw, 3.2rem);
+  }
+
+  .notfound__links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.7rem;
+    margin-top: 0.5rem;
+  }
+</style>

@@ -1,0 +1,408 @@
+/* ---------------------------------------------------------------------------
+   agent-vm.org design tokens
+
+   Dark only: one palette, no toggle, no `prefers-color-scheme` branch. The
+   page is a terminal-adjacent thing and reads as one. Low-contrast hairlines,
+   one accent, no gradients, no glass, no drop shadows beyond a hairline.
+   --------------------------------------------------------------------------- */
+
+:root {
+  color-scheme: dark;
+
+  --paper: #131210;
+  --paper-sunk: #0e0d0b;
+  --surface: #1b1916;
+  --surface-2: #211e1a;
+
+  --ink: #f1ece2;
+  --ink-2: #b8afa1;
+  --ink-3: #8f877a;
+  --ink-4: #665f55;
+
+  --line: #2c2823;
+  --line-strong: #3d3831;
+
+  --accent: #e08c3e;
+  --accent-hover: #efa055;
+  --accent-wash: #241a11;
+  --accent-line: #4a3620;
+
+  --safe: #6fb18c;
+  --safe-wash: #14201a;
+  --safe-line: #2c4437;
+
+  --danger: #d9705a;
+
+  --code-bg: #0c0b0a;
+  --code-ink: #e7e0d3;
+  --code-ink-2: #8f8779;
+  --code-line: #262320;
+
+  --font-sans: 'Inter Variable', ui-sans-serif, system-ui, -apple-system,
+    'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono Variable', ui-monospace, 'SF Mono', Menlo,
+    Consolas, monospace;
+
+  --radius: 6px;
+  --radius-lg: 10px;
+
+  --container: 76rem;
+  --gutter: clamp(1.25rem, 4vw, 2.5rem);
+  --section-gap: clamp(4.5rem, 9vw, 8rem);
+
+  --nav-h: 3.75rem;
+}
+
+/* --------------------------------------------------------------------------- */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+  /* Anchor targets must clear the sticky nav. */
+  scroll-padding-top: calc(var(--nav-h) + 1.5rem);
+  -webkit-text-size-adjust: 100%;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 1rem;
+  line-height: 1.65;
+  font-synthesis-weight: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+img,
+svg {
+  max-width: 100%;
+  height: auto;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  margin: 0;
+  font-weight: 620;
+  letter-spacing: -0.021em;
+  line-height: 1.12;
+  text-wrap: balance;
+}
+
+h1 {
+  font-size: clamp(2.6rem, 6.2vw, 4.4rem);
+  letter-spacing: -0.034em;
+  line-height: 1.02;
+}
+
+h2 {
+  font-size: clamp(1.95rem, 3.6vw, 2.85rem);
+  letter-spacing: -0.028em;
+}
+
+h3 {
+  font-size: 1.125rem;
+  letter-spacing: -0.014em;
+  line-height: 1.35;
+}
+
+p {
+  margin: 0;
+}
+
+a {
+  color: var(--accent);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.18em;
+  transition: color 0.12s ease;
+}
+
+a:hover {
+  color: var(--accent-hover);
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 3px;
+}
+
+code,
+kbd,
+samp,
+pre {
+  font-family: var(--font-mono);
+  font-feature-settings: 'liga' 0;
+}
+
+ul,
+ol {
+  margin: 0;
+  padding: 0;
+}
+
+/* --------------------------------------------------------------------------- */
+/* Layout primitives                                                           */
+
+.container {
+  width: 100%;
+  max-width: var(--container);
+  margin-inline: auto;
+  padding-inline: var(--gutter);
+}
+
+.section {
+  padding-block: var(--section-gap);
+  border-top: 1px solid var(--line);
+  /* No scroll-margin here: html's scroll-padding-top already clears the
+     sticky nav, and the two would stack into a visible gap. */
+}
+
+.section--flush {
+  border-top: 0;
+}
+
+.section-head {
+  display: grid;
+  gap: 1.15rem;
+  max-width: 44rem;
+  margin-bottom: clamp(2.5rem, 5vw, 4rem);
+}
+
+.eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.eyebrow::after {
+  content: '';
+  flex: 0 1 4rem;
+  height: 1px;
+  background: var(--accent-line);
+}
+
+.lede {
+  font-size: clamp(1.05rem, 1.6vw, 1.2rem);
+  line-height: 1.6;
+  color: var(--ink-2);
+  text-wrap: pretty;
+}
+
+.prose {
+  color: var(--ink-2);
+  text-wrap: pretty;
+}
+
+.prose code {
+  font-size: 0.86em;
+  padding: 0.1em 0.28em;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--surface-2);
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+/* Cards --------------------------------------------------------------------- */
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: clamp(1.25rem, 2.4vw, 1.75rem);
+}
+
+.card--sunk {
+  background: var(--surface-2);
+}
+
+.note {
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  padding: 1.1rem 1.25rem;
+}
+
+.note--accent {
+  border-color: var(--accent-line);
+  border-left-color: var(--accent);
+  background: var(--accent-wash);
+}
+
+.note__title {
+  display: block;
+  margin-bottom: 0.4rem;
+  font-size: 0.94rem;
+  font-weight: 620;
+  color: var(--ink);
+  letter-spacing: -0.01em;
+}
+
+/* Buttons ------------------------------------------------------------------- */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.68rem 1.2rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  font-size: 0.94rem;
+  font-weight: 560;
+  letter-spacing: -0.008em;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background-color 0.14s ease, border-color 0.14s ease,
+    color 0.14s ease;
+}
+
+.btn--primary {
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.btn--primary:hover {
+  background: var(--accent);
+  color: #17140f;
+}
+
+.btn--ghost {
+  background: transparent;
+  border-color: var(--line-strong);
+  color: var(--ink);
+}
+
+.btn--ghost:hover {
+  border-color: var(--ink-3);
+  color: var(--ink);
+  background: var(--surface-2);
+}
+
+/* Tables -------------------------------------------------------------------- */
+
+.table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+thead th {
+  position: sticky;
+  top: 0;
+  text-align: left;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  background: var(--surface-2);
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+
+tbody td {
+  padding: 0.72rem 1rem;
+  border-bottom: 1px solid var(--line);
+  color: var(--ink-2);
+  vertical-align: top;
+}
+
+tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+tbody td:first-child {
+  color: var(--ink);
+  font-weight: 500;
+}
+
+td code,
+th code {
+  font-size: 0.85em;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.table--code tbody td:first-child {
+  font-family: var(--font-mono);
+  font-size: 0.83rem;
+  font-weight: 450;
+  white-space: nowrap;
+  color: var(--accent);
+}
+
+.table--grid tbody td:not(:first-child) {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Utilities ----------------------------------------------------------------- */
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+.skip-link {
+  position: absolute;
+  left: 0.75rem;
+  top: -4rem;
+  z-index: 100;
+  padding: 0.6rem 1rem;
+  background: var(--ink);
+  color: var(--paper);
+  border-radius: var(--radius);
+  text-decoration: none;
+  font-size: 0.9rem;
+  transition: top 0.15s ease;
+}
+
+.skip-link:focus {
+  top: 0.75rem;
+  color: var(--paper);
+}

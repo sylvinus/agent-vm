@@ -1,0 +1,75 @@
+name: www
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'www/**'
+      - '.github/workflows/www.yml'
+  pull_request:
+    paths:
+      - 'www/**'
+      - '.github/workflows/www.yml'
+  # So a broken deploy can be re-run without an empty commit.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: www
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: www/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      # Catches a key that exists in en.ts but not in fr.ts, which would
+      # otherwise only show up as a blank spot on the French page.
+      - name: Type check
+        run: npm run check
+
+      - name: Build
+        run: npm run build
+
+      - name: Check the custom domain survived
+        # public/CNAME is what keeps www.agent-vm.org pointed here. Losing it
+        # does not fail the build, it just quietly serves the github.io URL.
+        run: test -f dist/CNAME
+
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: www/dist
+
+  deploy:
+    # A pull request builds but does not publish.
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    # On the deploy job only: at workflow level, a pull request build would
+    # share the group and replace a pending deploy. The in-progress deploy is
+    # never cancelled; a newer pending one replaces an older pending one.
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v5

@@ -1,0 +1,114 @@
+---
+import '@fontsource-variable/inter';
+import '@fontsource-variable/jetbrains-mono';
+import '../styles/global.css';
+
+import Nav from '../components/Nav.astro';
+import Footer from '../components/Footer.astro';
+import { t, localeHref, LOCALES, type Locale } from '../i18n';
+
+interface Props {
+  locale: Locale;
+}
+
+const { locale } = Astro.props;
+const d = t(locale);
+const site = Astro.site ?? new URL('https://www.agent-vm.org');
+const canonical = new URL(localeHref(locale), site).href;
+---
+
+<!doctype html>
+<html lang={locale}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>{d.meta.title}</title>
+    <meta name="description" content={d.meta.description} />
+    <link rel="canonical" href={canonical} />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <meta name="generator" content={Astro.generator} />
+
+    {
+      LOCALES.map((l) => (
+        <link rel="alternate" hreflang={l} href={new URL(localeHref(l), site).href} />
+      ))
+    }
+    <link rel="alternate" hreflang="x-default" href={new URL('/', site).href} />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="agent-vm" />
+    <meta property="og:title" content={d.meta.title} />
+    <meta property="og:description" content={d.meta.description} />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:locale" content={locale === 'fr' ? 'fr_FR' : 'en_US'} />
+    <meta property="og:image" content={new URL('/og.png', site).href} />
+    <meta name="twitter:card" content="summary_large_image" />
+
+    <meta name="theme-color" content="#131210" />
+  </head>
+
+  <body>
+    <a class="skip-link" href="#main">{d.meta.skipToContent}</a>
+    <Nav locale={locale} />
+    <main id="main">
+      <slot />
+    </main>
+    <Footer locale={locale} />
+
+    <script>
+      // Scroll spy: mark the section the reader is actually in. rootMargin
+      // pulls the trigger line under the sticky nav.
+      // The links carry a path as well as a fragment, so match on the hash.
+      const links = Array.from(
+        document.querySelectorAll<HTMLAnchorElement>('[data-nav-link]'),
+      );
+      const hashOf = (link: HTMLAnchorElement) => new URL(link.href).hash;
+      const sections = links
+        .map((link) => document.querySelector(hashOf(link)))
+        .filter((el): el is HTMLElement => el instanceof HTMLElement);
+
+      if (sections.length > 0 && 'IntersectionObserver' in window) {
+        const visible = new Set<string>();
+
+        const observer = new IntersectionObserver(
+          (entries) => {
+            for (const entry of entries) {
+              if (entry.isIntersecting) visible.add(entry.target.id);
+              else visible.delete(entry.target.id);
+            }
+            // Topmost visible section wins, so scrolling up does not keep the
+            // previous one lit.
+            const active = sections.find((s) => visible.has(s.id));
+            for (const link of links) {
+              const on = active !== undefined && hashOf(link) === `#${active.id}`;
+              link.toggleAttribute('data-current', on);
+            }
+          },
+          { rootMargin: '-25% 0px -60% 0px', threshold: 0 },
+        );
+
+        for (const section of sections) observer.observe(section);
+      }
+
+      // Mobile nav disclosure.
+      const navToggle = document.querySelector<HTMLButtonElement>('[data-nav-toggle]');
+      const navPanel = document.querySelector<HTMLElement>('[data-nav-panel]');
+
+      if (navToggle && navPanel) {
+        const setOpen = (open: boolean) => {
+          navToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+          navPanel.toggleAttribute('data-open', open);
+        };
+        navToggle.addEventListener('click', () => {
+          setOpen(navToggle.getAttribute('aria-expanded') !== 'true');
+        });
+        navPanel.addEventListener('click', (event) => {
+          if (event.target instanceof HTMLAnchorElement) setOpen(false);
+        });
+        document.addEventListener('keydown', (event) => {
+          if (event.key === 'Escape') setOpen(false);
+        });
+      }
+    </script>
+  </body>
+</html>

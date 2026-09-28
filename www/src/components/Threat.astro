@@ -1,0 +1,133 @@
+---
+import { inline } from '../lib/inline';
+import Heading from './Heading.astro';
+import { t, type Locale } from '../i18n';
+
+interface Props {
+  locale: Locale;
+}
+
+const { locale } = Astro.props;
+const d = t(locale);
+---
+
+<section class="section threat" id="why">
+  <div class="container threat__inner">
+    <div class="threat__head">
+      <p class="eyebrow">{d.threat.eyebrow}</p>
+      <Heading as="h2" id="why" own={false} locale={locale} class="threat__title">{d.threat.title}</Heading>
+      <p class="lede threat__lede" set:html={inline(d.threat.lede)} />
+    </div>
+
+    <div class="threat__body">
+      <ol class="threat__reasons">
+        {
+          d.threat.reasons.map((reason, index) => (
+            <li class="threat__reason">
+              <span class="threat__reason-n" aria-hidden="true">
+                {String(index + 1).padStart(2, '0')}
+              </span>
+              <div class="threat__reason-text">
+                <h3 class="threat__reason-title">{reason.title}</h3>
+                <p class="prose threat__p" set:html={inline(reason.body)} />
+              </div>
+            </li>
+          ))
+        }
+      </ol>
+
+      <div class="note note--accent threat__note">
+        <p class="prose" set:html={inline(d.threat.closing)} />
+      </div>
+    </div>
+  </div>
+</section>
+
+<style>
+  .threat {
+    background: var(--paper-sunk);
+  }
+
+  .threat__inner {
+    display: grid;
+    grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+    gap: clamp(2rem, 5vw, 4.5rem);
+    align-items: start;
+  }
+
+  .threat__head {
+    position: sticky;
+    top: calc(var(--nav-h) + 2.5rem);
+    display: grid;
+    gap: 1.15rem;
+  }
+
+  .threat__title {
+    font-size: clamp(1.8rem, 3.2vw, 2.6rem);
+  }
+
+  .threat__lede {
+    font-size: 1rem;
+  }
+
+  .threat__body {
+    display: grid;
+    gap: 1.75rem;
+    max-width: 44rem;
+  }
+
+  .threat__reasons {
+    display: grid;
+    gap: 1.75rem;
+    list-style: none;
+  }
+
+  .threat__reason {
+    display: flex;
+    gap: 1rem;
+    align-items: start;
+  }
+
+  .threat__reason-n {
+    flex: none;
+    width: 2.1rem;
+    height: 2.1rem;
+    display: grid;
+    place-items: center;
+    border: 1px solid var(--line-strong);
+    border-radius: 50%;
+    font-family: var(--font-mono);
+    font-size: 0.74rem;
+    color: var(--danger);
+    background: var(--surface);
+  }
+
+  .threat__reason-text {
+    min-width: 0;
+  }
+
+  .threat__reason-title {
+    font-size: 1.02rem;
+    margin-bottom: 0.4rem;
+  }
+
+  .threat__p {
+    font-size: 0.97rem;
+    line-height: 1.7;
+  }
+
+  .threat__note .prose {
+    font-size: 0.97rem;
+    line-height: 1.7;
+  }
+
+  @media (max-width: 62rem) {
+    .threat__inner {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .threat__head {
+      position: static;
+    }
+  }
+</style>

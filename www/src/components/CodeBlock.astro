@@ -1,0 +1,215 @@
+---
+import { highlightShell } from '../lib/shell-highlight';
+import { escapeHtml } from '../lib/inline';
+import { t, type Locale } from '../i18n';
+
+interface Props {
+  code: string;
+  locale: Locale;
+  title?: string;
+  /** Render a `$` gutter before each non-comment, non-blank line. */
+  prompt?: boolean;
+  class?: string;
+}
+
+const { code, locale, title, prompt = false, class: className } = Astro.props;
+const d = t(locale);
+
+// Built as a string rather than as markup: inside a <pre>, the indentation of
+// the template would land in the output as real whitespace.
+const html = highlightShell(code)
+  .map((tokens) => {
+    const bare = tokens.length === 0 || tokens[0]!.kind === 'comment';
+    const gutter = prompt
+      ? `<span class="code__prompt" aria-hidden="true">${bare ? ' ' : '$'}</span>`
+      : '';
+    const body = tokens
+      .map((token) => `<span class="tk tk--${token.kind}">${escapeHtml(token.text)}</span>`)
+      .join('');
+    return `<span class="code__line">${gutter}${body}</span>`;
+  })
+  .join('\n');
+---
+
+<figure class:list={['code', className]}>
+  {
+    title && (
+      <figcaption class="code__bar">
+        <span class="code__title">{title}</span>
+      </figcaption>
+    )
+  }
+  <div class="code__body">
+    <pre class="code__pre"><code set:html={html} /></pre>
+    <button
+      type="button"
+      class="code__copy"
+      data-copy
+      data-copied-label={d.ui.copied}
+      data-failed-label={d.ui.copyFailed}
+      data-idle-label={d.ui.copy}
+      aria-label={d.ui.copyLabel}
+    >
+      <span data-copy-text>{d.ui.copy}</span>
+    </button>
+  </div>
+</figure>
+
+<style>
+  .code {
+    margin: 0;
+    border: 1px solid var(--code-line);
+    border-radius: var(--radius-lg);
+    background: var(--code-bg);
+    overflow: hidden;
+  }
+
+  .code__bar {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.9rem;
+    border-bottom: 1px solid var(--code-line);
+    background: color-mix(in srgb, var(--code-bg) 82%, #fff 18%);
+  }
+
+  .code__title {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--code-ink-2);
+  }
+
+  .code__body {
+    position: relative;
+  }
+
+  .code__pre {
+    margin: 0;
+    padding: 1rem 1.1rem;
+    overflow-x: auto;
+    font-size: 0.815rem;
+    line-height: 1.75;
+    color: var(--code-ink);
+    tab-size: 2;
+  }
+
+  .code__pre :global(.code__prompt) {
+    display: inline-block;
+    width: 1.15rem;
+    color: var(--code-ink-2);
+    user-select: none;
+  }
+
+  .code__pre :global(.tk--command) {
+    color: #eaa963;
+  }
+  .code__pre :global(.tk--flag) {
+    color: #86b8d8;
+  }
+  .code__pre :global(.tk--string) {
+    color: #9dc08b;
+  }
+  .code__pre :global(.tk--variable) {
+    color: #cba6d8;
+  }
+  .code__pre :global(.tk--comment) {
+    color: var(--code-ink-2);
+    font-style: italic;
+  }
+
+  .code__copy {
+    position: absolute;
+    top: 0.55rem;
+    right: 0.55rem;
+    padding: 0.28rem 0.6rem;
+    border: 1px solid var(--code-line);
+    border-radius: 5px;
+    background: var(--surface);
+    color: var(--code-ink-2);
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.14s ease, color 0.14s ease, border-color 0.14s ease;
+  }
+
+  .code:hover .code__copy,
+  .code__copy:focus-visible {
+    opacity: 1;
+  }
+
+  .code__copy:hover {
+    color: var(--code-ink);
+    border-color: var(--code-ink-2);
+  }
+
+  .code__copy[data-state='done'] {
+    opacity: 1;
+    color: #9dc08b;
+    border-color: #9dc08b;
+  }
+
+  .code__copy[data-state='failed'] {
+    opacity: 1;
+    color: #e08c6b;
+    border-color: #e08c6b;
+  }
+
+  /* Coarse pointers never hover, so the button has to stay visible, and the
+     code starts below it instead of under it. */
+  @media (hover: none) {
+    .code__copy {
+      opacity: 1;
+    }
+
+    .code__pre {
+      padding-top: 2.6rem;
+    }
+  }
+</style>
+
+<script>
+  // One delegated listener rather than one per block: the page has a lot of
+  // them, and they are all identical.
+  document.addEventListener('click', async (event) => {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    const button = target.closest<HTMLButtonElement>('[data-copy]');
+    if (!button) return;
+
+    const pre = button.parentElement?.querySelector('pre');
+    if (!pre) return;
+
+    const label = button.querySelector<HTMLElement>('[data-copy-text]');
+    // Reading the token spans rather than the line's textContent keeps the `$`
+    // gutter out: it is an aria-hidden decoration, and pasting it would break
+    // every command.
+    const text = Array.from(pre.querySelectorAll('.code__line'))
+      .map((line) =>
+        Array.from(line.querySelectorAll('.tk'))
+          .map((tk) => tk.textContent ?? '')
+          .join(''),
+      )
+      .join('\n');
+
+    const settle = (state: 'done' | 'failed', message: string) => {
+      button.setAttribute('data-state', state);
+      if (label) label.textContent = message;
+      window.setTimeout(() => {
+        button.removeAttribute('data-state');
+        if (label) label.textContent = button.dataset.idleLabel ?? 'Copy';
+      }, 1800);
+    };
+
+    try {
+      await navigator.clipboard.writeText(text);
+      settle('done', button.dataset.copiedLabel ?? 'Copied');
+    } catch {
+      settle('failed', button.dataset.failedLabel ?? 'Copy failed');
+    }
+  });
+</script>

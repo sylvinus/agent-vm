@@ -11,78 +11,53 @@
 #   cp runtime.example.sh ~/.agent-vm/runtime.sh
 #   # Edit the file with your own values
 #   chmod +x ~/.agent-vm/runtime.sh
+#
+# Keep private keys out of this file: it runs in every VM, where the agent can
+# read whatever it sets up. For GitHub, a fine-grained GH_TOKEN in
+# ~/.agent-vm/env is revocable in one click; an SSH key is not.
 
 
 # =============================================================================
-# 1. SSH authentication for GitHub
+# 1. Git configuration
 # =============================================================================
 #
-# Embed your SSH private key (base64-encoded) so the VM can push/pull over SSH.
-#
-#   To encode your key:
-#     cat ~/.ssh/id_ed25519 | base64
-#
-#   Paste the output below:
-
-# SSH_KEY_B64="<your-base64-encoded-private-key>"
-# mkdir -p ~/.ssh && chmod 700 ~/.ssh
-# echo "$SSH_KEY_B64" | base64 -d > ~/.ssh/id_ed25519
-# chmod 600 ~/.ssh/id_ed25519
-# ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null
-
-
-# =============================================================================
-# 2. Git configuration
-# =============================================================================
+# The identity can also come from GIT_AUTHOR_* / GIT_COMMITTER_* in
+# ~/.agent-vm/env, see "Letting the agent commit and push" in the README.
 
 # git config --global user.name "Your Name"
 # git config --global user.email "you@example.com"
 
-# Force SSH for all GitHub remotes (avoids HTTPS credential prompts)
-# git config --global url."git@github.com:".insteadOf "https://github.com/"
-
 
 # =============================================================================
-# 3. GitHub CLI authentication
+# 2. Pushing over HTTPS with GH_TOKEN
 # =============================================================================
 #
-# Required for creating PRs, commenting on issues, etc. from inside the VM.
-# (If you only need `gh` for CLI calls, setting GH_TOKEN in ~/.agent-vm/env is
-# simpler — see "Sharing tokens" in the README.)
-#
-#   To create a token: https://github.com/settings/tokens
-#   Scopes needed: repo, read:org
-#
-# echo "<your-github-pat>" | gh auth login --with-token
-
-# Let `git push` over HTTPS use that token: git needs a credential helper,
-# which `gh` knows how to install. Commits need an identity too, but that one
-# comes from the environment — put GIT_AUTHOR_* / GIT_COMMITTER_* in
-# ~/.agent-vm/env, see "Letting the agent commit and push" in the README.
+# `gh` reads GH_TOKEN from ~/.agent-vm/env on its own. Plain `git push` over
+# HTTPS needs a credential helper, which `gh` knows how to install.
 #
 # gh auth setup-git
 
 
 # =============================================================================
-# 4. Claude Code skills
+# 3. Claude Code skills
 # =============================================================================
 #
 # Clone shared skills into the global skills directory.
 # These will be available in all projects.
 
 # mkdir -p ~/.claude/skills
-# git clone git@github.com:your-org/claude-skills.git ~/.claude/skills/your-org-skills
+# git clone https://github.com/your-org/claude-skills.git ~/.claude/skills/your-org-skills
 
 # You can also install skills into the current project's directory.
 # These will only be available when working in that project.
 
 # PROJECT_DIR="$(pwd)"
 # mkdir -p "$PROJECT_DIR/.claude/skills"
-# git clone git@github.com:your-org/project-skills.git "$PROJECT_DIR/.claude/skills/project-skills"
+# git clone https://github.com/your-org/project-skills.git "$PROJECT_DIR/.claude/skills/project-skills"
 
 
 # =============================================================================
-# 5. MCP servers
+# 4. MCP servers
 # =============================================================================
 #
 # Add MCP servers available to Claude Code in all projects (--scope user).
@@ -91,7 +66,7 @@
 
 
 # =============================================================================
-# 6. Claude Code status line
+# 5. Claude Code status line
 # =============================================================================
 #
 # Install a custom status line command in ~/.claude/settings.json.

@@ -1,0 +1,323 @@
+---
+import { t, localeHref, otherLocales, type Locale } from '../i18n';
+
+interface Props {
+  locale: Locale;
+}
+
+const { locale } = Astro.props;
+const d = t(locale);
+
+// Prefixed with the locale root rather than left as bare fragments: on the 404
+// page, where none of these sections exist, a bare `#install` goes nowhere.
+// On the landing page itself the browser still treats these as same-document
+// fragment navigations, so the smooth scroll is unaffected.
+const home = localeHref(locale);
+const links = [
+  { href: `${home}#install`, label: d.nav.sections.install },
+  { href: `${home}#usage`, label: d.nav.sections.usage },
+  { href: `${home}#architecture`, label: d.nav.sections.architecture },
+  { href: `${home}#contribute`, label: d.nav.sections.contribute },
+  { href: `${home}#credits`, label: d.nav.sections.credits },
+];
+---
+
+<header class="nav">
+  <div class="nav__inner container">
+    <a class="nav__brand" href={localeHref(locale)}>
+      <svg class="nav__mark" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <rect x="1.25" y="1.25" width="21.5" height="21.5" rx="4.5" />
+        <rect class="nav__mark-inner" x="6.75" y="6.75" width="10.5" height="10.5" rx="2" />
+      </svg>
+      <span class="nav__name">agent-vm</span>
+    </a>
+
+    <button
+      type="button"
+      class="nav__burger"
+      data-nav-toggle
+      aria-expanded="false"
+      aria-controls="nav-panel"
+    >
+      <span class="visually-hidden">{d.nav.menu}</span>
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path class="nav__burger-lines" d="M4 7h16M4 12h16M4 17h16" />
+        <path class="nav__burger-close" d="M6 6l12 12M18 6L6 18" />
+      </svg>
+    </button>
+
+    <div class="nav__panel" id="nav-panel" data-nav-panel>
+      <nav class="nav__links" aria-label={d.nav.menu}>
+        {
+          links.map((link) => (
+            <a class="nav__link" href={link.href} data-nav-link>
+              {link.label}
+            </a>
+          ))
+        }
+      </nav>
+
+      <div class="nav__tools">
+        <div class="nav__langs" role="group" aria-label={d.nav.language}>
+          <span class="nav__lang nav__lang--current" aria-current="true">
+            {locale.toUpperCase()}
+          </span>
+          {
+            otherLocales(locale).map((other) => (
+              <a class="nav__lang" href={localeHref(other)} hreflang={other} lang={other}>
+                {other.toUpperCase()}
+              </a>
+            ))
+          }
+        </div>
+
+        <a
+          class="nav__icon"
+          href="https://github.com/sylvinus/agent-vm"
+          rel="noopener"
+          target="_blank"
+        >
+          <span class="visually-hidden">{d.nav.github}</span>
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" class="nav__gh">
+            <path
+              d="M12 1.8a10.2 10.2 0 0 0-3.23 19.88c.51.1.7-.22.7-.49v-1.9c-2.84.62-3.44-1.2-3.44-1.2-.47-1.18-1.14-1.5-1.14-1.5-.93-.63.07-.62.07-.62 1.03.07 1.57 1.06 1.57 1.06.91 1.57 2.4 1.12 2.99.86.09-.66.36-1.12.65-1.37-2.27-.26-4.65-1.13-4.65-5.04 0-1.12.4-2.03 1.05-2.74-.1-.26-.45-1.3.1-2.7 0 0 .86-.28 2.8 1.05a9.7 9.7 0 0 1 5.1 0c1.94-1.33 2.8-1.05 2.8-1.05.55 1.4.2 2.44.1 2.7.65.71 1.05 1.62 1.05 2.74 0 3.92-2.39 4.78-4.66 5.03.37.32.7.94.7 1.9v2.81c0 .27.18.59.7.49A10.2 10.2 0 0 0 12 1.8z"
+            />
+          </svg>
+        </a>
+      </div>
+    </div>
+  </div>
+</header>
+
+<style>
+  .nav {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    background: color-mix(in srgb, var(--paper) 88%, transparent);
+    backdrop-filter: saturate(160%) blur(12px);
+    border-bottom: 1px solid var(--line);
+  }
+
+  .nav__inner {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    min-height: var(--nav-h);
+  }
+
+  .nav__brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.55rem;
+    margin-right: auto;
+    color: var(--ink);
+    text-decoration: none;
+    font-weight: 600;
+    letter-spacing: -0.015em;
+  }
+
+  .nav__mark {
+    width: 1.35rem;
+    height: 1.35rem;
+    fill: none;
+    stroke: var(--ink);
+    stroke-width: 1.5;
+  }
+
+  .nav__mark-inner {
+    fill: var(--accent);
+    stroke: none;
+  }
+
+  .nav__name {
+    font-family: var(--font-mono);
+    font-size: 0.95rem;
+  }
+
+  .nav__burger {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    width: 2.25rem;
+    height: 2.25rem;
+    padding: 0;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: transparent;
+    color: var(--ink);
+    cursor: pointer;
+  }
+
+  .nav__burger svg {
+    width: 1.1rem;
+    height: 1.1rem;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.6;
+    stroke-linecap: round;
+  }
+
+  .nav__burger-close,
+  .nav__burger[aria-expanded='true'] .nav__burger-lines {
+    display: none;
+  }
+
+  .nav__burger[aria-expanded='true'] .nav__burger-close {
+    display: inline;
+  }
+
+  .nav__panel {
+    display: flex;
+    align-items: center;
+    gap: clamp(1rem, 2.5vw, 2rem);
+  }
+
+  .nav__links {
+    display: flex;
+    align-items: center;
+    gap: clamp(0.85rem, 1.8vw, 1.6rem);
+  }
+
+  .nav__link {
+    position: relative;
+    padding-block: 0.3rem;
+    color: var(--ink-2);
+    font-size: 0.875rem;
+    font-weight: 500;
+    text-decoration: none;
+    white-space: nowrap;
+  }
+
+  .nav__link:hover {
+    color: var(--ink);
+  }
+
+  .nav__link[data-current] {
+    color: var(--ink);
+  }
+
+  .nav__link[data-current]::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: -0.15rem;
+    height: 1.5px;
+    background: var(--accent);
+    border-radius: 2px;
+  }
+
+  .nav__tools {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .nav__langs {
+    display: inline-flex;
+    align-items: center;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+
+  .nav__lang {
+    padding: 0.3rem 0.5rem;
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    color: var(--ink-3);
+    text-decoration: none;
+    background: transparent;
+  }
+
+  .nav__lang:hover {
+    color: var(--ink);
+    background: var(--surface-2);
+  }
+
+  .nav__lang--current {
+    background: var(--ink);
+    color: var(--paper);
+  }
+
+  .nav__lang--current:hover {
+    background: var(--ink);
+    color: var(--paper);
+  }
+
+  .nav__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    padding: 0;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: transparent;
+    color: var(--ink-2);
+    cursor: pointer;
+  }
+
+  .nav__icon:hover {
+    color: var(--ink);
+    background: var(--surface-2);
+  }
+
+  .nav__icon svg {
+    width: 1.05rem;
+    height: 1.05rem;
+  }
+
+  .nav__gh {
+    fill: currentColor;
+    stroke: none;
+  }
+
+  @media (max-width: 62rem) {
+    .nav__burger {
+      display: inline-flex;
+    }
+
+    .nav__panel {
+      display: none;
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 100%;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 0.25rem;
+      padding: 1rem var(--gutter) 1.25rem;
+      background: var(--paper);
+      border-bottom: 1px solid var(--line);
+    }
+
+    .nav__panel[data-open] {
+      display: flex;
+    }
+
+    .nav__links {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 0;
+    }
+
+    .nav__link {
+      padding-block: 0.7rem;
+      border-bottom: 1px solid var(--line);
+      font-size: 1rem;
+    }
+
+    .nav__link[data-current]::after {
+      display: none;
+    }
+
+    .nav__tools {
+      padding-top: 0.9rem;
+    }
+  }
+</style>

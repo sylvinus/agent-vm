@@ -1,0 +1,95 @@
+---
+import { inline } from '../lib/inline';
+import Heading from './Heading.astro';
+import { slug } from '../lib/slug';
+import { en } from '../i18n/en';
+import { t, type Locale } from '../i18n';
+
+interface Props {
+  locale: Locale;
+}
+
+const { locale } = Astro.props;
+const d = t(locale);
+---
+
+{/* A subsection of Contribute, not a section of its own: the list is only
+    useful next to how to pick something off it. Keeps its own id so the
+    README can link straight here. */}
+<div class="roadmap" id="roadmap">
+  <Heading as="h3" id="roadmap" own={false} locale={locale} class="roadmap__title">{d.roadmap.title}</Heading>
+
+  <ul class="roadmap__list">
+    {
+      d.roadmap.items.map((item, index) => (
+        <li class="roadmap__row">
+          <span class="roadmap__status">{item.status}</span>
+          <div class="roadmap__text">
+            <Heading as="h4" id={slug(en.roadmap.items[index]!.title)} locale={locale} class="roadmap__row-title"><Fragment set:html={inline(item.title)} /></Heading>
+            <p class="prose roadmap__row-body" set:html={inline(item.body)} />
+          </div>
+        </li>
+      ))
+    }
+  </ul>
+</div>
+
+<style>
+  .roadmap {
+    margin-bottom: clamp(2.5rem, 5vw, 4rem);
+  }
+
+  .roadmap__title {
+    font-size: 1.05rem;
+    margin-bottom: 1rem;
+  }
+
+  .roadmap__list {
+    list-style: none;
+    border-top: 1px solid var(--line);
+  }
+
+  .roadmap__row {
+    display: grid;
+    grid-template-columns: 11rem minmax(0, 1fr);
+    gap: 0 clamp(1rem, 3vw, 2.5rem);
+    padding-block: 1.25rem;
+    border-bottom: 1px solid var(--line);
+  }
+
+  /* What the item waits on, in the gutter, so the list scans down the titles
+     without the state interrupting each line. */
+  .roadmap__status {
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    padding-top: 0.2rem;
+  }
+
+  .roadmap__text {
+    min-width: 0;
+  }
+
+  .roadmap__row-title {
+    font-size: 0.97rem;
+    margin-bottom: 0.3rem;
+  }
+
+  .roadmap__row-body {
+    font-size: 0.91rem;
+    max-width: 52rem;
+  }
+
+  @media (max-width: 48rem) {
+    .roadmap__row {
+      grid-template-columns: minmax(0, 1fr);
+      gap: 0.4rem;
+    }
+
+    .roadmap__status {
+      padding-top: 0;
+    }
+  }
+</style>

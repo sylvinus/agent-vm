@@ -1,0 +1,98 @@
+---
+import { t, localeHref, otherLocales, type Locale } from '../i18n';
+
+interface Props {
+  locale: Locale;
+}
+
+const { locale } = Astro.props;
+const d = t(locale);
+---
+
+<footer class="footer">
+  <div class="container footer__inner">
+    <div class="footer__brand">
+      <span class="footer__name">agent-vm</span>
+      <p class="footer__tagline">{d.footer.tagline}</p>
+    </div>
+
+    <div class="footer__meta">
+      <a class="footer__link" href="https://github.com/sylvinus/agent-vm" rel="noopener" target="_blank">
+        {d.nav.github}
+      </a>
+      <a
+        class="footer__link"
+        href="https://github.com/sylvinus/agent-vm/blob/main/LICENSE"
+        rel="noopener"
+        target="_blank"
+      >
+        {d.footer.license}
+      </a>
+      {
+        otherLocales(locale).map((other) => (
+          <a class="footer__link" href={localeHref(other)} hreflang={other} lang={other}>
+            {t(other).meta.label}
+          </a>
+        ))
+      }
+      <a class="footer__link" href="#main">{d.footer.backToTop}</a>
+    </div>
+  </div>
+</footer>
+
+<style>
+  .footer {
+    border-top: 1px solid var(--line);
+    background: var(--paper-sunk);
+    padding-block: clamp(2.5rem, 5vw, 3.5rem);
+  }
+
+  .footer__inner {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 1.5rem clamp(1.5rem, 4vw, 3rem);
+    align-items: start;
+  }
+
+  .footer__name {
+    font-family: var(--font-mono);
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--ink);
+  }
+
+  .footer__tagline {
+    margin-top: 0.4rem;
+    max-width: 30rem;
+    font-size: 0.89rem;
+    color: var(--ink-3);
+    text-wrap: pretty;
+  }
+
+  .footer__meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem 1.25rem;
+    justify-content: flex-end;
+  }
+
+  .footer__link {
+    font-size: 0.87rem;
+    color: var(--ink-2);
+    text-decoration: none;
+  }
+
+  .footer__link:hover {
+    color: var(--accent);
+  }
+
+  @media (max-width: 48rem) {
+    .footer__inner {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .footer__meta {
+      justify-content: flex-start;
+    }
+  }
+</style>

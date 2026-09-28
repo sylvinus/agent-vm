@@ -1,0 +1,195 @@
+---
+import CodeBlock from './CodeBlock.astro';
+import Roadmap from './Roadmap.astro';
+import { inline } from '../lib/inline';
+import Heading from './Heading.astro';
+import { slug } from '../lib/slug';
+import { en } from '../i18n/en';
+import { t, type Locale } from '../i18n';
+
+interface Props {
+  locale: Locale;
+}
+
+const { locale } = Astro.props;
+const d = t(locale);
+---
+
+<section class="section contribute" id="contribute">
+  <div class="container">
+    <div class="section-head">
+      <p class="eyebrow">{d.contribute.eyebrow}</p>
+      <Heading as="h2" id="contribute" own={false} locale={locale}>{d.contribute.title}</Heading>
+      <p class="lede" set:html={inline(d.contribute.lede)} />
+    </div>
+
+    <Roadmap locale={locale} />
+
+    <div class="contribute__grid">
+      <div class="contribute__col">
+        <Heading as="h3" id={slug(en.contribute.testsTitle)} locale={locale} class="contribute__sub">{d.contribute.testsTitle}</Heading>
+        <p class="prose contribute__body" set:html={inline(d.contribute.testsBody)} />
+        <CodeBlock locale={locale} code={d.contribute.testsCode} prompt />
+
+        <Heading as="h3" id={slug(en.contribute.shellsTitle)} locale={locale} class="contribute__sub contribute__sub--spaced">{d.contribute.shellsTitle}</Heading>
+        <p class="prose contribute__body" set:html={inline(d.contribute.shellsBody)} />
+        <CodeBlock locale={locale} code={d.contribute.shellsCode} prompt />
+      </div>
+
+      <div class="contribute__col">
+        <Heading as="h3" id={slug(en.contribute.structureTitle)} locale={locale} class="contribute__sub">{d.contribute.structureTitle}</Heading>
+        <div class="table-wrap">
+          <table class="table--code">
+            <thead>
+              <tr>
+                {d.contribute.structureHeaders.map((header) => <th scope="col">{header}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {
+                d.contribute.structure.map(([file, description]) => (
+                  <tr>
+                    <td>{file}</td>
+                    <td>{description}</td>
+                  </tr>
+                ))
+              }
+            </tbody>
+          </table>
+        </div>
+
+        <Heading as="h3" id={slug(en.contribute.guidelinesTitle)} locale={locale} class="contribute__sub contribute__sub--spaced">{d.contribute.guidelinesTitle}</Heading>
+        <ul class="contribute__rules">
+          {
+            d.contribute.guidelines.map((rule) => (
+              <li class="contribute__rule">
+                <span class="prose" set:html={inline(rule)} />
+              </li>
+            ))
+          }
+        </ul>
+      </div>
+    </div>
+
+    <div class="contribute__links">
+      <a class="contribute__link" href={d.contribute.issuesHref} rel="noopener" target="_blank">
+        <span class="contribute__link-label">{d.contribute.issuesLabel}</span>
+        <span class="contribute__link-arrow" aria-hidden="true">→</span>
+      </a>
+      <a class="contribute__link" href={d.contribute.prHref} rel="noopener" target="_blank">
+        <span class="contribute__link-label">{d.contribute.prLabel}</span>
+        <span class="contribute__link-arrow" aria-hidden="true">→</span>
+      </a>
+      <a class="contribute__link" href={d.contribute.repoHref} rel="noopener" target="_blank">
+        <span class="contribute__link-label">{d.contribute.repoLabel}</span>
+        <span class="contribute__link-arrow" aria-hidden="true">→</span>
+      </a>
+    </div>
+  </div>
+</section>
+
+<style>
+  .contribute {
+    background: var(--paper-sunk);
+  }
+
+  .contribute__grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: clamp(1.75rem, 4vw, 3.25rem);
+    align-items: start;
+  }
+
+  .contribute__col {
+    display: grid;
+    align-content: start;
+    min-width: 0;
+  }
+
+  .contribute__sub {
+    font-size: 1.05rem;
+    margin-bottom: 0.65rem;
+  }
+
+  .contribute__sub--spaced {
+    margin-top: 2.25rem;
+  }
+
+  .contribute__body {
+    font-size: 0.92rem;
+    margin-bottom: 1rem;
+    max-width: 44rem;
+  }
+
+  .contribute__rules {
+    display: grid;
+    gap: 0.75rem;
+    list-style: none;
+  }
+
+  .contribute__rule {
+    position: relative;
+    padding-left: 1.4rem;
+    font-size: 0.92rem;
+  }
+
+  .contribute__rule::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0.62em;
+    width: 0.45rem;
+    height: 0.45rem;
+    border: 1px solid var(--accent);
+    border-radius: 1px;
+    transform: rotate(45deg);
+  }
+
+  .contribute__links {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr));
+    gap: 1px;
+    margin-top: clamp(2.5rem, 5vw, 4rem);
+    background: var(--line);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+  }
+
+  .contribute__link {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1.15rem 1.35rem;
+    background: var(--surface);
+    color: var(--ink);
+    text-decoration: none;
+    font-weight: 540;
+    font-size: 0.95rem;
+    transition: background-color 0.14s ease, color 0.14s ease;
+  }
+
+  .contribute__link:hover {
+    background: var(--accent-wash);
+    color: var(--accent);
+  }
+
+  .contribute__link-arrow {
+    font-family: var(--font-mono);
+    color: var(--ink-4);
+    transition: transform 0.14s ease, color 0.14s ease;
+  }
+
+  .contribute__link:hover .contribute__link-arrow {
+    color: var(--accent);
+    transform: translateX(3px);
+  }
+
+  @media (max-width: 62rem) {
+    .contribute__grid {
+      grid-template-columns: minmax(0, 1fr);
+      gap: 2.5rem;
+    }
+  }
+</style>

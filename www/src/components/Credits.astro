@@ -1,0 +1,156 @@
+---
+import { inline } from '../lib/inline';
+import Heading from './Heading.astro';
+import { t, type Locale } from '../i18n';
+
+interface Props {
+  locale: Locale;
+}
+
+const { locale } = Astro.props;
+const d = t(locale);
+---
+
+<section class="section" id="credits">
+  <div class="container">
+    <div class="section-head">
+      <p class="eyebrow">{d.credits.eyebrow}</p>
+      <Heading as="h2" id="credits" own={false} locale={locale}>{d.credits.title}</Heading>
+      <p class="lede" set:html={inline(d.credits.lede)} />
+    </div>
+
+    <div class="credits__groups">
+      {
+        d.credits.groups.map((group) => (
+          <section class="credits__group">
+            <h3 class="credits__group-title">{group.title}</h3>
+            <ul class="credits__list">
+              {group.items.map((item) => (
+                <li class="credits__item">
+                  <a class="credits__name" href={item.href} rel="noopener" target="_blank">
+                    {item.name}
+                  </a>
+                  <span class="credits__note">{item.note}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ))
+      }
+    </div>
+
+    <div class="credits__meta">
+      <div class="credits__meta-block">
+        <h3 class="credits__meta-title">{d.credits.authorTitle}</h3>
+        <p class="prose">
+          {d.credits.authorBody}
+        </p>
+        <a class="credits__handle" href={d.credits.authorHref} rel="noopener" target="_blank">
+          @{d.credits.authorName}
+        </a>
+      </div>
+
+      <div class="credits__meta-block">
+        <h3 class="credits__meta-title">{d.credits.licenseTitle}</h3>
+        <p class="prose">{d.credits.licenseBody}</p>
+        <a class="credits__handle" href={d.credits.licenseHref} rel="noopener" target="_blank">
+          LICENSE
+        </a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<style>
+  .credits__groups {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 17rem), 1fr));
+    gap: clamp(1.75rem, 4vw, 3rem);
+  }
+
+  .credits__group-title {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    font-weight: 500;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    padding-bottom: 0.75rem;
+    margin-bottom: 1.1rem;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .credits__list {
+    display: grid;
+    gap: 1rem;
+    list-style: none;
+  }
+
+  .credits__item {
+    display: grid;
+    gap: 0.15rem;
+  }
+
+  .credits__name {
+    font-size: 0.97rem;
+    font-weight: 560;
+    color: var(--ink);
+    text-decoration: none;
+    justify-self: start;
+    border-bottom: 1px solid var(--line-strong);
+  }
+
+  .credits__name:hover {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+  }
+
+  .credits__note {
+    font-size: 0.87rem;
+    color: var(--ink-3);
+  }
+
+  .credits__meta {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
+    gap: clamp(1.25rem, 3vw, 2.5rem);
+    margin-top: clamp(2.5rem, 5vw, 4rem);
+    padding-top: clamp(2rem, 4vw, 3rem);
+    border-top: 1px solid var(--line);
+  }
+
+  .credits__meta-block {
+    display: grid;
+    gap: 0.5rem;
+    align-content: start;
+  }
+
+  .credits__meta-title {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    font-weight: 500;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+  }
+
+  .credits__meta-block .prose {
+    font-size: 0.93rem;
+  }
+
+  .credits__handle {
+    justify-self: start;
+    font-family: var(--font-mono);
+    font-size: 0.83rem;
+    text-decoration: none;
+    padding: 0.28rem 0.6rem;
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius);
+    color: var(--ink-2);
+  }
+
+  .credits__handle:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+</style>

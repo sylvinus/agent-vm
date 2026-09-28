@@ -51,7 +51,7 @@ INSTALL_MCP_PLAYWRIGHT="${AGENT_VM_INSTALL_MCP_PLAYWRIGHT:-0}"
 
 # Several installers (Claude Code, Vibe, …) check PATH at install time and
 # print a "~/.local/bin is not in your PATH" warning otherwise. The persistent
-# PATH lives in ~/.zshrc / ~/.zshenv (added below), so once the user opens a
+# PATH lives in ~/.zshenv (added below), so once the user opens a
 # VM shell it's fine — but this bash script runs under a fresh session that
 # doesn't see those edits yet. Export it here so installers stay quiet.
 export PATH="$HOME/.local/bin:$PATH"
@@ -63,6 +63,8 @@ echo '$nrconf{restart} = '"'"'a'"'"';' | sudo tee /etc/needrestart/conf.d/no-pro
 # Base packages always installed: core CLI tools plus the dev libraries needed
 # to compile Ruby/Python/Node versions via mise (kept here so that toggling a
 # language off doesn't strip the libs the user may still want to build with).
+# sshfs: the project VMs use Lima's reverse-sshfs when it can keep .git
+# read-only. Lima would install it on each clone's first boot otherwise.
 echo "Installing base packages..."
 apt_get update
 apt_get install -y \
@@ -70,8 +72,7 @@ apt_get install -y \
   wget build-essential \
   ripgrep fd-find htop \
   unzip zip \
-  ca-certificates \
-  iptables \
+  ca-certificates sshfs \
   libssl-dev libreadline-dev zlib1g-dev libyaml-dev libffi-dev
 
 if [[ "$INSTALL_PYTHON" == "1" ]]; then
@@ -94,7 +95,6 @@ if [[ "$INSTALL_RUST" == "1" ]]; then
   # editing ~/.profile/~/.bashrc — we add ~/.cargo/bin to zsh's PATH below.
   echo "Installing Rust..."
   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --no-modify-path --default-toolchain stable
-  echo 'export PATH=$HOME/.cargo/bin:$PATH' >> ~/.zshrc
   echo 'export PATH=$HOME/.cargo/bin:$PATH' >> ~/.zshenv
 fi
 
@@ -103,8 +103,10 @@ sudo chsh -s /usr/bin/zsh "$(whoami)"
 
 # Always set the VM prompt and put ~/.local/bin on PATH (mise installs there;
 # Vibe's installer puts `vibe`/`vibe-acp` there too).
+#
+# PATH additions go in ~/.zshenv only: every zsh reads it, and nothing in
+# Debian 13's /etc/zsh/{zprofile,zshrc} resets PATH afterwards.
 echo 'export PS1="vm:%1~%% "' >> ~/.zshrc
-echo 'export PATH=$HOME/.local/bin:$PATH' >> ~/.zshrc
 echo 'export PATH=$HOME/.local/bin:$PATH' >> ~/.zshenv
 
 # Auto-source ~/.agent-vm.env if present. The host pushes ~/.agent-vm/env into
@@ -117,8 +119,7 @@ echo '[ -f "$HOME/.agent-vm.env" ] && { set -a; . "$HOME/.agent-vm.env"; set +a;
 # Always installed so users can `mise install ruby@latest`, etc., even when
 # they've opted out of preinstalled Node.
 echo "Installing mise..."
-curl https://mise.run | sh
-echo 'eval "$(~/.local/bin/mise activate zsh)"' >> ~/.zshrc
+curl -fsSL https://mise.run | sh
 echo 'eval "$(~/.local/bin/mise activate zsh)"' >> ~/.zshenv
 
 if [[ "$INSTALL_DOCKER" == "1" ]]; then
@@ -164,7 +165,6 @@ fi
 if [[ "$INSTALL_CLAUDE" == "1" ]]; then
   echo "Installing Claude Code..."
   curl -fsSL https://claude.ai/install.sh | bash
-  echo 'export PATH=$HOME/.claude/local/bin:$PATH' >> ~/.zshrc
   echo 'export PATH=$HOME/.claude/local/bin:$PATH' >> ~/.zshenv
 
   # Enforce full autonomy via *managed* settings (highest precedence), not the
@@ -191,7 +191,6 @@ fi
 if [[ "$INSTALL_OPENCODE" == "1" ]]; then
   echo "Installing OpenCode..."
   curl -fsSL https://opencode.ai/install | bash
-  echo 'export PATH=$HOME/.opencode/bin:$PATH' >> ~/.zshrc
   echo 'export PATH=$HOME/.opencode/bin:$PATH' >> ~/.zshenv
 fi
 

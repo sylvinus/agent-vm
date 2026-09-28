@@ -1,0 +1,328 @@
+---
+import CodeBlock from './CodeBlock.astro';
+import { t, type Locale } from '../i18n';
+
+interface Props {
+  locale: Locale;
+}
+
+const { locale } = Astro.props;
+const d = t(locale);
+
+// Illustrative session, with no real path or host. The output lines are the
+// ones agent-vm prints for a VM that exists but is stopped: keep them in sync.
+const session: Array<{ kind: 'cmd' | 'out' | 'ok' | 'dim' | 'gap'; text: string }> = [
+  { kind: 'cmd', text: 'cd ~/work/acme-api' },
+  { kind: 'cmd', text: 'agent-vm run cat ~/.ssh/id_ed25519' },
+  { kind: 'out', text: "Starting VM 'agent-vm-acme-api-8f3c1d20'..." },
+  { kind: 'out', text: '  Resources: CPUs: 1, Memory: 3 GiB, Disk: 10 GiB' },
+  { kind: 'ok', text: 'cat: /Users/you/.ssh/id_ed25519: No such file or directory' },
+  { kind: 'gap', text: '' },
+  { kind: 'cmd', text: 'agent-vm opencode' },
+  { kind: 'out', text: '  Resources: CPUs: 1, Memory: 3 GiB, Disk: 10 GiB' },
+  { kind: 'dim', text: '# OpenCode starts here, with --auto' },
+];
+---
+
+<section class="hero">
+  <div class="hero__grid" aria-hidden="true"></div>
+
+  <div class="container hero__inner">
+    <div class="hero__copy">
+      <h1 class="hero__title">
+        {d.hero.title}
+        <span class="hero__accent">{d.hero.titleAccent}</span>
+      </h1>
+
+      <p class="lede hero__lede">{d.hero.lede}</p>
+
+      <div class="hero__install">
+        <p class="hero__install-label">{d.hero.installLabel}</p>
+        <CodeBlock
+          locale={locale}
+          prompt
+          code={'git clone https://github.com/sylvinus/agent-vm.git\ncd agent-vm && ./agent-vm.sh install\nagent-vm setup'}
+        />
+      </div>
+
+      <div class="hero__ctas">
+        <a class="btn btn--primary" href="#install">{d.hero.ctaPrimary}</a>
+        <a class="btn btn--ghost" href="#architecture">{d.hero.ctaSecondary}</a>
+      </div>
+
+      <p class="hero__meta">{d.hero.meta}</p>
+    </div>
+
+    <div class="hero__demo">
+      <div class="term">
+        <div class="term__bar">
+          <span class="term__dots" aria-hidden="true">
+            <i></i><i></i><i></i>
+          </span>
+        </div>
+        <div class="term__body">
+          {
+            session.map((line) => (
+              <div class:list={['term__line', `term__line--${line.kind}`]}>
+                {line.kind === 'cmd' && (
+                  <span class="term__prompt" aria-hidden="true">
+                    $
+                  </span>
+                )}
+                <span class="term__text">{line.text}</span>
+              </div>
+            ))
+          }
+        </div>
+      </div>
+      <p class="hero__caption">{d.hero.terminalCaption}</p>
+    </div>
+  </div>
+
+  <div class="container">
+    <ul class="hero__points">
+      {
+        d.hero.points.map((point) => (
+          <li class="hero__point">
+            <h2 class="hero__point-title">{point.title}</h2>
+            <p class="hero__point-body">{point.body}</p>
+          </li>
+        ))
+      }
+    </ul>
+  </div>
+</section>
+
+<style>
+  .hero {
+    position: relative;
+    padding-top: clamp(3rem, 7vw, 5.5rem);
+    padding-bottom: clamp(2.5rem, 5vw, 4rem);
+    overflow: hidden;
+  }
+
+  /* A faint engineering grid, fading out downward. Decoration only. */
+  .hero__grid {
+    position: absolute;
+    inset: 0;
+    background-image: linear-gradient(to right, var(--line) 1px, transparent 1px),
+      linear-gradient(to bottom, var(--line) 1px, transparent 1px);
+    background-size: 3.5rem 3.5rem;
+    mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.5), transparent 72%);
+    -webkit-mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.5), transparent 72%);
+    pointer-events: none;
+  }
+
+  .hero__inner {
+    position: relative;
+    display: grid;
+    grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+    gap: clamp(2rem, 5vw, 4.5rem);
+    align-items: start;
+  }
+
+  .hero__title {
+    margin-bottom: 1.5rem;
+  }
+
+  .hero__meta {
+    margin-top: 1.5rem;
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-4);
+  }
+
+  .hero__accent {
+    display: block;
+    color: var(--accent);
+  }
+
+  .hero__lede {
+    max-width: 38rem;
+    margin-bottom: 2.25rem;
+  }
+
+  .hero__install {
+    margin-bottom: 1.5rem;
+  }
+
+  .hero__install-label {
+    margin-bottom: 0.6rem;
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+  }
+
+  .hero__ctas {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.7rem;
+  }
+
+  /* Terminal ---------------------------------------------------------------- */
+
+  .hero__copy,
+  .hero__demo {
+    min-width: 0;
+  }
+
+  .hero__demo {
+    position: relative;
+    padding-top: 2.5rem;
+  }
+
+  .term {
+    border: 1px solid var(--code-line);
+    border-radius: var(--radius-lg);
+    background: var(--code-bg);
+    overflow: hidden;
+  }
+
+  .term__bar {
+    display: flex;
+    align-items: center;
+    padding: 0.6rem 0.9rem;
+    border-bottom: 1px solid var(--code-line);
+    background: color-mix(in srgb, var(--code-bg) 82%, #fff 18%);
+  }
+
+  .term__dots {
+    display: inline-flex;
+    gap: 0.35rem;
+  }
+
+  .term__dots i {
+    width: 0.55rem;
+    height: 0.55rem;
+    border-radius: 50%;
+    background: var(--code-line);
+  }
+
+  .term__body {
+    padding: 1.1rem 1.15rem 1.4rem;
+    font-family: var(--font-mono);
+    font-size: 0.79rem;
+    line-height: 1.85;
+    color: var(--code-ink);
+    overflow-x: auto;
+  }
+
+  .term__line {
+    display: flex;
+    gap: 0.55rem;
+    white-space: pre;
+  }
+
+  .term__line--gap {
+    height: 0.7rem;
+  }
+
+  .term__prompt {
+    color: #eaa963;
+    user-select: none;
+  }
+
+  .term__line--out .term__text {
+    color: var(--code-ink-2);
+  }
+
+  .term__line--dim .term__text {
+    color: #6f6a60;
+    font-style: italic;
+  }
+
+  .term__line--ok .term__text {
+    color: #9dc08b;
+  }
+
+  .hero__caption {
+    margin-top: 0.9rem;
+    font-size: 0.82rem;
+    color: var(--ink-3);
+  }
+
+  /* Points ------------------------------------------------------------------ */
+
+  .hero__points {
+    position: relative;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0;
+    margin-top: clamp(3rem, 6vw, 5rem);
+    list-style: none;
+    border-top: 1px solid var(--line);
+  }
+
+  .hero__point {
+    padding: 1.6rem clamp(1rem, 2vw, 1.75rem) 0;
+    border-left: 1px solid var(--line);
+  }
+
+  .hero__point:first-child {
+    padding-left: 0;
+    border-left: 0;
+  }
+
+  .hero__point-title {
+    font-size: 0.95rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    margin-bottom: 0.4rem;
+  }
+
+  .hero__point-body {
+    font-size: 0.9rem;
+    color: var(--ink-2);
+    text-wrap: pretty;
+  }
+
+  /* Four columns only while they stay readable; two, then one. */
+  @media (max-width: 72rem) {
+    .hero__points {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .hero__point:nth-child(odd) {
+      padding-left: 0;
+      border-left: 0;
+    }
+
+    .hero__point:nth-child(n + 3) {
+      padding-top: 1.6rem;
+      border-top: 1px solid var(--line);
+    }
+  }
+
+  @media (max-width: 62rem) {
+    .hero__inner {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .hero__demo {
+      padding-top: 0;
+    }
+
+    .hero__points {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .hero__point {
+      padding: 1.25rem 0;
+      border-left: 0;
+      border-top: 0;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .hero__point:first-child {
+      padding-top: 1.25rem;
+    }
+
+    .hero__point:last-child {
+      border-bottom: 0;
+    }
+  }
+</style>

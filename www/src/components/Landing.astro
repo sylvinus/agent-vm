@@ -1,0 +1,24 @@
+---
+import Hero from './Hero.astro';
+import Threat from './Threat.astro';
+import Install from './Install.astro';
+import Usage from './Usage.astro';
+import Architecture from './Architecture.astro';
+import Contribute from './Contribute.astro';
+import Credits from './Credits.astro';
+import type { Locale } from '../i18n';
+
+interface Props {
+  locale: Locale;
+}
+
+const { locale } = Astro.props;
+---
+
+<Hero locale={locale} />
+<Threat locale={locale} />
+<Install locale={locale} />
+<Usage locale={locale} />
+<Architecture locale={locale} />
+<Contribute locale={locale} />
+<Credits locale={locale} />

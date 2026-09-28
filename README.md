@@ -1,19 +1,20 @@
 # agent-vm
 
-Run AI coding agents inside sandboxed Linux VMs. The agent gets full autonomy while your host system stays safe.
+Run AI coding agents inside sandboxed Linux VMs. The agent runs with permissions bypassed inside the VM, where it has your project directory and not the rest of your machine.
 
 Uses [Lima](https://lima-vm.io/) to create lightweight Debian VMs on macOS and Linux. Ships with dev tools, Docker, and a headless Chrome browser with [Chrome DevTools MCP](https://github.com/ChromeDevTools/chrome-devtools-mcp) pre-configured.
 
 Supports [Claude Code](https://claude.ai/code), [OpenCode](https://github.com/anomalyco/opencode), [Codex CLI](https://github.com/openai/codex), and [Mistral Vibe](https://docs.mistral.ai/vibe/code/cli/install-setup) out of the box. Other agents can be run via `agent-vm shell`.
 
-Never install attack vectors such as npm, claude or even Docker on your host machine again!
+Never install potential attack vectors such as npm, claude or even Docker on your host machine again!
 
 Feedback welcome!
 
 ## Prerequisites
 
 - macOS or Linux
-- [Lima](https://lima-vm.io/docs/installation/) (installed automatically via Homebrew if available)
+- [Lima](https://lima-vm.io/docs/installation/) (`agent-vm setup` offers to install it with Homebrew if available). To keep `.git` read-only for the VMs, a Lima build with `sshfs.readonlyNames`, until it is merged upstream: see [Protecting `.git`](#protecting-git)
+- On Linux: QEMU and `/dev/kvm`
 - A subscription or API key for your agent of choice
 
 ## Install
@@ -21,27 +22,18 @@ Feedback welcome!
 ```bash
 git clone https://github.com/sylvinus/agent-vm.git
 cd agent-vm
-./install.sh
+./agent-vm.sh install
 ```
 
-`install.sh` puts `agent-vm` on your `PATH` as a symlink to `agent-vm.sh` in the
-clone, then offers to also define it as a shell function. Being a symlink, a
-`git pull` updates the command — there is nothing to reinstall.
+`install` puts `agent-vm` on your `PATH` as a symlink to `agent-vm.sh` in the
+clone (in `~/.local/bin`, or `AGENT_VM_BIN_DIR`), so a `git pull` updates the
+command and there is nothing to reinstall. `agent-vm uninstall` removes the
+link; your VMs and `~/.agent-vm` stay. `./install.sh` still works, as a wrapper
+for `./agent-vm.sh install`, and will go in a later release.
 
-**Already installed by sourcing?** Nothing breaks: sourcing is still fully
-supported and is what defines the shell function. Run `./install.sh` once if you
-want the command on your `PATH` too — other tools need that, because a shell
-function is not inherited by child processes. `./install.sh --uninstall` removes
-the link.
-
-Sourcing by hand still works if you prefer it:
-
-```bash
-echo "source $(pwd)/agent-vm.sh" >> ~/.zshrc   # zsh
-echo "source $(pwd)/agent-vm.sh" >> ~/.bashrc  # or bash
-```
-
-Sourcing puts `agent-vm` in your shell as a function. You can also invoke the script directly (`./agent-vm.sh setup`) without sourcing — useful for one-off runs.
+It also offers to define `agent-vm` as a shell function. Prefer the symlink: a
+shell function is not inherited by child processes, so anything that calls
+agent-vm from a script needs the `PATH` entry anyway.
 
 ## Usage
 
@@ -51,7 +43,7 @@ Sourcing puts `agent-vm` in your shell as a function. You can also invoke the sc
 agent-vm setup
 ```
 
-Creates a base VM template with dev tools, Docker, Chromium, and AI coding agents pre-installed. Run interactively to open the wizard; its first prompt offers a one-tap "default install" (everything except the opt-in languages Ruby, Rust, Go), answer `n` for per-component prompts. Pass `--preinstall=...` to skip the wizard. When stdin is not a terminal (CI), the wizard is auto-skipped and the default set is installed.
+Creates a base VM template with dev tools, Docker, Chromium, and AI coding agents pre-installed. Run interactively to open the wizard; its first prompt offers a one-tap "default install" (everything except the opt-in languages Ruby, Rust, Go), answer `n` for per-component prompts. Pass `--preinstall=...` to skip the wizard. When no terminal is available (CI), the wizard is skipped and the default set is installed.
 
 Options:
 
@@ -62,7 +54,7 @@ Options:
 | `--cpus N` | Number of CPUs | 1 |
 | `--preinstall=LIST` | Preinstall only this comma-separated subset in the base image (skips the wizard) | — |
 
-Names are lowercase: `python`, `node`, `ruby`, `rust`, `golang`, `docker`, `chromium`, `gh`, `claude`, `opencode`, `codex`, `vibe`, `mcp-chrome`, `mcp-playwright`. Use `default` for the default set (everything except Ruby/Rust/Go and `mcp-playwright`), `all` for everything, or `none` for nothing. Selecting `codex`, or `chromium` with any AI agent, also installs `node` because those paths require `npm`/`npx`.
+Names are lowercase: `python`, `node`, `ruby`, `rust`, `golang`, `docker`, `chromium`, `gh`, `claude`, `opencode`, `codex`, `vibe`, `mcp-chrome`, `mcp-playwright`. Use `default` for the default set (everything except Ruby/Rust/Go and `mcp-playwright`), `all` for everything, or `none` for nothing. Selecting `codex` also installs `node` (it needs `npm`), and so does `mcp-chrome` when `chromium` and an agent are selected (it needs `npx`). `mcp-playwright` does not pull `node` in: list it yourself.
 
 The `mcp-*` names wire an MCP server into every installed agent's config. Both current ones drive the preinstalled Chromium, so both need `node` and `chromium` and are skipped with a notice without them. Omit them to leave the agents' MCP config untouched — useful when MCP servers are managed per project rather than baked into the base image.
 
@@ -104,6 +96,11 @@ agent-vm codex -q "explain this codebase"        # Codex with a query
 agent-vm vibe -p "fix all lint errors"           # Mistral Vibe with a prompt
 ```
 
+agent-vm's own options (`--rm`, `--readonly`, `--disk`…) go before the command
+(`agent-vm --rm claude`) or right after its name (`agent-vm claude --rm`). From
+the first other argument on, everything belongs to the command:
+`agent-vm run docker run --rm alpine` passes `--rm` to docker.
+
 ### Shell access and running commands
 
 ```bash
@@ -120,8 +117,14 @@ Each directory gets its own persistent VM. You can manage it with:
 agent-vm status      # Show status of all VMs (current dir marked with >)
 agent-vm stop        # Stop the VM (can be restarted later)
 agent-vm rm          # Stop and permanently delete the VM
-agent-vm destroy-all # Stop and delete all agent-vm VMs
+agent-vm destroy-all # Stop and delete every agent-vm VM, base template included
+agent-vm doctor      # Check the host, Lima, the base template and this directory
 ```
+
+`destroy-all` gives all the disk space back, so it deletes the base template too;
+`agent-vm setup` rebuilds it. `doctor` changes nothing: it reports what is
+wrong and what to run about it, and prints no secret, so its output can go
+into an issue as is. It exits 1 when a check failed.
 
 `stop` and `rm` also take a VM name, as printed by `agent-vm list`:
 
@@ -141,12 +144,12 @@ output or reading `~/.agent-vm` internals — VM naming, the template name and t
 state files are implementation details.
 
 ```bash
-agent-vm version         # 0.1.0 — gate on this; a build without it predates the command
+agent-vm version         # 0.2.0 - gate on this; a build without it predates the command
 agent-vm name [dir]      # VM name for a directory (default: cwd)
 agent-vm info [dir]      # machine-readable state, one key=value per line
 agent-vm env set K V     # store a secret for every VM (see below)
 agent-vm env get K       # read it back
-agent-vm env has K       # exit 0 if stored, 1 otherwise, no output
+agent-vm env has K       # exit 0 if stored, 1 if not, 2 if unreadable (see below)
 agent-vm env unset K
 agent-vm env list        # key NAMES only, never values
 agent-vm project-env …   # same subcommands, for THIS project only
@@ -157,6 +160,14 @@ Use `agent-vm env` rather than writing `~/.agent-vm/env` yourself: that file is
 just the mis-quoted one. `get`/`has` answer about the file, never about the
 ambient environment — which matters because callers often run inside a VM that
 already exports those very variables.
+
+`get`/`has` read the file, they do not source it: the project env file sits in
+a directory the VM can write to, and sourcing it on the host would run whatever
+was put there. They understand what `set` writes and plain dotenv lines
+(`KEY=value`, `export KEY=value`, single or double quotes, a trailing
+`# comment`). A value that needs the shell to be interpreted (`$`, backquotes,
+backslashes, an unquoted `~`, `;`, `|`…) is refused with exit status 2 and a
+message; `set` writes it back in a form they can read.
 
 `agent-vm project-env` is the same thing scoped to the current project: same
 subcommands, same quoting, same file format. Its values are pushed into the VM
@@ -238,17 +249,22 @@ Running `agent-vm setup` again updates the base template but does **not** update
 agent-vm --reset claude                # Destroy and re-clone VM, then run Claude
 ```
 
-### Offline mode and read-only mounts
+### Read-only mounts
 
 ```bash
-agent-vm --offline claude              # Block outbound internet access
-agent-vm --readonly shell              # Mount project directory as read-only
-agent-vm --offline --readonly claude   # Both
+agent-vm --readonly shell              # Nothing on the host is writable from the VM
 ```
 
-`--offline` blocks outbound internet from the VM using iptables while preserving host/VM communication (mounts, port forwarding). Useful for ensuring agents don't phone home or download unexpected packages.
+`--readonly` makes every host share read-only: the project directory, and every `~/.agent-vm/volumes` entry, `rw` ones included (a notice names them). Useful for code review or audit tasks where the agent should not modify anything of yours. The VM's own disk stays writable, so the agent can still install packages and write caches.
 
-`--readonly` remounts the project directory as read-only. Useful for code review or audit tasks where the agent shouldn't modify files. Both flags are per-session and reset when the VM restarts.
+All shares, and not just the project, because read-only is enforced per share and not per file: a writable volume that contains the project (`~/work:/mnt/work:rw`) would be a second way to write the same files. With no writable share left, there is none.
+
+It is set on the Lima shares, so the host is what refuses the writes: root inside the VM cannot remount them read-write. That holds for the mount types Lima defaults to (virtiofs on `vz`, 9p on QEMU), and for the `reverse-sshfs` shares agent-vm sets up to [protect `.git`](#protecting-git), whose SFTP server runs on the host. Under any other `reverse-sshfs` the flag only reaches the guest's sshfs, and under QEMU virtiofs only reaches the guest's mount table (virtiofsd has no read-only mode, [virtio-fs/virtiofsd#97](https://gitlab.com/virtio-fs/virtiofsd/-/issues/97)): agent-vm refuses `--readonly` in both cases. QEMU's default, 9p, is fine; only a Lima config that sets `mountType: virtiofs` for QEMU runs into it. Because the mode lives in the VM's config, switching it restarts the VM. agent-vm records the mounts it gave each VM, so a VM that still has a writable share is restarted when `--readonly` is asked for, even if its project is already read-only.
+
+The mode is applied before the runtime scripts run, so a `~/.agent-vm/runtime.sh`
+or `.agent-vm.runtime.sh` that writes into the project fails under `--readonly`.
+
+`--offline` and `--git-read-only` were removed in 0.2.0: see [CHANGELOG.md](CHANGELOG.md).
 
 ## Customization
 
@@ -280,9 +296,15 @@ not; keep secrets in the shared file, which lives outside any repository. Both f
 pushed into the same guest file, the project's one last, so it wins on a key
 present in both.
 
-These are picked up automatically by the tools that look for them: `gh` reads `GH_TOKEN`, Claude Code uses `ANTHROPIC_API_KEY` when not signed in, Codex uses `OPENAI_API_KEY`, Vibe uses `MISTRAL_API_KEY`, etc. agent-vm itself knows none of these names: it transports the file, whatever is in it. The file is pushed into the VM at `~/.agent-vm.env` (mode 0600) on every `agent-vm` invocation, so edits propagate without `--reset`.
+These are picked up automatically by the tools that look for them: `gh` reads `GH_TOKEN`, Claude Code uses `ANTHROPIC_API_KEY` when not signed in, Codex uses `OPENAI_API_KEY`, Vibe uses `MISTRAL_API_KEY`, etc. agent-vm itself knows none of these names: it transports the file, whatever is in it. The file is pushed into the VM on every `agent-vm` invocation, so edits propagate without `--reset`.
 
 #### Letting the agent commit and push
+
+With a Lima that keeps `.git` read-only ([Protecting `.git`](#protecting-git)),
+the agent cannot commit in the shared project: this is for repositories it
+clones onto the VM's own disk, for a Lima without that protection, or with the
+protection turned off by `--unsafe-writable-git` or
+`AGENT_VM_UNSAFE_WRITABLE_GIT=1` (read what that costs first).
 
 git reads its identity from the environment too, so the same file covers it —
 no `git config` inside the VM, and nothing for agent-vm to configure on your
@@ -319,9 +341,8 @@ code it fetches. The VM keeps those secrets away from your host, but it does not
 keep them from the agent, and an agent that has been prompt-injected or a
 dependency that has been tampered with can send them out over the network. So:
 put a **dedicated, revocable, narrowly-scoped** token here rather than your main
-one, and reach for `--offline` on sessions that don't need outbound internet.
-`--offline` limits where a secret can go; it does not stop code in the VM from
-reading it.
+one. Nothing agent-vm offers today stops code in the VM from reading this file
+and sending it somewhere; the mitigation is that the token is cheap to revoke.
 
 ### Extra host mounts: `~/.agent-vm/volumes`
 
@@ -336,12 +357,13 @@ List host files or directories to mount inside every VM. One path per line, `~` 
 
 # Mount at a different path in the VM (read-only)
 # Note: the destination is used verbatim (no shell expansion) — replace
-# $USER with your actual username. Only the source (left) side expands a
-# leading ~.
-~/.claude:/home/youruser.linux/.claude
+# youruser with your actual username. The VM home is /home/youruser.guest
+# (Lima 2.1+; /home/youruser.linux before). Only the source (left) side
+# expands a leading ~.
+~/.claude:/home/youruser.guest/.claude
 
 # Writable directory
-~/.cache/shared:/home/youruser.linux/.cache/shared:rw
+~/.cache/shared:/home/youruser.guest/.cache/shared:rw
 ```
 
 When no destination is specified, the path is mounted at the same location inside the VM. Non-existent paths are skipped with a warning. Changes to this file take effect on new VMs (use `--reset` to re-apply to existing ones).
@@ -364,7 +386,7 @@ pip install pandas numpy
 
 Create this file to run commands inside every VM on each start. It runs **before** the per-project `.agent-vm.runtime.sh` script.
 
-Use it for anything that should be available in all your VMs: SSH keys, git config, GitHub CLI auth, Claude Code skills, MCP servers, etc.
+Use it for anything that should be available in all your VMs: git config, `gh auth setup-git`, Claude Code skills, MCP servers, etc. Keep private keys out of it: whatever it sets up, the agent can read. For GitHub, a fine-grained `GH_TOKEN` in `~/.agent-vm/env` can be revoked in one click.
 
 **Getting started:**
 
@@ -374,20 +396,11 @@ cp runtime.example.sh ~/.agent-vm/runtime.sh
 ```
 
 See [`runtime.example.sh`](runtime.example.sh) for a fully commented template covering:
-- SSH key injection for GitHub (base64-encoded private key)
-- Git identity and SSH-forced remotes (`url.insteadOf`)
-- GitHub CLI authentication (`gh auth login --with-token`)
+- Git identity
+- `git push` over HTTPS with `GH_TOKEN` (`gh auth setup-git`)
 - Claude Code skills installation (global and per-project)
 - MCP server registration (`claude mcp add --scope user`)
 - Status line configuration in `~/.claude/settings.json`
-
-**Encoding your SSH key:**
-
-```bash
-cat ~/.ssh/id_ed25519 | base64
-```
-
-Paste the output into your `runtime.sh` — the script decodes it at boot and sets up `~/.ssh` with proper permissions.
 
 **Global vs per-project runtime:**
 
@@ -408,7 +421,7 @@ agent-vm claude
 
 ### Per-project: `.agent-vm.runtime.sh`
 
-Create this file at the root of any project. It runs inside the VM each time a new VM is created for the project, just before you get access. Use it for project-specific setup like installing dependencies or starting services:
+Create this file at the root of any project. It runs inside the VM on every `agent-vm` command in the project, just before you get access, so keep it safe to run again. Use it for project-specific setup like installing dependencies or starting services:
 
 ```bash
 # your-project/.agent-vm.runtime.sh
@@ -439,6 +452,38 @@ AGENT_VM_PROJECT_RUNTIME=.mytool/runtime.sh agent-vm claude
 
 A relative path resolves against the project directory, an absolute one is used
 as-is. Unset, the historical `.agent-vm.runtime.sh` applies.
+
+### Node.js: `node_modules` on the VM's disk
+
+A `node_modules` is often hundreds of thousands of files, and every one of them
+crosses the share, which is slowest with the `reverse-sshfs` shares that
+[protect `.git`](#protecting-git). It also cannot be shared with the host
+anyway: packages with native binaries (esbuild, sharp, the Rollup and SWC
+builds) install the Linux build in the VM and the macOS one on a Mac.
+
+So keep it on the VM's own disk: bind-mount a folder of the VM over the
+project's `node_modules`, from the project's runtime script, which runs on
+every `agent-vm` command:
+
+```bash
+#!/bin/bash
+# your-project/.agent-vm.runtime.sh
+set -e
+mkdir -p "$HOME/node_modules" node_modules
+mountpoint -q node_modules ||
+  sudo mount --bind "$HOME/node_modules" node_modules
+```
+
+Each project has its own VM, so `$HOME/node_modules` is this project's. The
+host sees an empty `node_modules` folder, or keeps its own if it had one:
+install there too if your editor needs the packages. In a workspace, the root
+`node_modules` holds nearly everything (npm hoists, pnpm keeps its store in
+`node_modules/.pnpm`); repeat the two lines for a package that gets a large one
+of its own.
+
+A dev server in the VM reloads on the agent's edits. Lima does not pass file
+events from the host by default, so your own edits on the host may need the
+watcher's polling mode (for Vite, `server.watch.usePolling`).
 
 ### MCP servers
 
@@ -481,7 +526,9 @@ Each VM is fully isolated — agents must authenticate independently inside thei
 Runs against a stub `limactl` in a throwaway `HOME`: no VM is created, started or
 deleted, your real `~/.agent-vm` is untouched, and no network is needed. It covers
 VM naming, resource comparison, staleness, the `info`/`version`/`name` surface,
-the `--preinstall` parser and the MCP config writer.
+the `--preinstall` parser, the MCP config writer, and how the shares follow
+what Lima can do for `.git` (the stub answers like stock Lima or like a build
+with `readonlyNames`, and a stub `brew` stands in for the install).
 
 Worth running under bash 3.2 as well — it is what macOS ships, and it is stricter
 about empty array expansion under `set -u`, which modern bash forgives:
@@ -491,14 +538,41 @@ docker run --rm -v "$PWD:/w" -w /w bash:3.2 ./test.sh
 zsh ./test.sh
 ```
 
+### End-to-end, against a real VM
+
+```bash
+./test-e2e.sh
+```
+
+The other half. A stub `limactl` cannot tell you whether `--readonly` is a real
+boundary, so this one builds a VM with `--preinstall=none`, writes into the
+project from inside it, and then has root in the guest try to remount the share
+read-write. That last check is the one that matters: it is what `--offline` and
+`--git-read-only` would have failed before they were removed.
+
+With a Lima that has `sshfs.readonlyNames`, it also checks that root in the VM
+cannot change `.git/config`, add a hook, move `.git` away, write a nested
+repository or create a `.GIT`, while the rest of the project stays writable.
+With stock Lima those checks are reported as skipped.
+
+It runs in a throwaway `LIMA_HOME` with its own state directory, so your
+`agent-vm-base` and your project VMs are never read, edited or deleted, and
+everything it created is removed on exit, Ctrl-C included. It needs Lima on the
+host and a few minutes.
+
 ## Project structure
 
 | File | Description |
 |------|-------------|
-| `agent-vm.sh` | Main script — source this in your shell config |
+| `agent-vm.sh` | The whole command — put it on your PATH |
 | `agent-vm.setup.sh` | Package installation script that runs inside the base VM during setup |
-| `install.sh` | Installer — puts `agent-vm` on your PATH, `--uninstall` removes it |
+| `install.sh` | Former installer, now a wrapper for `./agent-vm.sh install` |
 | `test.sh` | Test suite — runs against a stub `limactl`, creates no VMs |
+| `test-e2e.sh` | End-to-end suite — builds a real VM in a throwaway `LIMA_HOME` |
+| `runtime.example.sh` | Commented template for `~/.agent-vm/runtime.sh` |
+| `CHANGELOG.md` | What changed in each release |
+| `release.sh` | Tags and publishes a release after checking it (`./release.sh X.Y.Z --dry-run` first) |
+| `www/` | The www.agent-vm.org website |
 
 ## What's in the VM
 
@@ -506,7 +580,7 @@ The wizard's "default install" and `--preinstall=default` produce the same set: 
 
 | Category | Packages | Name | Installed by default? |
 |----------|----------|------|----------------------|
-| Core | git, curl, wget, jq, zsh, ca-certificates, build-essential, unzip, zip, ripgrep, fd-find, htop, iptables | (always) | always |
+| Core | git, curl, wget, jq, zsh, ca-certificates, build-essential, unzip, zip, ripgrep, fd-find, htop | (always) | always |
 | Build libs | libssl-dev, libreadline-dev, zlib1g-dev, libyaml-dev, libffi-dev | (always) | always |
 | Version manager | [mise](https://mise.jdx.dev/) | (always) | always |
 | Python | python3, pip, venv | `python` | yes |
@@ -529,20 +603,50 @@ This is not a theoretical risk. The [Shai-Hulud](https://unit42.paloaltonetworks
 
 An AI agent running with `--dangerously-skip-permissions` on your host would give such an attack full access to everything: your SSH keys, your cloud credentials, your browser sessions, your entire filesystem.
 
-**agent-vm runs all code inside the VM.** The VM only has access to your project directory (read-write mount, or read-only with `--readonly`). It has **no access** to your SSH keys, npm tokens, cloud credentials, git config, browser sessions, or anything else on your host. If a supply chain attack executes inside the VM, it finds nothing to steal (except your source code) and nowhere to spread. Use `--offline` to block internet access entirely.
+**agent-vm runs all code inside the VM.** Its filesystem is your project directory (read-write, or read-only with `--readonly`, which also makes any extra mount read-only) and nothing else of yours: no SSH keys, no npm tokens, no cloud credentials, no git config, no browser sessions. A supply chain attack that executes in there finds your source code and whatever you put in `~/.agent-vm/env`. It does still have the network, and that includes your own machine: Lima puts the host loopback at `192.168.5.2`, which is the VM's default gateway, so anything you have listening on `localhost` (a dev Postgres, Redis, an unauthenticated local API) is reachable from inside the VM. Blocking that is [on the roadmap](https://www.agent-vm.org/#roadmap), not something agent-vm can do today.
 
 Meanwhile, your host machine stays clean. You don't need Node.js, Docker, or any dev tooling installed locally. The only host dependency is Lima. Your SSH keys and signing credentials never enter the VM — we recommend running `git commit` on the host yourself.
 
+### Protecting `.git`
+
+A shared project folder is a way back to the host, through git. Git on your machine runs what a repository's `.git/config` and `.git/hooks` name: `core.fsmonitor` on every `git status` or `git diff`, hooks on commit, filters, diff drivers. None of it shows in `git diff`, and you do not have to run git yourself: editors and many shell prompts run `git status` in the background. If the VM could write those files, it could run commands on your host within seconds.
+
+So every `.git` in the shared folders is read-only for the VMs, at any depth (nested repositories included) and whatever the case of the name, while the rest of the project stays writable. Lima's SFTP server enforces it on the host, so root in the VM cannot lift it. The agent can still read `.git`: `git status`, `git diff` and `git log` work in the VM, `git commit` does not. Review and commit from the host.
+
+This needs Lima's `sshfs.readonlyNames`, which is not merged upstream yet ([lima-vm/lima#5529](https://github.com/lima-vm/lima/issues/5529)). Until it is, a Lima build that has it:
+
+```bash
+# macOS, or Linux with Homebrew. brew refuses it next to its own lima, hence the unlink.
+brew unlink lima; brew install sylvinus/tap/lima-sylvinus
+
+# Linux without Homebrew: build it (needs Go and make; installs to /usr/local)
+git clone --depth 1 -b v2.3.0-sylvinus.1 https://github.com/sylvinus/lima
+cd lima && make native && sudo make install
+```
+
+`agent-vm setup` checks which Lima you have. Without the protection it says so, and with Homebrew and a terminal it offers to run the Homebrew line above (and offers this build first when Lima is not installed at all). The formula builds from source, so it takes a few minutes. Going back is `brew uninstall lima-sylvinus && brew link lima`. `agent-vm doctor` shows where you stand, for Lima and for the current directory's VM.
+
+What changes when Lima has it:
+
+- **The shares use Lima's `reverse-sshfs`** with its builtin SFTP server, which `readonlyNames` needs, instead of virtiofs or 9p. It is slower on workloads that touch many files.
+- **Existing VMs switch on their next start.** A VM that is already running keeps its shares until it stops (`agent-vm stop`); agent-vm says so. The reverse holds too: with a Lima that does not have it, a VM goes back to Lima's default mount type on its next start, since `reverse-sshfs` without it is the weaker option.
+- **The agent cannot commit in the shared project.** To let it anyway, pass `--unsafe-writable-git` (or `--unsafe-writable-git=1`) as a VM option, or set `AGENT_VM_UNSAFE_WRITABLE_GIT=1` in your shell for every command (exactly `1`). Only the command line and your shell's environment count, never a file in the project, which the VM could write. The VM then gets Lima's default mount type and a writable `.git`, which puts back everything described at the top of this section: the agent can make git on your machine run commands. agent-vm prints a warning on every run that asks for it, and `doctor` reports the variable. The mount type only changes on a stopped VM: a running VM keeps its read-only `.git` until it stops, and one started with the flag keeps a writable `.git` until it is stopped and run again without it (agent-vm warns).
+
+What this does not cover:
+
+- **A repository under another name than `.git`.** A folder holding `HEAD`, `objects/`, `refs/` and a `config` is a (bare) repository to git, whatever its name, found by the same upward search from the current directory. The VM can create one anywhere in the project, and git on your machine then runs the commands its `config` names when you use git in that folder: `core.pager`, the command git pipes its output through, runs as soon as you type `git log` there. `git config --global safe.bareRepository explicit` (git 2.38 or later) makes git use a bare repository only when `--git-dir` or `GIT_DIR` names it. `agent-vm setup` asks to set it, prints it when there is no terminal to ask on, and `doctor` warns while it is not set or git is too old to honour it.
+- **Tracked files your own tools run on their own**, such as a `.vscode/tasks.json`, a `build.rs` run by rust-analyzer, an `eslint.config.js` loaded by your editor, a `core.hooksPath` pointing into the working tree, or husky and pre-commit hooks kept in the repository. Those changes do show in `git status` and `git diff`: read them before your tools do. When VS Code asks, leave the project untrusted (Restricted Mode), which keeps tasks and code-running extensions off, and do not trust a parent folder, which trusts everything below it. JetBrains IDEs have the same choice (Safe Mode).
+
 ### Why not Docker?
 
-| | No sandbox | Docker | VM (agent-vm) |
+| | No sandbox | Docker | agent-vm |
 |---|---|---|---|
 | Agent can run any command | Yes | Yes | Yes |
-| File system isolation | None | Partial (shared kernel) | Full |
-| Network isolation | None | Partial | Optional (`--offline`) |
+| Host files it can reach | All of them | What you mount | The project directory |
+| Outbound network | Open | Open by default | Open |
+| Shares the host kernel | Yes | Yes | No |
+| Reaching the host needs | Nothing | A kernel bug | A hypervisor bug |
 | Can run Docker inside | Yes | Requires DinD or socket mount | Yes (native) |
-| Kernel-level isolation | None | None (shares host kernel) | Full (separate kernel) |
-| Protection from container escapes | None | None | Yes |
 | Browser / GUI tools | Host only | Complex setup | Built-in (headless Chromium) |
 
 Docker containers share the host kernel. A motivated attacker (or a compromised dependency running inside the container) could exploit kernel vulnerabilities to escape. A VM runs its own kernel — even root access inside the VM can't reach the host.
