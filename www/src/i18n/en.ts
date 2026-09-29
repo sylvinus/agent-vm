@@ -181,6 +181,11 @@ export const en = {
         code: 'agent-vm shell                    # zsh in the VM\nagent-vm run npm install          # one-off command\nagent-vm run --tty opencode       # allocate a PTY for TUIs\nagent-vm sh -c "ls -la | grep config"',
       },
       {
+        title: 'Connect an IDE over SSH',
+        body: 'VS Code Remote-SSH, JetBrains Gateway or a GUI agent can keep their window on the host and run the rest in the VM. Lima writes an SSH config per VM with the current port, under the alias `agent-vm info` prints as `ssh_host`. Put the lines below at the top of `~/.ssh/config`, above any `Host *`: ssh takes the first value it finds, and a `ForwardAgent yes` there would hand the VM every key in your SSH agent. For a tool that saves the port instead of the alias, `--ssh-port` fixes it (`0` goes back to a new one on each start).',
+        code: '# top of ~/.ssh/config\nInclude ~/.lima/*/ssh.config\nHost lima-agent-vm-*\n  ForwardAgent no\n  ForwardX11 no\n\nagent-vm info | grep ^ssh_host   # the alias to use\nagent-vm --ssh-port 2222 shell   # a fixed port',
+      },
+      {
         title: 'Manage the fleet',
         body: 'The current directory is marked with `>` in `status`. If a directory is renamed, `list` is the only way to find its VM again.',
         code: 'agent-vm status        # all VMs, current one marked\nagent-vm list          # names only\nagent-vm stop          # stop, keep the disk\nagent-vm rm            # stop and delete\nagent-vm destroy-all   # every VM, base template included\nagent-vm doctor        # what is wrong, and what to run',
@@ -203,7 +208,7 @@ export const en = {
       {
         title: 'Ask from a script',
         body: 'If you wrap agent-vm from another tool, use these rather than parsing human-facing output or reading `~/.agent-vm` directly: VM naming, the template name and the state files are implementation details and will change. `version --min` exits `0` when the engine is recent enough, `1` with a message when it is older, and `2` when the call itself is malformed, so a typo in the required version cannot read as "engine too old". One catch: an engine predating `--min` ignores the flag and exits `0`. In `info`, booleans are `1` or `0` and anything undeterminable reads `unknown`; all four commands work without Lima installed.',
-        code: 'agent-vm version --min 0.2.0 || exit 1  # silent when OK\nagent-vm name [dir]    # VM name for a directory\nagent-vm info [dir]    # one key=value per line\nagent-vm help          # the built-in help\n\n# info keys: version, template, state_dir,\n# project_env, dir, vm_name, base_exists,\n# vm_exists, vm_running, vm_stale',
+        code: 'agent-vm version --min 0.2.0 || exit 1  # silent when OK\nagent-vm name [dir]    # VM name for a directory\nagent-vm info [dir]    # one key=value per line\nagent-vm help          # the built-in help\n\n# info keys: version, template, state_dir,\n# project_env, dir, vm_name, base_exists,\n# vm_exists, vm_running, vm_stale,\n# ssh_host, ssh_config',
       },
     ],
     customTitle: 'Customisation files',
@@ -303,6 +308,7 @@ export const en = {
       ['--disk GB', 'VM disk size. Can grow, never shrink.', '10'],
       ['--memory GB', 'VM memory. Clamped to half the host, per VM.', '3'],
       ['--cpus N', 'CPU count. Clamped to half the host, per VM.', '1'],
+      ['--ssh-port N', 'Fixed host port for the VM’s SSH, for tools that save it. `0` goes back to a new one on each start. Restarts the VM.', 'a new one per start'],
       ['--reset', 'Destroy and re-clone the VM from the base template.', 'off'],
       ['--readonly', 'Every host share read-only (project and volumes), host-side. Restarts the VM.', 'off'],
       ['--unsafe-writable-git', 'Leave every `.git` writable so the agent can commit, with a warning. See [Protecting .git](#git).', 'off'],

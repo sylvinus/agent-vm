@@ -245,7 +245,9 @@ check "info: dir"          "$(get dir)"         "$PROJ"
 check "info: base_exists"  "$(get base_exists)" "1"
 check "info: vm_exists"    "$(get vm_exists)"   "0"
 check "info: vm_stale unknown with no VM" "$(get vm_stale)" "unknown"
-check "info: key count"    "$(printf '%s\n' "$info_out" | grep -c '^[a-z_]*=')" "10"
+check "info: ssh_host is Lima's alias" "$(get ssh_host)" "lima-$(_agent_vm_name "$PROJ")"
+check "info: ssh_config unknown with no VM" "$(get ssh_config)" "unknown"
+check "info: key count"    "$(printf '%s\n' "$info_out" | grep -c '^[a-z_]*=')" "12"
 
 # Every key must be present even with no Lima on the box. Build a PATH with the
 # limactl-bearing directories dropped rather than a hardcoded one, so this also
@@ -263,8 +265,8 @@ while [ -n "$_rest" ]; do
   nolima_path="${nolima_path:+$nolima_path:}$_d"
 done
 nolima="$(PATH="$nolima_path" bash -c 'source "$1"; agent-vm info "$2"' _ "$AGENT_VM_SH" "$PROJ" 2>/dev/null)"
-check "info without limactl still prints 10 keys" \
-  "$(printf '%s\n' "$nolima" | grep -c '^[a-z_]*=')" "10"
+check "info without limactl still prints 12 keys" \
+  "$(printf '%s\n' "$nolima" | grep -c '^[a-z_]*=')" "12"
 case "$nolima" in
   *"base_exists=unknown"*) pass "info without limactl says unknown, not 0" ;;
   *) fail "info without limactl should report unknown" ;;
@@ -303,7 +305,7 @@ check "CDPATH does not redirect the lookup" \
 # into a dash. `info` prints the resolved path raw, so a leaked line shows up as
 # one line too many among the key=value pairs.
 check "no stray cd output leaks into info" \
-  "$(cd "$SB/real" && CDPATH="$SB/decoy" agent-vm info twin | wc -l | tr -d ' ')" "10"
+  "$(cd "$SB/real" && CDPATH="$SB/decoy" agent-vm info twin | wc -l | tr -d ' ')" "12"
 
 # =============================================================================
 section "--preinstall parsing"
@@ -1337,6 +1339,12 @@ case "$1" in
   clone) [ -n "${AGENT_VM_TEST_CLONED:-}" ] && touch "$AGENT_VM_TEST_CLONED" ;;
   list)
     case "$*" in
+      *"{{.Name}} {{.Config.SSH.LocalPort}}"*)
+        echo "agent-vm-base 0"
+        [ -z "${AGENT_VM_TEST_OTHER_PORT:-}" ] || echo "agent-vm-other-00000000 $AGENT_VM_TEST_OTHER_PORT"
+        listed && echo "$AGENT_VM_TEST_VM ${AGENT_VM_TEST_SSH_PORT:-0}" ;;
+      *"{{.Config.SSH.LocalPort}}"*) listed && echo "${AGENT_VM_TEST_SSH_PORT:-0}" ;;
+      *"{{.SSHConfigFile}}"*) listed && echo "/lima/$AGENT_VM_TEST_VM/ssh.config" ;;
       *"{{.VMType}}"*) echo "${AGENT_VM_TEST_VMTYPE:-vz}" ;;
       *"{{.CPUs}}"*"{{.Disk}}"*) listed && echo "$AGENT_VM_TEST_VM|1|3221225472|10737418240" ;;
       *"{{.Status}}|"*) listed && echo "$AGENT_VM_TEST_VM|Running|1|3221225472" ;;
@@ -1431,6 +1439,46 @@ case "$out" in
   *) fail "shell accepted --offline: $out" ;;
 esac
 rec_has "shell --workdir" && fail "shell opened a session anyway" || pass "no session is opened"
+
+section "--ssh-port and the SSH alias"
+check "info: ssh_config once the VM exists" \
+  "$(rec info | grep '^ssh_config=')" "ssh_config=/lima/$PV/ssh.config"
+out="$(AGENT_VM_TEST_STOPPED=1 rec --ssh-port 2222 run true)"
+rec_has "edit $PV --set .ssh.localPort = 2222" && pass "--ssh-port: set on a stopped VM" \
+  || fail "--ssh-port not set: $(grep '^edit' "$REC") $out"
+AGENT_VM_TEST_STOPPED=1 AGENT_VM_TEST_SSH_PORT=2222 rec --ssh-port 2222 run true >/dev/null
+rec_has "localPort" && fail "--ssh-port: the same port was set again" || pass "--ssh-port: the same port is left alone"
+AGENT_VM_TEST_STOPPED=1 rec run claude --ssh-port 2222 >/dev/null
+rec_has "localPort" && fail "--ssh-port after the command was taken" || pass "--ssh-port after the command is the command's"
+AGENT_VM_TEST_STOPPED=1 rec claude --ssh-port 2223 >/dev/null
+rec_has "edit $PV --set .ssh.localPort = 2223" && pass "--ssh-port right after the agent name is agent-vm's" \
+  || fail "claude --ssh-port lost: $(grep '^edit' "$REC")"
+AGENT_VM_TEST_STOPPED=1 AGENT_VM_TEST_SSH_PORT=2222 rec --ssh-port 0 run true >/dev/null
+rec_has "edit $PV --set .ssh.localPort = 0" && pass "--ssh-port 0: back to a port Lima picks" \
+  || fail "--ssh-port 0 not set: $(grep '^edit' "$REC")"
+out="$(AGENT_VM_TEST_STOPPED=1 AGENT_VM_TEST_OTHER_PORT=2222 rec --ssh-port 2222 run true)"
+case "$?:$out" in
+  1:*"SSH port 2222 is already set for VM 'agent-vm-other-00000000'"*) pass "--ssh-port: a port another VM has is refused" ;;
+  *) fail "--ssh-port: taken port not refused: $out" ;;
+esac
+rec_has "localPort =" && fail "a taken port was set anyway" || pass "and nothing is changed"
+for bad in 80 70000 abc ""; do
+  out="$(rec --ssh-port "$bad" run true)"
+  case "$?:$out" in
+    1:*"--ssh-port must be 0 or a port from 1024 to 65535"*) pass "--ssh-port '$bad' refused" ;;
+    *) fail "--ssh-port '$bad' accepted: $out" ;;
+  esac
+done
+out="$(rec claude --ssh-port 80)"
+case "$?:$out" in
+  1:*"--ssh-port must be"*) pass "claude --ssh-port 80 refused too" ;;
+  *) fail "claude --ssh-port 80 accepted: $out" ;;
+esac
+CLONED="$SB/cloned-port"; rm -f "$CLONED"
+AGENT_VM_TEST_CLONED="$CLONED" rec --ssh-port 2224 run true >/dev/null
+grep '^edit' "$REC" | head -1 | grep -qF -- "--set .ssh.localPort = 2224" \
+  && pass "new VM: the port is set with the mounts, before the first start" \
+  || fail "new VM: $(grep '^edit' "$REC")"
 
 section "--readonly makes every share read-only"
 # The hypervisor enforces read-only per share, not per host file. A writable

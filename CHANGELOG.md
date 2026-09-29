@@ -106,6 +106,12 @@ has passwordless sudo, so anything enforced there is advisory at best.
 
 ### Added
 
+- `--ssh-port N` gives a VM a fixed host port for SSH, for IDEs and GUI agents
+  that save the port rather than an alias (#28). `0` goes back to a new port on
+  each start. A port another agent-vm VM has is refused. `info` gains
+  `ssh_host` and `ssh_config`: Lima's alias for the VM and the SSH config file
+  it keeps current. The README has the `~/.ssh/config` lines to use them, which
+  keep the host's SSH agent out of the VM.
 - `curl -fsSL https://www.agent-vm.org/install.sh | sh` installs the latest
   release, checked against its `SHA256SUMS`, in `~/.local/share/agent-vm`, and
   runs `agent-vm install`. Running it again updates. `--version X.Y.Z` picks a

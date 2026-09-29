@@ -390,6 +390,38 @@ _agent_vm_validate_int() {
   fi
 }
 
+# --ssh-port: 0 gives the port back to Lima (a new one on each start). Below
+# 1024 the host agent, which runs as the user, could not bind it.
+_agent_vm_validate_port() {
+  local val="${1:-}"
+  if [[ "$val" == 0 ]] || { [[ "$val" =~ ^[1-9][0-9]*$ ]] && (( val >= 1024 && val <= 65535 )); }; then
+    return 0
+  fi
+  echo "Error: --ssh-port must be 0 or a port from 1024 to 65535 (got: '$val')" >&2
+  return 1
+}
+
+# The SSH port set in <vm_name>'s config, 0 when Lima picks one on each start.
+# Empty when it cannot be read.
+_agent_vm_ssh_port_config() {
+  local port
+  port="$(limactl list "$1" --format '{{.Config.SSH.LocalPort}}' 2>/dev/null)" || return 1
+  [[ "$port" =~ ^[0-9]+$ ]] || return 1
+  echo "$port"
+}
+
+# 0 when --ssh-port <port> asks for a change to <vm_name>. A config that cannot
+# be read is left alone, with a warning, rather than stopping the VM each run.
+_agent_vm_ssh_port_differs() {
+  local vm_name="$1" want="$2" have
+  [[ -n "$want" ]] || return 1
+  if ! have="$(_agent_vm_ssh_port_config "$vm_name")"; then
+    echo "Warning: cannot read the SSH port of VM '$vm_name'; --ssh-port $want is not applied." >&2
+    return 1
+  fi
+  [[ "$have" != "$want" ]]
+}
+
 # Check Linux prerequisites Lima needs to spin up a QEMU+KVM VM. macOS uses
 # different backends (vz/qemu-via-brew) so this is a no-op there. Returns
 # non-zero with actionable install/permission hints when something's missing —
@@ -1007,12 +1039,13 @@ _agent_vm_ensure_running() {
   local vm_name="$1"
   local host_dir="$2"
   shift 2
-  local disk="" memory="" cpus="" reset="" rdonly="" _agent_vm_unsafe_git_flag=""
+  local disk="" memory="" cpus="" ssh_port="" reset="" rdonly="" _agent_vm_unsafe_git_flag=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --disk)     disk="$2"; shift 2 ;;
       --memory|--ram)   memory="$2"; shift 2 ;;
       --cpus)     cpus="$2"; shift 2 ;;
+      --ssh-port) ssh_port="$2"; shift 2 ;;
       --reset)    reset=1; shift ;;
       --readonly) rdonly=1; shift ;;
       --unsafe-writable-git) _agent_vm_unsafe_git_flag=1; shift ;;
@@ -1031,6 +1064,21 @@ _agent_vm_ensure_running() {
   cpus="$(_agent_vm_cap_resource cpus "$cpus")"
   memory="$(_agent_vm_cap_resource memory "$memory")"
   _agent_vm_warn_disk_space "$disk"
+
+  # The command's own options (`agent-vm claude --ssh-port N`) come here
+  # unchecked. Two VMs set to one port: the second would fail to start.
+  if [[ -n "$ssh_port" ]]; then
+    _agent_vm_validate_port "$ssh_port" || return 1
+    if [[ "$ssh_port" != 0 ]]; then
+      local other
+      other="$(limactl list --format '{{.Name}} {{.Config.SSH.LocalPort}}' 2>/dev/null \
+        | awk -v vm="$vm_name" -v p="$ssh_port" '$1 != vm && $2 == p { print $1; exit }')"
+      if [[ -n "$other" ]]; then
+        echo "Error: SSH port $ssh_port is already set for VM '$other'." >&2
+        return 1
+      fi
+    fi
+  fi
 
   # Lima's host mount cannot share a path containing whitespace: the mount
   # fails silently and the VM starts with a bare, root-owned mountpoint, so
@@ -1105,6 +1153,7 @@ _agent_vm_ensure_running() {
     edit_args+=(--set "$(_agent_vm_mounts_expr "$mounts_json" "$protect_git")")
     [[ -n "$memory" ]] && edit_args+=(--memory "$memory")
     [[ -n "$cpus" ]]   && edit_args+=(--cpus "$cpus")
+    [[ -n "$ssh_port" ]] && edit_args+=(--set ".ssh.localPort = $ssh_port")
     if (cd /tmp && limactl edit "$vm_name" ${edit_args[@]+"${edit_args[@]}"}) &>/dev/null; then
       _agent_vm_record_mounts "$vm_name" "$mounts_json"
     fi
@@ -1119,14 +1168,15 @@ _agent_vm_ensure_running() {
     if [[ -f "$base_ver" ]]; then
       cp "$base_ver" "$AGENT_VM_STATE_DIR/.agent-vm-version-${vm_name}"
     fi
-  elif [[ -n "$disk" || -n "$memory" || -n "$cpus" ]] \
-       && _agent_vm_resources_differ "$vm_name" "$cpus" "$memory" "$disk"; then
+  elif { [[ -n "$disk" || -n "$memory" || -n "$cpus" ]] \
+         && _agent_vm_resources_differ "$vm_name" "$cpus" "$memory" "$disk"; } \
+       || _agent_vm_ssh_port_differs "$vm_name" "$ssh_port"; then
     # Resize the existing VM, but only when the request actually differs from
     # what the VM already has. Prompting on the mere *presence* of a resource
     # flag means every caller that passes its defaults on each invocation gets
     # "Stop the VM and apply changes?" forever, for a no-op.
     if _agent_vm_running "$vm_name"; then
-      echo "VM '$vm_name' is currently running. It must be stopped to apply new resource settings."
+      echo "VM '$vm_name' is currently running. It must be stopped to apply new settings."
       printf "Stop the VM and apply changes? [y/N] " >&2
       local reply=""
       IFS= read -r reply 2>/dev/null </dev/tty || reply=""
@@ -1137,19 +1187,20 @@ _agent_vm_ensure_running() {
       echo "Stopping VM..."
       limactl stop "$vm_name" &>/dev/null
     fi
-    echo "Updating VM resources..."
+    echo "Updating VM settings..."
     # Don't touch .mounts here — those are baked in at creation (including any
     # entries from ~/.agent-vm/volumes). Re-setting them would clobber extras.
     local edit_args=()
     [[ -n "$memory" ]] && edit_args+=(--memory "$memory")
     [[ -n "$cpus" ]]   && edit_args+=(--cpus "$cpus")
+    [[ -n "$ssh_port" ]] && edit_args+=(--set ".ssh.localPort = $ssh_port")
     # Only call limactl when there is something to set: `limactl edit <vm>` with
     # no flags drops into $EDITOR, which would hang a non-interactive caller
     # that passed --disk on its own.
     if [[ ${#edit_args[@]} -gt 0 ]]; then
       local edit_output
       if ! edit_output=$(cd /tmp && limactl edit "$vm_name" "${edit_args[@]}" 2>&1); then
-        echo "Error: Failed to update VM resources:" >&2
+        echo "Error: Failed to update VM settings:" >&2
         echo "$edit_output" >&2
         return 1
       fi
@@ -1449,6 +1500,12 @@ agent-vm() {
       --cpus=*)
         _agent_vm_validate_int --cpus "${1#*=}" || return 1
         vm_opts+=(--cpus "${1#*=}"); shift ;;
+      --ssh-port)
+        _agent_vm_validate_port "$2" || return 1
+        vm_opts+=(--ssh-port "$2"); shift 2 ;;
+      --ssh-port=*)
+        _agent_vm_validate_port "${1#*=}" || return 1
+        vm_opts+=(--ssh-port "${1#*=}"); shift ;;
       --reset)
         vm_opts+=(--reset); shift ;;
       --readonly)
@@ -1688,8 +1745,11 @@ _agent_vm_uninstall() {
 # are internal and free to change.
 #
 # Keys: version, template, state_dir, project_env, dir, vm_name, base_exists,
-# vm_exists, vm_running, vm_stale. Booleans are 1/0; anything that cannot be
-# determined is "unknown" rather than a guess.
+# vm_exists, vm_running, vm_stale, ssh_host, ssh_config. Booleans are 1/0;
+# anything that cannot be determined is "unknown" rather than a guess.
+#
+# ssh_host is the Host alias in ssh_config, the file Lima rewrites with the
+# current port on each start (see "Connecting over SSH" in the README).
 _agent_vm_info() {
   local dir="${1:-$(pwd)}"
   local vm_name
@@ -1709,6 +1769,8 @@ _agent_vm_info() {
     echo "vm_exists=unknown"
     echo "vm_running=unknown"
     echo "vm_stale=unknown"
+    echo "ssh_host=lima-$vm_name"
+    echo "ssh_config=unknown"
     return 0
   fi
 
@@ -1729,6 +1791,13 @@ _agent_vm_info() {
   else
     echo "vm_stale=unknown"
   fi
+  # Lima names the alias after the instance ("lima-" and the name, whose dots
+  # and underscores become dashes: agent-vm names have neither).
+  echo "ssh_host=lima-$vm_name"
+  local ssh_config=""
+  [[ "$vm_exists" == "1" ]] \
+    && ssh_config="$(limactl list "$vm_name" --format '{{.SSHConfigFile}}' 2>/dev/null)"
+  echo "ssh_config=${ssh_config:-unknown}"
 }
 
 # --- doctor -------------------------------------------------------------------
@@ -2311,6 +2380,8 @@ command or right after its name, never later: in 'agent-vm run docker run
                      Both are clamped to a share of the host (half of it, with
                      a notice) so the VM cannot starve the machine it runs on.
                      AGENT_VM_HOST_SHARE overrides the divisor.
+  --ssh-port N       Fixed host port for the VM's SSH, for tools that save the
+                     port (default: a new one on each start; 0 goes back)
   --reset            Destroy and re-clone the VM from the base template
   --readonly         Make every host share read-only: the project and the
                      ~/.agent-vm/volumes entries, rw ones included. Enforced
@@ -3046,6 +3117,7 @@ _agent_vm_claude() {
       --disk)     vm_opts+=(--disk "$2"); shift 2 ;;
       --memory|--ram)   vm_opts+=(--memory "$2"); shift 2 ;;
       --cpus)     vm_opts+=(--cpus "$2"); shift 2 ;;
+      --ssh-port) vm_opts+=(--ssh-port "$2"); shift 2 ;;
       --reset)    vm_opts+=(--reset); shift ;;
       --readonly) vm_opts+=(--readonly); shift ;;
       --unsafe-writable-git|--unsafe-writable-git=1) vm_opts+=(--unsafe-writable-git); shift ;;
@@ -3080,6 +3152,7 @@ _agent_vm_opencode() {
       --disk)     vm_opts+=(--disk "$2"); shift 2 ;;
       --memory|--ram)   vm_opts+=(--memory "$2"); shift 2 ;;
       --cpus)     vm_opts+=(--cpus "$2"); shift 2 ;;
+      --ssh-port) vm_opts+=(--ssh-port "$2"); shift 2 ;;
       --reset)    vm_opts+=(--reset); shift ;;
       --readonly) vm_opts+=(--readonly); shift ;;
       --unsafe-writable-git|--unsafe-writable-git=1) vm_opts+=(--unsafe-writable-git); shift ;;
@@ -3117,6 +3190,7 @@ _agent_vm_codex() {
       --disk)     vm_opts+=(--disk "$2"); shift 2 ;;
       --memory|--ram)   vm_opts+=(--memory "$2"); shift 2 ;;
       --cpus)     vm_opts+=(--cpus "$2"); shift 2 ;;
+      --ssh-port) vm_opts+=(--ssh-port "$2"); shift 2 ;;
       --reset)    vm_opts+=(--reset); shift ;;
       --readonly) vm_opts+=(--readonly); shift ;;
       --unsafe-writable-git|--unsafe-writable-git=1) vm_opts+=(--unsafe-writable-git); shift ;;
@@ -3151,6 +3225,7 @@ _agent_vm_vibe() {
       --disk)     vm_opts+=(--disk "$2"); shift 2 ;;
       --memory|--ram)   vm_opts+=(--memory "$2"); shift 2 ;;
       --cpus)     vm_opts+=(--cpus "$2"); shift 2 ;;
+      --ssh-port) vm_opts+=(--ssh-port "$2"); shift 2 ;;
       --reset)    vm_opts+=(--reset); shift ;;
       --readonly) vm_opts+=(--readonly); shift ;;
       --unsafe-writable-git|--unsafe-writable-git=1) vm_opts+=(--unsafe-writable-git); shift ;;
@@ -3187,6 +3262,7 @@ _agent_vm_pi() {
       --disk)     vm_opts+=(--disk "$2"); shift 2 ;;
       --memory|--ram)   vm_opts+=(--memory "$2"); shift 2 ;;
       --cpus)     vm_opts+=(--cpus "$2"); shift 2 ;;
+      --ssh-port) vm_opts+=(--ssh-port "$2"); shift 2 ;;
       --reset)    vm_opts+=(--reset); shift ;;
       --readonly) vm_opts+=(--readonly); shift ;;
       --unsafe-writable-git|--unsafe-writable-git=1) vm_opts+=(--unsafe-writable-git); shift ;;
@@ -3223,6 +3299,7 @@ _agent_vm_shell() {
       --disk)     vm_opts+=(--disk "$2"); shift 2 ;;
       --memory|--ram)   vm_opts+=(--memory "$2"); shift 2 ;;
       --cpus)     vm_opts+=(--cpus "$2"); shift 2 ;;
+      --ssh-port) vm_opts+=(--ssh-port "$2"); shift 2 ;;
       --reset)    vm_opts+=(--reset); shift ;;
       --readonly) vm_opts+=(--readonly); shift ;;
       --unsafe-writable-git|--unsafe-writable-git=1) vm_opts+=(--unsafe-writable-git); shift ;;
@@ -3277,6 +3354,7 @@ _agent_vm_run() {
       --disk)     vm_opts+=(--disk "$2"); shift 2 ;;
       --memory|--ram)   vm_opts+=(--memory "$2"); shift 2 ;;
       --cpus)     vm_opts+=(--cpus "$2"); shift 2 ;;
+      --ssh-port) vm_opts+=(--ssh-port "$2"); shift 2 ;;
       --reset)    vm_opts+=(--reset); shift ;;
       --readonly) vm_opts+=(--readonly); shift ;;
       --unsafe-writable-git|--unsafe-writable-git=1) vm_opts+=(--unsafe-writable-git); shift ;;

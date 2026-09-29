@@ -183,6 +183,11 @@ export const fr: Dictionary = {
         code: 'agent-vm shell                    # zsh dans la VM\nagent-vm run npm install          # commande unique\nagent-vm run --tty opencode       # un PTY pour les TUI\nagent-vm sh -c "ls -la | grep config"',
       },
       {
+        title: 'Brancher un IDE en SSH',
+        body: 'VS Code Remote-SSH, JetBrains Gateway ou un agent graphique peuvent garder leur fenêtre sur l\'hôte et faire tourner le reste dans la VM. Lima écrit une config SSH par VM avec le port du démarrage en cours, sous l\'alias que `agent-vm info` affiche comme `ssh_host`. Mets les lignes ci-dessous en haut de `~/.ssh/config`, au-dessus de tout `Host *` : ssh garde la première valeur qu\'il trouve, et un `ForwardAgent yes` à cet endroit donnerait à la VM toutes les clés de ton agent SSH. Pour un outil qui enregistre le port plutôt que l\'alias, `--ssh-port` le fixe (`0` revient à un nouveau port à chaque démarrage).',
+        code: '# en haut de ~/.ssh/config\nInclude ~/.lima/*/ssh.config\nHost lima-agent-vm-*\n  ForwardAgent no\n  ForwardX11 no\n\nagent-vm info | grep ^ssh_host   # l\'alias à utiliser\nagent-vm --ssh-port 2222 shell   # un port fixe',
+      },
+      {
         title: 'Gérer le parc',
         body: 'Dans `status`, le dossier courant est marqué d\'un `>`. Si un dossier a été renommé, seul `list` permet de retrouver sa VM.',
         code: 'agent-vm status        # toutes les VM, la courante marquée\nagent-vm list          # les noms seulement\nagent-vm stop          # arrête, garde le disque\nagent-vm rm            # arrête et supprime\nagent-vm destroy-all   # toutes les VM, image de base comprise\nagent-vm doctor        # ce qui ne va pas, et quoi lancer',
@@ -205,7 +210,7 @@ export const fr: Dictionary = {
       {
         title: 'Interroger depuis un script',
         body: 'Si tu pilotes agent-vm depuis un autre outil, passe par ces commandes plutôt que de parser la sortie destinée aux humains ou de lire `~/.agent-vm` : le nommage des VM, le nom de l\'image et les fichiers d\'état sont des détails d\'implémentation, amenés à changer. `version --min` renvoie `0` si le moteur est assez récent, `1` avec un message s\'il est trop ancien, et `2` si l\'appel lui-même est mal formé : une faute de frappe dans la version demandée ne passe donc pas pour un « moteur trop ancien ». Attention : un moteur antérieur à `--min` ignore l\'option et renvoie `0`. Dans `info`, les booléens valent `1` ou `0`, et ce qui ne peut pas être déterminé vaut `unknown`. Ces quatre commandes fonctionnent sans Lima.',
-        code: 'agent-vm version --min 0.2.0 || exit 1  # silencieux si OK\nagent-vm name [dir]    # nom de la VM d\'un dossier\nagent-vm info [dir]    # une paire clé=valeur par ligne\nagent-vm help          # l\'aide intégrée\n\n# clés de info : version, template, state_dir,\n# project_env, dir, vm_name, base_exists,\n# vm_exists, vm_running, vm_stale',
+        code: 'agent-vm version --min 0.2.0 || exit 1  # silencieux si OK\nagent-vm name [dir]    # nom de la VM d\'un dossier\nagent-vm info [dir]    # une paire clé=valeur par ligne\nagent-vm help          # l\'aide intégrée\n\n# clés de info : version, template, state_dir,\n# project_env, dir, vm_name, base_exists,\n# vm_exists, vm_running, vm_stale,\n# ssh_host, ssh_config',
       },
     ],
     customTitle: 'Fichiers de personnalisation',
@@ -304,6 +309,7 @@ export const fr: Dictionary = {
       ['--disk GB', 'Taille du disque. Peut grandir, jamais rétrécir.', '10'],
       ['--memory GB', 'Mémoire de la VM. Plafonnée à la moitié de l\'hôte, par VM.', '3'],
       ['--cpus N', 'Nombre de CPU. Plafonné à la moitié de l\'hôte, par VM.', '1'],
+      ['--ssh-port N', 'Port fixe sur l\'hôte pour le SSH de la VM, pour les outils qui l\'enregistrent. `0` revient à un nouveau port à chaque démarrage. Redémarre la VM.', 'un nouveau par démarrage'],
       ['--reset', 'Détruit la VM et la re-clone depuis l\'image de base.', 'inactif'],
       ['--readonly', 'Tous les partages de l\'hôte en lecture seule (projet et volumes), côté hôte. Redémarre la VM.', 'inactif'],
       ['--unsafe-writable-git', 'Laisse chaque `.git` modifiable pour que l\'agent puisse commiter, avec un avertissement. Voir [Protéger .git](#git).', 'inactif'],

@@ -227,7 +227,8 @@ run rebuild every VM. Integrators should read `state_dir` from `info` rather
 than rebuilding the path from `$HOME`.
 
 `info` prints `version`, `template`, `state_dir`, `project_env`, `dir`,
-`vm_name`, `base_exists`, `vm_exists`, `vm_running` and `vm_stale`. Booleans are `1`/`0`;
+`vm_name`, `base_exists`, `vm_exists`, `vm_running`, `vm_stale`, `ssh_host` and
+`ssh_config` (see [Connecting over SSH](#connecting-over-ssh-ides-gui-agents)). Booleans are `1`/`0`;
 anything that cannot be determined is `unknown` rather than a guess — including
 `vm_stale` when no base version has been recorded to compare against.
 `version`, `name`, `info` and `env` all work without Lima installed (the
@@ -302,6 +303,48 @@ The mode is applied before the runtime scripts run, so a `~/.agent-vm/runtime.sh
 or `.agent-vm.runtime.sh` that writes into the project fails under `--readonly`.
 
 `--offline` and `--git-read-only` were removed in 0.2.0: see [CHANGELOG.md](CHANGELOG.md).
+
+### Connecting over SSH (IDEs, GUI agents)
+
+Editors and GUI agents with a remote mode (VS Code Remote-SSH, JetBrains
+Gateway, ZCode...) can keep their window on the host and run everything else
+in the VM. Lima writes an SSH config for each VM, with the port of the current
+start, and names the host `lima-<vm name>`. Put these lines at the **top** of
+`~/.ssh/config`, above any `Host *`:
+
+```
+Include ~/.lima/*/ssh.config
+
+Host lima-agent-vm-*
+  ForwardAgent no
+  ForwardX11 no
+```
+
+Then connect the tool to the alias `agent-vm info` prints as `ssh_host`:
+
+```bash
+agent-vm info | grep ^ssh_host       # ssh_host=lima-agent-vm-myproject-1a2b3c4d
+ssh lima-agent-vm-myproject-1a2b3c4d
+```
+
+The `Host lima-agent-vm-*` block is what keeps your SSH agent out of the VM.
+ssh takes the first value it finds for each option, Lima's file does not set
+`ForwardAgent`, and a `ForwardAgent yes` under `Host *` would otherwise apply
+to the VM too, handing it every key your agent holds. VS Code's
+`remote.SSH.enableAgentForwarding` also depends on it. The VM has to be running
+(`agent-vm shell`, or any agent command, starts it).
+
+Lima picks a new port on each start, which is fine for tools that connect
+through the alias. For a tool that saves the host and port themselves, give the
+VM a fixed one:
+
+```bash
+agent-vm --ssh-port 2222 shell       # stops the VM to apply it if it runs
+agent-vm --ssh-port 0 shell          # back to a new port on each start
+```
+
+The port stays set until `--reset` or `rm`. agent-vm refuses a port that
+another agent-vm VM already has; one used by anything else makes the start fail.
 
 ## Customization
 
