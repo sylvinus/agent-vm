@@ -16,6 +16,10 @@ chmod +x "$SB/fakewin/uname"
 printf '#!/bin/sh\nexit 0\n' > "$SB/fakeqemu/qemu-system-x86_64"
 chmod +x "$SB/fakeqemu/qemu-system-x86_64"
 
+# 11-recorded-commands.sh stubs the host prereq checks (05 re-sources the
+# engine, wiping helpers' stubs); restore the real ones: they are what is
+# under test here. Same restore as in 19-wsl.sh.
+. "$SELF_DIR/lib/host.sh"
 if ( PATH="$SB/fakewin:$PATH"; _agent_vm_on_windows ); then
   pass "MINGW64 uname is detected as Windows"
 else

@@ -64,8 +64,11 @@ chmod +x "$SB/bin/limactl"
 mkdir -p "$HOME/.agent-vm"
 echo 1 > "$HOME/.agent-vm/.agent-vm-base-version"
 PV="$(_agent_vm_name "$PROJ")"
-# Re-sourced by an earlier section, so stubbed again: no KVM on a test runner.
+# Re-sourced by an earlier section, so stubbed again: no KVM and no QEMU on
+# a test runner. Both checks: host probing is covered in lib/host.sh and
+# tests/18-windows.sh, not here.
 _agent_vm_check_linux_prereqs() { return 0; }
+_agent_vm_check_windows_prereqs() { return 0; }
 rec() {
   : > "$REC"
   ( cd "$PROJ" || exit 1
