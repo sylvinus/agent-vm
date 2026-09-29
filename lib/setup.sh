@@ -296,6 +296,9 @@ EOF
       if command -v brew &>/dev/null; then
         echo "  Install it with: brew install $AGENT_VM_LIMA_FORMULA" >&2
         echo "  (or brew install lima, which lets the VMs write .git)" >&2
+      elif _agent_vm_on_windows; then
+        echo "  Download limactl from https://github.com/lima-vm/lima/releases (the Windows zip)" >&2
+        echo "  and put it on your PATH, next to QEMU (winget install SoftwareFreedom.QEMU)." >&2
       else
         echo "  Install it from https://lima-vm.io/docs/installation/" >&2
       fi
@@ -304,6 +307,7 @@ EOF
   fi
 
   _agent_vm_check_linux_prereqs || return 1
+  _agent_vm_check_windows_prereqs || return 1
 
   # Interactive wizard, unless --preinstall was passed or no terminal is
   # attached (e.g. running under CI). Defaults shown in [] are prefilled from

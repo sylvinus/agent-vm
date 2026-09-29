@@ -160,10 +160,11 @@ _agent_vm_cleanup_state() {
   fi
 }
 
-# Current resources of <vm_name> as "cpus|memory_gib|disk_gib".
-# Prints nothing (and returns 1) when the VM is unknown to Lima. No pipe into
-# grep/head: see _agent_vm_has_line for why that is unsafe under pipefail.
-_agent_vm_resources() {
+# Current resources of <vm_name> as "cpus|memory_bytes|disk_bytes".
+# Prints nothing (and returns 1) when the VM is unknown to Lima or answers
+# non-numeric values. No pipe into grep/head: see _agent_vm_has_line for why
+# that is unsafe under pipefail.
+_agent_vm_resources_bytes() {
   local vm_name="$1" all line
   all="$(limactl list --format '{{.Name}}|{{.CPUs}}|{{.Memory}}|{{.Disk}}' 2>/dev/null || true)"
   while IFS= read -r line; do
@@ -171,11 +172,24 @@ _agent_vm_resources() {
       "${vm_name}|"*)
         local cpus mem_bytes disk_bytes
         IFS='|' read -r _ cpus mem_bytes disk_bytes <<< "$line"
-        printf '%s|%s|%s\n' "$cpus" "$((mem_bytes / 1073741824))" "$((disk_bytes / 1073741824))"
+        [[ "$cpus" =~ ^[0-9]+$ ]] || return 1
+        [[ "$mem_bytes" =~ ^[0-9]+$ ]] || return 1
+        [[ "$disk_bytes" =~ ^[0-9]+$ ]] || return 1
+        printf '%s|%s|%s\n' "$cpus" "$mem_bytes" "$disk_bytes"
         return 0 ;;
     esac
   done <<< "$all"
   return 1
+}
+
+# Current resources of <vm_name> as "cpus|memory_gib|disk_gib", for display.
+# GiB values are truncated: only use this for printing, never for comparing
+# (see _agent_vm_resources_differ).
+_agent_vm_resources() {
+  local raw cpus mem_bytes disk_bytes
+  raw="$(_agent_vm_resources_bytes "$1")" || return 1
+  IFS='|' read -r cpus mem_bytes disk_bytes <<< "$raw"
+  printf '%s|%s|%s\n' "$cpus" "$((mem_bytes / 1073741824))" "$((disk_bytes / 1073741824))"
 }
 
 # Print VM resource details (CPUs, memory, disk), and when the base the VM was
@@ -206,27 +220,32 @@ _agent_vm_print_resources() {
 # (or when the current values can't be read — never claim "no change" from
 # missing information), 1 when the VM already matches the request.
 #
+# Compared in bytes, not in truncated GiB: a VM holding a fractional size
+# (set outside agent-vm, or by an older agent-vm) must converge to the
+# requested integer GiB with one apply, not be misread as already matching
+# it on every call.
+#
 # Disk is compared one-way on purpose: Lima can grow a disk but not shrink it,
 # so a request below the current size is not a change that stopping could apply.
-#
-# Both sides are integer GiB, so a VM whose memory is not a whole number of GiB
-# can still compare unequal every time. That is the pre-existing behaviour
-# (prompt on every call), not a new failure mode.
 _agent_vm_resources_differ() {
   local vm_name="$1" want_cpus="$2" want_mem="$3" want_disk="$4"
-  local cur cur_cpus cur_mem cur_disk
-  if ! cur="$(_agent_vm_resources "$vm_name")"; then
+  local cur cur_cpus cur_mem_bytes cur_disk_bytes
+  if ! cur="$(_agent_vm_resources_bytes "$vm_name")"; then
     return 0
   fi
-  IFS='|' read -r cur_cpus cur_mem cur_disk <<< "$cur"
+  IFS='|' read -r cur_cpus cur_mem_bytes cur_disk_bytes <<< "$cur"
   if [[ -n "$want_cpus" && "$want_cpus" != "$cur_cpus" ]]; then
     return 0
   fi
-  if [[ -n "$want_mem" && "$want_mem" != "$cur_mem" ]]; then
-    return 0
+  # Requested values are validated integers where they are parsed, so a
+  # non-integer here is treated as "cannot tell", not as "no change".
+  if [[ -n "$want_mem" ]]; then
+    [[ "$want_mem" =~ ^[0-9]+$ ]] || return 0
+    [[ "$((10#$want_mem * 1073741824))" != "$cur_mem_bytes" ]] && return 0
   fi
-  if [[ -n "$want_disk" && "$want_disk" -gt "$cur_disk" ]]; then
-    return 0
+  if [[ -n "$want_disk" ]]; then
+    [[ "$want_disk" =~ ^[0-9]+$ ]] || return 0
+    [[ "$((10#$want_disk * 1073741824))" -gt "$cur_disk_bytes" ]] && return 0
   fi
   return 1
 }

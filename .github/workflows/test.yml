@@ -38,3 +38,30 @@ jobs:
 
       - name: Test suite under zsh (the usual way it is sourced)
         run: zsh ./test.sh
+
+  # Windows coverage: the stub suite under Git Bash, which is how agent-vm
+  # runs there. No docker (bash 3.2) and no zsh on a Windows runner, and no
+  # real VM anywhere in this workflow (test-e2e.sh stays manual, on every OS).
+  test-windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # Same reason as above: test.sh runs code from the PR branch.
+          persist-credentials: false
+
+      - name: Syntax check
+        run: |
+          for f in agent-vm.sh lib/*.sh agent-vm.setup.sh runtime.example.sh test.sh tests/*.sh test-e2e.sh install.sh release.sh; do
+            echo "bash -n $f"
+            bash -n "$f"
+          done
+          # Served as `curl | sh`: plain sh, not bash.
+          echo "sh -n www/public/install.sh"
+          sh -n www/public/install.sh
+
+      - name: Test suite (Git Bash, stub limactl)
+        run: ./test.sh

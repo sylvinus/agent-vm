@@ -149,8 +149,8 @@ main() {
   fi
 
   case "$(uname -s)" in
-    Darwin|Linux) ;;
-    *) die "agent-vm runs on macOS and Linux only" ;;
+    Darwin|Linux|MINGW*|MSYS*|CYGWIN*) ;;
+    *) die "agent-vm runs on macOS, Linux and Windows (Git Bash) only" ;;
   esac
   need bash
 

@@ -82,17 +82,17 @@ export const en = {
       },
     ],
     closing:
-      'A VM limits what a mistake or a compromised agent can reach: your source tree and whatever you put in [its env file](#share-secrets-across-vms), but not your SSH keys, your git credentials or your browser session. [`--readonly`](#tighten-the-session) narrows it further, and the host enforces it, so root in the guest cannot lift it. The shared project is guarded too: with a Lima that has `sshfs.readonlyNames`, every `.git` in it is read-only for the VM, so the agent cannot plant a hook or a config that git on your host would then run (see [Protecting .git](#git) below). What stays open is the network: the agent can send data anywhere, and Lima puts your host loopback at `192.168.5.2`, so a dev database listening on localhost is reachable from the VM.',
+      'A VM limits what a mistake or a compromised agent can reach: your source tree and whatever you put in [its env file](#share-secrets-across-vms), but not your SSH keys, your git credentials or your browser sessions. [`--readonly`](#tighten-the-session) narrows it further, and the host enforces it, so root in the guest cannot lift it. The shared project is guarded too: with a Lima that has `sshfs.readonlyNames`, every `.git` in it is read-only for the VM, so the agent cannot plant a hook or a config that git on your host would then run (see [Protecting .git](#git) below). What stays open is the network: the agent can send data anywhere, and Lima puts your host loopback at `192.168.5.2`, so a dev database listening on localhost is reachable from the VM.',
   },
 
   install: {
     eyebrow: 'Install',
     title: 'Install, build a template, run an agent.',
     lede:
-      'agent-vm is a few shell scripts, with no daemon. To remove it: `agent-vm destroy-all`, `agent-vm uninstall` (or `brew uninstall agent-vm`), then delete its directory and `~/.agent-vm`.',
+      'agent-vm is a few shell scripts, with no daemon.',
     prerequisitesTitle: 'Prerequisites',
     prerequisites: [
-      { name: 'macOS or Linux', note: 'Windows is not supported.', href: '' },
+      { name: 'macOS, Linux or Windows', note: 'Windows is experimental: Git Bash, QEMU and Lima for Windows required.', href: '' },
       {
         name: 'Lima',
         note: 'agent-vm setup offers to install it with Homebrew, as a build that keeps `.git` read-only until that is merged upstream. On Linux, QEMU and KVM too.',
@@ -372,7 +372,7 @@ export const en = {
       'The wizard’s default install and `--preinstall=default` produce the same set: everything below except the opt-in languages.',
     contentsHeaders: ['Category', 'Packages', 'Name', 'Default'],
     contents: [
-      ['Core', 'git, curl, wget, jq, zsh, build-essential, ripgrep, fd-find, htop', 'always', 'yes'],
+      ['Core', 'git, curl, wget, jq, zsh, ca-certificates, build-essential, unzip, zip, ripgrep, fd-find, htop', 'always', 'yes'],
       ['Build libs', 'libssl-dev, libreadline-dev, zlib1g-dev, libyaml-dev, libffi-dev', 'always', 'yes'],
       ['Version manager', 'mise', 'always', 'yes'],
       ['Python', 'python3, pip, venv', 'python', 'yes'],

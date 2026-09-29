@@ -4,6 +4,33 @@
 # a VM, so it is safe to run first and to paste into an issue (no secret
 # values, only names). Exit 1 when a check failed, 0 otherwise.
 
+# Octal mode of <file> (e.g. 600), without file-type bits. Prints nothing
+# and returns 1 when it cannot be read. GNU stat first, BSD/macOS second;
+# both are probed rather than assumed from uname, so a PATH with only one
+# of them still works.
+_agent_vm_file_mode() {
+  local mode
+  mode="$(stat -c %a "$1" 2>/dev/null || stat -f %Lp "$1" 2>/dev/null)" || return 1
+  [[ "$mode" =~ ^[0-7]+$ ]] || return 1
+  printf '%s\n' "$mode"
+}
+
+# 0 when no group/other permission bit is set on <file> (600, 400 and 700
+# all count as private). 1 when group/other can read, write or execute it.
+# 2 when the mode could not be read: never claim "private" from missing
+# information, and never claim "exposed" from a failed stat either.
+_agent_vm_file_is_private() {
+  local mode
+  if ! mode="$(_agent_vm_file_mode "$1")"; then
+    return 2
+  fi
+  # 8# for base-8: a mode of 08 must not read as octal, and $mode may carry
+  # a leading zero. The mask is written 8#77 and not 077: zsh reads a bare
+  # 077 as decimal 77, while 8#77 is octal 63 in both bash and zsh.
+  (( 8#$mode & 8#77 )) && return 1
+  return 0
+}
+
 _agent_vm_doctor_line() {
   # <ok|warn|fail|info> <message> [hint...]
   local level="$1" msg="$2"
@@ -101,6 +128,15 @@ _agent_vm_doctor() {
       printf '%s\n' "$prereq_out" | sed 's/^/        /'
     fi
   fi
+  if _agent_vm_on_windows; then
+    local win_prereq_out
+    if win_prereq_out="$(_agent_vm_check_windows_prereqs 2>&1)"; then
+      $d ok "QEMU is installed"
+    else
+      $d fail "QEMU is not usable"
+      printf '%s\n' "$win_prereq_out" | sed 's/^/        /'
+    fi
+  fi
 
   # A bare repository is not named .git, so readonlyNames does not cover one
   # the VM plants in a project (see _agent_vm_bare_repo_state).
@@ -153,10 +189,14 @@ _agent_vm_doctor() {
   echo "Settings ($AGENT_VM_STATE_DIR)"
   local f
   if [[ -f "$AGENT_VM_STATE_DIR/env" ]]; then
-    if [[ "$(ls -ld "$AGENT_VM_STATE_DIR/env" 2>/dev/null)" == -rw-------* ]]; then
-      $d ok "env: $(_agent_vm_env env "$AGENT_VM_STATE_DIR/env" list | wc -l | tr -d ' ') key(s), mode 600"
+    local env_mode
+    if env_mode="$(_agent_vm_file_mode "$AGENT_VM_STATE_DIR/env")" \
+       && _agent_vm_file_is_private "$AGENT_VM_STATE_DIR/env"; then
+      $d ok "env: $(_agent_vm_env env "$AGENT_VM_STATE_DIR/env" list | wc -l | tr -d ' ') key(s), private to you (mode $env_mode)"
+    elif [[ -n "$env_mode" ]]; then
+      $d warn "env is readable by other users on this machine (mode $env_mode)" "chmod 600 '$AGENT_VM_STATE_DIR/env'"
     else
-      $d warn "env is readable by other users on this machine" "chmod 600 '$AGENT_VM_STATE_DIR/env'"
+      $d warn "env permissions could not be checked" "chmod 600 '$AGENT_VM_STATE_DIR/env'"
     fi
   else
     $d info "env: none (agent-vm env set KEY VALUE)"

@@ -12,9 +12,9 @@ Feedback welcome!
 
 ## Prerequisites
 
-- macOS or Linux
+- macOS, Linux, or Windows (Git Bash; experimental)
 - [Lima](https://lima-vm.io/docs/installation/) (`agent-vm setup` offers to install it with Homebrew if available). To keep `.git` read-only for the VMs, a Lima build with `sshfs.readonlyNames`, until it is merged upstream: see [Protecting `.git`](#protecting-git)
-- On Linux: QEMU and `/dev/kvm`
+- On Linux: QEMU and `/dev/kvm` (in WSL2, the Windows host must pass KVM through: nested virtualization, yours to enable); on Windows: QEMU (e.g. `winget install SoftwareFreedom.QEMU`) and the "Virtual Machine Platform" feature
 - A subscription or API key for your agent of choice
 
 ## Install

@@ -84,17 +84,17 @@ export const fr: Dictionary = {
       },
     ],
     closing:
-      'Une VM limite ce qu\'une erreur ou un agent compromis peut atteindre : ton code source et ce que tu as mis dans [son fichier d\'env](#share-secrets-across-vms), mais ni tes clés SSH, ni tes identifiants git, ni ta session de navigateur. [`--readonly`](#tighten-the-session) restreint encore, et c\'est l\'hôte qui l\'applique : root dans l\'invité ne peut pas le lever. Le projet partagé est protégé lui aussi : avec un Lima qui a `sshfs.readonlyNames`, chaque `.git` y est en lecture seule pour la VM, donc l\'agent ne peut pas y déposer un hook ou une config que git lancerait ensuite sur ton hôte (voir [Protéger .git](#git) plus bas). Reste le réseau : l\'agent peut envoyer des données n\'importe où, et Lima expose le loopback de l\'hôte en `192.168.5.2`, donc une base de données de dev qui écoute sur localhost est joignable depuis la VM.',
+      'Une VM limite ce qu\'une erreur ou un agent compromis peut atteindre : ton code source et ce que tu as mis dans [son fichier d\'env](#share-secrets-across-vms), mais ni tes clés SSH, ni tes identifiants git, ni tes sessions de navigateur. [`--readonly`](#tighten-the-session) restreint encore, et c\'est l\'hôte qui l\'applique : root dans l\'invité ne peut pas le lever. Le projet partagé est protégé lui aussi : avec un Lima qui a `sshfs.readonlyNames`, chaque `.git` y est en lecture seule pour la VM, donc l\'agent ne peut pas y déposer un hook ou une config que git lancerait ensuite sur ton hôte (voir [Protéger .git](#git) plus bas). Reste le réseau : l\'agent peut envoyer des données n\'importe où, et Lima expose le loopback de l\'hôte en `192.168.5.2`, donc une base de données de dev qui écoute sur localhost est joignable depuis la VM.',
   },
 
   install: {
     eyebrow: 'Installation',
     title: 'Installer, construire une image de base, lancer un agent.',
     lede:
-      'agent-vm, ce sont quelques scripts shell, sans démon. Pour tout retirer : `agent-vm destroy-all`, `agent-vm uninstall` (ou `brew uninstall agent-vm`), puis supprime son dossier et `~/.agent-vm`.',
+      'agent-vm, ce sont quelques scripts shell, sans démon.',
     prerequisitesTitle: 'Prérequis',
     prerequisites: [
-      { name: 'macOS ou Linux', note: 'Windows n\'est pas pris en charge.', href: '' },
+      { name: 'macOS, Linux ou Windows', note: 'Windows est expérimental : Git Bash, QEMU et Lima pour Windows requis.', href: '' },
       {
         name: 'Lima',
         note: 'agent-vm setup propose de l\'installer avec Homebrew, dans une version qui garde les `.git` en lecture seule, en attendant son intégration en amont. Sous Linux, il faut aussi QEMU et KVM.',
@@ -373,7 +373,7 @@ export const fr: Dictionary = {
       'La sélection par défaut de l\'assistant et `--preinstall=default` donnent le même résultat : tout ce qui suit, sauf les langages facultatifs.',
     contentsHeaders: ['Catégorie', 'Paquets', 'Nom', 'Par défaut'],
     contents: [
-      ['Base', 'git, curl, wget, jq, zsh, build-essential, ripgrep, fd-find, htop', 'toujours', 'oui'],
+      ['Base', 'git, curl, wget, jq, zsh, ca-certificates, build-essential, unzip, zip, ripgrep, fd-find, htop', 'toujours', 'oui'],
       ['Bibliothèques de compilation', 'libssl-dev, libreadline-dev, zlib1g-dev, libyaml-dev, libffi-dev', 'toujours', 'oui'],
       ['Gestionnaire de versions', 'mise', 'toujours', 'oui'],
       ['Python', 'python3, pip, venv', 'python', 'oui'],

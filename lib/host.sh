@@ -112,8 +112,24 @@ _agent_vm_check_linux_prereqs() {
 
   if [[ ! -e /dev/kvm ]]; then
     echo "Error: /dev/kvm does not exist (KVM unavailable)." >&2
-    echo "  Hardware virtualization may be disabled in BIOS, or the kernel" >&2
-    echo "  lacks KVM support (nested virt in a guest VM, etc.)." >&2
+    # Inside WSL the fix is on the Windows side, by the user: WSL1 has no
+    # Linux kernel and can never run VMs, while WSL2 needs the host to let
+    # KVM through (nested virtualization). Neither is anything setup can do.
+    case "$(_agent_vm_wsl_version)" in
+      1)
+        echo "  This looks like WSL1, which cannot run VMs." >&2
+        echo "  Upgrade the distribution to WSL2: wsl --set-version <distro> 2" >&2
+        ;;
+      2)
+        echo "  This looks like WSL2 without nested virtualization: KVM is not" >&2
+        echo "  passed through from the Windows host. Update WSL (wsl --update)," >&2
+        echo "  enable virtualization on the host, then retry." >&2
+        ;;
+      *)
+        echo "  Hardware virtualization may be disabled in BIOS, or the kernel" >&2
+        echo "  lacks KVM support (nested virt in a guest VM, etc.)." >&2
+        ;;
+    esac
     errs=1
   elif [[ ! -r /dev/kvm || ! -w /dev/kvm ]]; then
     echo "Error: /dev/kvm exists but you don't have read/write access." >&2
@@ -131,4 +147,51 @@ _agent_vm_check_linux_prereqs() {
   fi
 
   [[ $errs -eq 0 ]]
+}
+
+# 0 when running on Windows (Git Bash, MSYS2 or Cygwin), as reported by
+# uname: MINGW64_NT-..., MSYS_NT-... or CYGWIN_NT-....
+_agent_vm_on_windows() {
+  case "$(uname -s 2>/dev/null)" in
+    MINGW*|MSYS*|CYGWIN*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# WSL generation from the kernel release: prints 2 or 1, or nothing when not
+# on WSL. Only meaningful on Linux (WSL1 reports Microsoft without WSL2).
+_agent_vm_wsl_version() {
+  local rel
+  rel="$(uname -r 2>/dev/null)" || return 0
+  case "$rel" in
+    *WSL2*) printf '2\n' ;;
+    *[Mm]icrosoft*) printf '1\n' ;;
+  esac
+  return 0
+}
+
+# Check Windows prerequisites Lima needs for its QEMU driver. A no-op
+# everywhere else, like the Linux check above.
+#
+# Only the QEMU binary is checked: whether the "Virtual Machine Platform"
+# Windows feature is enabled cannot be probed cheaply from bash, so a host
+# without it fails later with QEMU's own WHPX error instead. winget ships
+# with Windows 11, so it is the install path named here.
+_agent_vm_check_windows_prereqs() {
+  _agent_vm_on_windows || return 0
+
+  local arch_bin
+  # uname -m under Git Bash reports the Windows architecture.
+  case "$(uname -m)" in
+    x86_64)        arch_bin="qemu-system-x86_64" ;;
+    aarch64|arm64) arch_bin="qemu-system-aarch64" ;;
+    *)             arch_bin="qemu-system-$(uname -m)" ;;
+  esac
+
+  if ! command -v "$arch_bin" &>/dev/null; then
+    echo "Error: Lima needs '$arch_bin' on PATH (not found)." >&2
+    echo "  Install QEMU with: winget install SoftwareFreedom.QEMU" >&2
+    echo "  Then enable the 'Virtual Machine Platform' Windows feature and reboot." >&2
+    return 1
+  fi
 }
