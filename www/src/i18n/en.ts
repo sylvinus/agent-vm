@@ -218,13 +218,20 @@ export const en = {
       headers: ['File', 'Scope', 'Runs when'],
       rows: [
         ['~/.agent-vm/env', 'All VMs', 'Pushed in on every invocation'],
-        ['~/.agent-vm/volumes', 'All VMs', 'Mounted at VM creation'],
+        ['~/.agent-vm/volumes', 'All VMs, or the projects an entry names', 'Mounted at VM creation'],
         ['~/.agent-vm/setup.sh', 'Base template', 'Once, during agent-vm setup'],
         ['~/.agent-vm/runtime.sh', 'All VMs', 'Every command that enters a VM, first'],
         ['.agent-vm.runtime.sh', 'Single project', 'Every command that enters its VM, after the global one'],
         ['.agent-vm.env', 'Single project', 'Pushed in after the shared env, so it wins'],
       ],
     },
+    volumesTitle: 'Extra mounts: ~/.agent-vm/volumes',
+    volumesBody:
+      'One `source[:destination][:mode][:project]` per line, `~` expanded on the left, `#` for comments. The mode is `ro` (default) or `rw`, and `rw` only works for directories. Without a destination, the path is mounted at the same place in the VM. A relative destination is inside the project, over whatever the project has there. The fourth field, after an explicit mode, limits the entry to the projects it matches, `*` matching anything.',
+    volumesCode:
+      '# ~/.agent-vm/volumes\n~/.gitconfig    # same path, read-only\n~/.cache/shared:/home/you.guest/.cache/shared:rw\n\n# only in ~/work/webapp, as its .claude, read-only\n~/.claude-vm/webapp:.claude:ro:~/work/webapp\n\n# every project under ~/work\n~/.cache/pip:/home/you.guest/.cache/pip:rw:~/work/*',
+    volumesNote:
+      'Kept on your side and not in the project on purpose: the agent can write the project, and a mount list there would let it mount any host directory into its own VM. For the same reason, a relative destination that leaves the project with `..` or goes through a symlink in it is skipped. agent-vm creates a missing mount point in the project on your machine, so an empty `.claude` shows up there too. Changes apply to new VMs: `--reset` re-applies them.',
     gitTitle: 'Letting the agent commit',
     gitBody:
       'git reads its identity from the environment, so the shared env file covers it with no `git config` inside the VM. All four variables are needed: git refuses to commit without a committer, not just an author.',

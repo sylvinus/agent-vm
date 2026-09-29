@@ -676,6 +676,61 @@ _agent_vm_cleanup_state() {
 # ~/.agent-vm/.agent-vm-file-mounts-<vm> so subsequent starts can re-apply the
 # inside-VM bind mounts without re-parsing the volumes file. Stdout: the
 # mounts JSON array (consumed by `limactl edit --set ".mounts = ..."`).
+# 0 when the project directory <dir> matches <filter>, the 4th field of a
+# ~/.agent-vm/volumes entry: a path, `~` expanded, where `*` matches anything,
+# `/` included. A filter that is not absolute matches nothing, with a warning.
+_agent_vm_volume_matches() {
+  local filter="${1/#\~/$HOME}" dir="$2"
+  [[ "$filter" == / ]] || filter="${filter%/}"
+  if [[ "$filter" != /* ]]; then
+    echo "Warning: Project filter '$1' (from ~/.agent-vm/volumes) is not an absolute path, skipping the entry." >&2
+    return 1
+  fi
+  if [[ -n "${ZSH_VERSION:-}" ]]; then
+    # zsh takes a pattern from a parameter literally unless asked with ~.
+    [[ "$dir" == ${~filter} ]]
+  else
+    [[ "$dir" == $filter ]]
+  fi
+}
+
+# A relative destination in ~/.agent-vm/volumes is inside the project. Prints
+# its absolute path, after creating it on the host (a directory, or an empty
+# file for a file source): virtiofs and 9p create mount points before the
+# project is mounted, and --readonly refuses the write from the guest.
+# No component may be ".." or a symlink: the agent can write the project, and
+# mkdir would follow a link it planted there to anywhere on the host.
+_agent_vm_project_mountpoint() {
+  local dir="$1" rel="$2" src="$3" p="$1" comp rest="$2/"
+  while [[ -n "$rest" ]]; do
+    comp="${rest%%/*}"
+    rest="${rest#*/}"
+    [[ -z "$comp" || "$comp" == . ]] && continue
+    if [[ "$comp" == .. ]]; then
+      echo "Warning: Mount destination '${rel}' (from ~/.agent-vm/volumes) goes out of the project with '..', skipping." >&2
+      return 1
+    fi
+    p="$p/$comp"
+    if [[ -L "$p" ]]; then
+      echo "Warning: Mount destination '${rel}' (from ~/.agent-vm/volumes) goes through a symlink in the project ($p), skipping." >&2
+      return 1
+    fi
+  done
+  if [[ "$p" == "$dir" ]]; then
+    echo "Warning: Mount destination '${rel}' (from ~/.agent-vm/volumes) is the project itself, skipping." >&2
+    return 1
+  fi
+  if [[ -d "$src" ]]; then
+    mkdir -p "$p" 2>/dev/null
+  else
+    mkdir -p "$(dirname "$p")" 2>/dev/null && { [[ -f "$p" ]] || : > "$p"; } 2>/dev/null
+  fi || {
+    echo "Warning: Cannot create the mount point '$p' (from ~/.agent-vm/volumes), skipping." >&2
+    return 1
+  }
+  printf '%s\n' "$p"
+}
+
 _agent_vm_build_mounts_json() {
   local vm_name="$1" host_dir="$2" project_writable="${3:-true}" sshfs=""
   [[ "${4:-}" == 1 ]] && sshfs=", \"sshfs\": {\"sftpDriver\": \"builtin\", \"readonlyNames\": [\".git\"]}"
@@ -691,6 +746,16 @@ _agent_vm_build_mounts_json() {
       line="${line#"${line%%[![:space:]]*}"}"                     # trim leading whitespace
       line="${line%"${line##*[![:space:]]}"}"                     # trim trailing whitespace
       [[ -z "$line" ]] && continue
+      # An optional 4th field, after an explicit mode, limits the entry to the
+      # projects it matches: source:destination:mode:filter.
+      local filter="" before="${line%:*}"
+      if [[ "$line" == *:* && ( "$before" == *:ro || "$before" == *:rw ) ]]; then
+        filter="${line##*:}"
+        line="$before"
+      fi
+      if [[ -n "$filter" ]]; then
+        _agent_vm_volume_matches "$filter" "$host_dir" || continue
+      fi
       # Parse source[:destination][:mode] syntax (like docker compose volumes).
       # The trailing mode segment is only recognized when it equals "ro" or
       # "rw" — anything else is treated as a destination path.
@@ -715,6 +780,9 @@ _agent_vm_build_mounts_json() {
       if [[ ! -e "$src" ]]; then
         echo "Warning: Mount path '${src}' (from ~/.agent-vm/volumes) does not exist, skipping." >&2
         continue
+      fi
+      if [[ -n "$dst" && "$dst" != /* ]]; then
+        dst="$(_agent_vm_project_mountpoint "$host_dir" "$dst" "$src")" || continue
       fi
       if [[ -f "$src" ]]; then
         if [[ "$mode" == "rw" ]]; then

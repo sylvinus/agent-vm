@@ -448,6 +448,23 @@ List host files or directories to mount inside every VM. One path per line, `~` 
 
 When no destination is specified, the path is mounted at the same location inside the VM. Non-existent paths are skipped with a warning. Changes to this file take effect on new VMs (use `--reset` to re-apply to existing ones).
 
+A relative destination is inside the project: `~/notes:notes` appears at `<project>/notes` in the VM, over whatever the project has there. agent-vm creates the mount point in the project on your machine if it is missing (an empty directory, or an empty file for a file source), so it shows up there too. A destination that goes out of the project with `..`, or through a symlink in the project, is skipped with a warning: the agent can write the project, and could otherwise point the mount point anywhere.
+
+An entry can be limited to some projects with a fourth field, after an explicit mode: `source:destination:mode:project`. `project` is the project directory as `agent-vm info` prints it in `dir=`; `~` is expanded and `*` matches anything, `/` included. Leave the destination empty to mount at the same path:
+
+```bash
+# Only in the VM of ~/work/webapp, as its .claude, read-only
+~/.claude-vm/webapp:.claude:ro:~/work/webapp
+
+# In every project under ~/work
+~/.cache/pip:/home/youruser.guest/.cache/pip:rw:~/work/*
+
+# Same path in the VM, only for one project
+~/datasets::ro:~/work/ml
+```
+
+The filter lives here and not in the project on purpose: the agent can write the project, so a mount list kept there would let it mount any host directory into its own VM.
+
 `rw` is only supported for **directories**. Files are always read-only: with the hardlink/staging strategy used below, writable file mounts would silently desync on cross-filesystem setups. If you need a writable single file, mount its parent directory as `rw` instead. A destination literally named `ro` or `rw` is treated as a mode keyword — append an explicit `:ro`/`:rw` to disambiguate.
 
 Individual files are supported without exposing their parent directory: agent-vm hardlinks the source into a per-VM staging dir under `~/.agent-vm/file-mounts/<vm>/`, then bind-mounts it at the final destination on each VM start. If the source sits on a different filesystem (hardlink impossible), it falls back to a copy and live host changes won't propagate until the next VM restart. The staged hardlink is refreshed on each `agent-vm` invocation, so atomic-rename edits (common in editors) are picked up at the next VM (re)start.

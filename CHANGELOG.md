@@ -106,6 +106,15 @@ has passwordless sudo, so anything enforced there is advisory at best.
 
 ### Added
 
+- An entry of `~/.agent-vm/volumes` can be limited to some projects with a
+  fourth field, after an explicit mode: `source:destination:mode:project`,
+  where `project` is a path, `~` expanded, and `*` matches anything
+  (`~/.cache/pip:/home/you.guest/.cache/pip:rw:~/work/*`).
+- A relative destination in `~/.agent-vm/volumes` is inside the project
+  (`~/.claude-vm/webapp:.claude:ro:~/work/webapp`). The mount point is created in
+  the project on the host when missing. One that leaves the project with `..`
+  or goes through a symlink in it is skipped. It used to reach Lima as is,
+  which refuses a relative mount point.
 - `--ssh-port N` gives a VM a fixed host port for SSH, for IDEs and GUI agents
   that save the port rather than an alias (#28). `0` goes back to a new port on
   each start. A port another agent-vm VM has is refused. `info` gains

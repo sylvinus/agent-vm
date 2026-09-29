@@ -62,6 +62,11 @@ const d = t(locale);
             </tbody>
           </table>
         </div>
+
+        <Heading as="h4" id={slug(en.usage.volumesTitle)} locale={locale} class="usage__sub">{d.usage.volumesTitle}</Heading>
+        <p class="prose usage__sub-body" set:html={inline(d.usage.volumesBody)} />
+        <CodeBlock locale={locale} code={d.usage.volumesCode} />
+        <p class="prose usage__note" set:html={inline(d.usage.volumesNote)} />
       </div>
 
       <div class="usage__git">

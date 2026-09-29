@@ -220,13 +220,20 @@ export const fr: Dictionary = {
       headers: ['Fichier', 'Portée', 'Quand'],
       rows: [
         ['~/.agent-vm/env', 'Toutes les VM', 'Copié à chaque lancement'],
-        ['~/.agent-vm/volumes', 'Toutes les VM', 'Monté à la création de la VM'],
+        ['~/.agent-vm/volumes', 'Toutes les VM, ou les projets qu\'une entrée désigne', 'Monté à la création de la VM'],
         ['~/.agent-vm/setup.sh', 'Image de base', 'Une fois, pendant agent-vm setup'],
         ['~/.agent-vm/runtime.sh', 'Toutes les VM', 'À chaque commande qui entre dans une VM, en premier'],
         ['.agent-vm.runtime.sh', 'Un seul projet', 'À chaque commande qui entre dans sa VM, après le global'],
         ['.agent-vm.env', 'Un seul projet', 'Copié après l\'env partagé, qu\'il écrase'],
       ],
     },
+    volumesTitle: 'Montages en plus : ~/.agent-vm/volumes',
+    volumesBody:
+      'Une ligne `source[:destination][:mode][:projet]` par montage, `~` développé à gauche, `#` pour les commentaires. Le mode est `ro` (par défaut) ou `rw`, et `rw` ne marche que pour les dossiers. Sans destination, le chemin est monté au même endroit dans la VM. Une destination relative est dans le projet, par-dessus ce que le projet a à cet endroit. Le quatrième champ, après un mode explicite, limite l\'entrée aux projets qu\'il désigne, `*` couvrant n\'importe quoi.',
+    volumesCode:
+      '# ~/.agent-vm/volumes\n~/.gitconfig    # même chemin, lecture seule\n~/.cache/shared:/home/you.guest/.cache/shared:rw\n\n# seulement dans ~/work/webapp, comme son .claude, en lecture seule\n~/.claude-vm/webapp:.claude:ro:~/work/webapp\n\n# tous les projets sous ~/work\n~/.cache/pip:/home/you.guest/.cache/pip:rw:~/work/*',
+    volumesNote:
+      'Gardé de ton côté et pas dans le projet, exprès : l\'agent peut écrire dans le projet, et une liste de montages rangée là lui permettrait de monter n\'importe quel dossier de l\'hôte dans sa propre VM. Pour la même raison, une destination relative qui sort du projet avec `..` ou passe par un lien symbolique du projet est ignorée. agent-vm crée le point de montage manquant dans le projet sur ta machine : un `.claude` vide y apparaît donc aussi. Les changements valent pour les nouvelles VM : `--reset` les réapplique.',
     gitTitle: 'Laisser l\'agent commiter',
     gitBody:
       'git lit son identité dans l\'environnement : le fichier d\'env partagé suffit, sans aucun `git config` dans la VM. Les quatre variables sont nécessaires, car git exige un committer et pas seulement un auteur.',
