@@ -627,6 +627,12 @@ the `--preinstall` parser, the MCP config writer, and how the shares follow
 what Lima can do for `.git` (the stub answers like stock Lima or like a build
 with `readonlyNames`, and a stub `brew` stands in for the install).
 
+The tests live in `tests/`: `helpers.sh` sets up the sandbox, then each
+`NN-*.sh` runs in order in the same shell, so a later file can use what an
+earlier one set up (the recording `limactl` of `11-recorded-commands.sh` is
+used by the files after it). A new area gets its own file, numbered after the
+ones it depends on.
+
 Worth running under bash 3.2 as well — it is what macOS ships, and it is stricter
 about empty array expansion under `set -u`, which modern bash forgives:
 
@@ -661,10 +667,12 @@ host and a few minutes.
 
 | File | Description |
 |------|-------------|
-| `agent-vm.sh` | The whole command — put it on your PATH |
+| `agent-vm.sh` | The command: its settings, the `lib/` loader, starting a project's VM, and the commands. What goes on your PATH |
+| `lib/` | The rest, one file per concern: `options`, `vm`, `mounts`, `git` (`.git` protection), `env`, `runtime`, `host`, `info`, `install`, `doctor`, `setup`, `help`, `ui`. Loaded by `agent-vm.sh`, which needs it next to it |
 | `agent-vm.setup.sh` | Package installation script that runs inside the base VM during setup |
 | `install.sh` | Former installer, now a wrapper for `./agent-vm.sh install` |
 | `test.sh` | Test suite — runs against a stub `limactl`, creates no VMs |
+| `tests/` | Its files: `helpers.sh` (sandbox, stubs, `check`), then `NN-*.sh`, run in order in one shell |
 | `test-e2e.sh` | End-to-end suite — builds a real VM in a throwaway `LIMA_HOME` |
 | `runtime.example.sh` | Commented template for `~/.agent-vm/runtime.sh` |
 | `CHANGELOG.md` | What changed in each release |

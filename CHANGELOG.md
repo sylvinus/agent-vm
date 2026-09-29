@@ -60,6 +60,14 @@ has passwordless sudo, so anything enforced there is advisory at best.
 
 ### Changed
 
+- `agent-vm.sh` loads the rest of agent-vm from `lib/`, next to it, and stops
+  with the name of the missing file when it is not there: a copy of
+  `agent-vm.sh` on its own no longer works. Clones, the curl installer and
+  release tarballs have it.
+- agent-vm's options are read the same way before the command and right after
+  its name: `agent-vm claude --disk=50` resizes the VM instead of passing
+  `--disk=50` to Claude, and `agent-vm claude --disk 10G` is refused with the
+  reason instead of failing later with a bash error.
 - `--readonly` is applied before the runtime scripts run, not after. A
   `~/.agent-vm/runtime.sh` or `.agent-vm.runtime.sh` that writes into the project
   fails under the flag.

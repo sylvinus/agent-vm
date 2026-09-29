@@ -19,7 +19,7 @@ jobs:
 
       - name: Syntax check
         run: |
-          for f in agent-vm.sh agent-vm.setup.sh runtime.example.sh test.sh test-e2e.sh install.sh release.sh; do
+          for f in agent-vm.sh lib/*.sh agent-vm.setup.sh runtime.example.sh test.sh tests/*.sh test-e2e.sh install.sh release.sh; do
             echo "bash -n $f"
             bash -n "$f"
           done

@@ -91,7 +91,7 @@ export const fr: Dictionary = {
     eyebrow: 'Installation',
     title: 'Installer, construire une image de base, lancer un agent.',
     lede:
-      'agent-vm, c\'est un script shell, sans démon. Pour tout retirer : `agent-vm destroy-all`, `agent-vm uninstall` (ou `brew uninstall agent-vm`), puis supprime son dossier et `~/.agent-vm`.',
+      'agent-vm, ce sont quelques scripts shell, sans démon. Pour tout retirer : `agent-vm destroy-all`, `agent-vm uninstall` (ou `brew uninstall agent-vm`), puis supprime son dossier et `~/.agent-vm`.',
     prerequisitesTitle: 'Prérequis',
     prerequisites: [
       { name: 'macOS ou Linux', note: 'Windows n\'est pas pris en charge.', href: '' },
@@ -462,10 +462,11 @@ export const fr: Dictionary = {
     structureTitle: 'Où se trouve quoi',
     structureHeaders: ['Fichier', 'Ce que c\'est'],
     structure: [
-      ['agent-vm.sh', 'Toute la commande. À poser sur ton PATH.'],
+      ['agent-vm.sh', 'La commande : réglages, chargement de lib/, démarrage d\'une VM, les commandes. À poser sur ton PATH.'],
+      ['lib/', 'Le reste de la commande, un fichier par sujet : montages, protection de .git, env, doctor, setup…'],
       ['agent-vm.setup.sh', 'Installation des paquets, exécutée dans la VM de base pendant le setup.'],
       ['install.sh', 'Ancien installeur, désormais un raccourci vers ./agent-vm.sh install.'],
-      ['test.sh', 'Suite de tests. limactl factice, aucune VM, aucun réseau.'],
+      ['test.sh', 'Suite de tests. limactl factice, aucune VM, aucun réseau. Lance tests/, dans l\'ordre.'],
       ['test-e2e.sh', 'Suite de bout en bout. Construit une vraie VM dans un LIMA_HOME jetable.'],
       ['runtime.example.sh', 'Modèle commenté pour ~/.agent-vm/runtime.sh.'],
       ['CHANGELOG.md', 'Ce qui change à chaque version.'],

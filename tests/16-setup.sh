@@ -1,0 +1,199 @@
+section "setup options"
+case "$(agent-vm setup --reset 2>&1 </dev/null)" in
+  *"Unknown option: --reset"*) pass "setup rejects --reset instead of ignoring it" ;;
+  *) fail "setup accepted --reset" ;;
+esac
+
+section "release.sh"
+REL="$SELF_DIR/release.sh"
+notes="$("$REL" notes "$AGENT_VM_VERSION" 2>&1)"
+case "$notes" in
+  ""|*"has no '## "*) fail "CHANGELOG.md has no section for $AGENT_VM_VERSION, the version agent-vm.sh reports" ;;
+  *) pass "CHANGELOG.md has a section for $AGENT_VM_VERSION" ;;
+esac
+# On a changelog of our own: the section stops at the next heading and loses
+# its surrounding blank lines.
+mkdir -p "$SB/rel"
+cp "$REL" "$SB/rel/release.sh"
+printf '# Changelog\n\n## 2.0.0\n\n- two\n\n## 1.0.0\n\n- one\n' > "$SB/rel/CHANGELOG.md"
+check "notes: only that version's section" "$("$SB/rel/release.sh" notes 2.0.0)" "- two"
+check "notes: the last section too"        "$("$SB/rel/release.sh" notes 1.0.0)" "- one"
+"$SB/rel/release.sh" notes 3.0.0 >/dev/null 2>&1
+check "notes: an absent version fails" "$?" "1"
+"$REL" 1.2 >/dev/null 2>&1
+check "a malformed version is refused before anything else" "$?" "1"
+"$REL" >/dev/null 2>&1
+check "no argument prints the usage (exit 2)" "$?" "2"
+
+section "no terminal: detected by opening it"
+# `-r /dev/tty` is true with no controlling terminal; only opening it fails.
+# setsid gives a process no controlling terminal, which is the CI case.
+if command -v setsid >/dev/null 2>&1; then
+  SETSID="$(command -v setsid)"
+  # Runs $1 in bash with no controlling terminal. The exit status comes back as
+  # a last `rc=N` line: busybox setsid has no -w to wait and pass it through.
+  notty() {
+    "$SETSID" "$BASH_BIN" -c "source '$AGENT_VM_SH'; $1"'; echo "rc=$?"' </dev/null 2>&1
+  }
+
+  out="$(notty '_agent_vm_have_tty')"
+  check "no controlling terminal: _agent_vm_have_tty says no" "${out##*rc=}" "1"
+
+  # Lima missing, brew present, nobody to ask: say what to run, install nothing.
+  mkdir -p "$SB/fakebrew"
+  printf '#!/bin/sh\necho "brew $*" >> "%s/brew.log"\n' "$SB" > "$SB/fakebrew/brew"
+  chmod +x "$SB/fakebrew/brew"
+  rm -f "$SB/brew.log"
+  out="$(PATH="$SB/fakebrew:$(nolima_path)" notty 'agent-vm setup --preinstall=none')"
+  [ ! -e "$SB/brew.log" ] && pass "no terminal: brew is not run without asking" \
+    || fail "brew ran without a prompt: $(cat "$SB/brew.log")"
+  case "${out##*rc=}:$out" in
+    1:*"Install it with: brew install sylvinus/tap/lima-sylvinus"*"brew install lima"*) pass "no terminal: says how to install Lima, the one keeping .git read-only first" ;;
+    *) fail "no terminal: '$out'" ;;
+  esac
+  case "$out" in
+    */dev/tty*) fail "a /dev/tty error leaked: $out" ;;
+    *) pass "no /dev/tty error is printed" ;;
+  esac
+
+  # The wizard is skipped too, rather than run and answered with its defaults
+  # because every read fails.
+  rm -f "$SB/brew.log" "$PROTECTS"
+  out="$(AGENT_VM_STATE_DIR="$SB/wizard-state" AGENT_VM_TEST_REC="$REC" AGENT_VM_TEST_PROTECTS="$PROTECTS" \
+         PATH="$SB/fakebrew:$PATH" notty '_agent_vm_check_linux_prereqs() { return 0; }; agent-vm setup')"
+  case "${out##*rc=}:$out" in
+    *"setup wizard"*) fail "the wizard ran with no terminal" ;;
+    0:*) pass "no terminal: the wizard is skipped and setup completes" ;;
+    *) fail "setup with no terminal: '$out'" ;;
+  esac
+  # Lima's containerd is never installed: Docker brings its own when chosen.
+  grep -q "^create .*--containerd=none" "$REC" && pass "Lima's containerd is off" \
+    || fail "Lima's containerd stays on: $(grep '^create' "$REC")"
+  # A Lima that cannot keep .git read-only: said, with the command, and setup
+  # goes on without installing anything.
+  case "$out" in
+    *"cannot keep .git read-only"*"brew install sylvinus/tap/lima-sylvinus"*"Continuing without .git protection"*)
+      pass "no terminal: setup says .git is not protected, and how to fix it" ;;
+    *) fail "no terminal: no .git protection warning: '$out'" ;;
+  esac
+  [ ! -e "$SB/brew.log" ] && pass "no terminal: nothing is installed" \
+    || fail "brew ran without a prompt: $(cat "$SB/brew.log")"
+else
+  printf '  skip terminal detection (no setsid here)\n'
+fi
+
+# =============================================================================
+section "setup offers a Lima that keeps .git read-only"
+# =============================================================================
+# With a terminal and Homebrew. A stub brew records its calls; installing the
+# formula makes the limactl stub answer like a Lima with readonlyNames.
+# FAKE_BREW_HAS_LIMA: brew's own lima is installed. FAKE_BREW_FAIL: the
+# install fails.
+mkdir -p "$SB/fakebrew"
+cat > "$SB/fakebrew/brew" <<STUB
+#!/bin/sh
+echo "brew \$*" >> "$SB/brew.log"
+case "\$1 \$2" in
+  "list --formula") [ -n "\${FAKE_BREW_HAS_LIMA:-}" ] ;;
+  "install sylvinus/tap/lima-sylvinus") [ -z "\${FAKE_BREW_FAIL:-}" ] && touch "$PROTECTS" ;;
+esac
+STUB
+chmod +x "$SB/fakebrew/brew"
+# ANSWER is the reply to the prompt (1 yes, 0 no).
+offer() {
+  rm -f "$SB/brew.log"
+  ( export AGENT_VM_TEST_REC="$REC" AGENT_VM_TEST_PROTECTS="$PROTECTS" PATH="$SB/fakebrew:$PATH"
+    _agent_vm_have_tty() { return 0; }
+    _agent_vm_ask_yn() { echo "${ANSWER:-1}"; }
+    _agent_vm_offer_git_protection ) 2>&1
+}
+brew_calls() { tr '\n' ';' < "$SB/brew.log" 2>/dev/null; }
+
+rm -f "$PROTECTS"
+out="$(FAKE_BREW_HAS_LIMA=1 offer)"
+check "yes, over brew's lima: unlink it, then install the formula" \
+  "$(brew_calls)" "brew list --formula lima;brew unlink lima;brew install sylvinus/tap/lima-sylvinus;"
+case "$out" in *"Lima now keeps every .git read-only"*) pass "yes: says it worked, checked afresh" ;; *) fail "yes: $out" ;; esac
+
+rm -f "$PROTECTS"
+offer >/dev/null
+check "yes, no brew lima: nothing to unlink" \
+  "$(brew_calls)" "brew list --formula lima;brew install sylvinus/tap/lima-sylvinus;"
+
+rm -f "$PROTECTS"
+out="$(FAKE_BREW_HAS_LIMA=1 FAKE_BREW_FAIL=1 offer)"
+case "$(brew_calls)" in
+  *"brew install sylvinus/tap/lima-sylvinus;brew link lima;") pass "a failed install links brew's lima back" ;;
+  *) fail "failed install: $(brew_calls)" ;;
+esac
+case "$out" in *"the install failed. Continuing without .git protection"*) pass "and says so" ;; *) fail "failed install: $out" ;; esac
+
+rm -f "$PROTECTS"
+out="$(ANSWER=0 offer)"
+[ ! -e "$SB/brew.log" ] && pass "no: brew is not run" || fail "no: brew ran: $(brew_calls)"
+case "$out" in *"cannot keep .git read-only"*"Continuing without .git protection"*) pass "no: the risk is said" ;; *) fail "no: $out" ;; esac
+
+touch "$PROTECTS"
+out="$(offer)"
+check "already protected: nothing said" "$out" ""
+[ ! -e "$SB/brew.log" ] && pass "already protected: brew is not run" || fail "already protected: brew ran: $(brew_calls)"
+
+section "setup: git on this machine ignores bare repositories"
+# A folder holding HEAD, objects/ and refs/ is a repository to git, whatever
+# its name, so .git protection does not cover it. Setup asks to set
+# safe.bareRepository=explicit. The stub git is the doctor section's.
+# ANSWER is the reply (1 yes, 0 no); NOTTY=1 means no terminal to ask on.
+bare_offer() {
+  rm -f "$SB/git.log"
+  ( export PATH="$SB/fakegit:$PATH"
+    _agent_vm_have_tty() { [ -z "${NOTTY:-}" ]; }
+    _agent_vm_ask_yn() { echo "${ANSWER:-1}"; }
+    _agent_vm_offer_bare_repo_setting ) 2>&1
+}
+git_set_called() { grep -q 'config --global safe.bareRepository explicit' "$SB/git.log" 2>/dev/null; }
+
+rm -f "$SB/git-bare"
+out="$(bare_offer)"
+[ "$(cat "$SB/git-bare" 2>/dev/null)" = "explicit" ] && pass "yes: the setting is made" || fail "yes: not set: $out"
+case "$out" in
+  *"HEAD, objects/ and refs/"*"git config --global safe.bareRepository explicit"*"now ignores"*) pass "yes: the risk, the command, then the result" ;;
+  *) fail "yes: $out" ;;
+esac
+rm -f "$SB/git-bare"
+out="$(ANSWER=0 bare_offer)"
+git_set_called && fail "no: the setting was made anyway" || pass "no: git config is not run"
+case "$out" in *"Warning: not set"*) pass "no: says what is left open" ;; *) fail "no: $out" ;; esac
+out="$(NOTTY=1 bare_offer)"
+git_set_called && fail "no terminal: the setting was made without asking" || pass "no terminal: nothing is changed"
+case "$out" in *"git config --global safe.bareRepository explicit"*"Warning: not set"*) pass "no terminal: the command is printed" ;; *) fail "no terminal: $out" ;; esac
+out="$(FAKE_GIT_SET_FAILS=1 bare_offer)"
+case "$out" in *"did not take"*) pass "a failed git config is said" ;; *) fail "failed git config: $out" ;; esac
+out="$(FAKE_GIT_VERSION=2.30.1 bare_offer)"
+git_set_called && fail "old git: set on a git that ignores it" || pass "old git: nothing is set"
+case "$out" in *"older than 2.38"*"Upgrade git"*) pass "old git: says to upgrade" ;; *) fail "old git: $out" ;; esac
+echo explicit > "$SB/git-bare"
+check "already set: nothing said" "$(bare_offer)" ""
+git_set_called && fail "already set: git config was run" || pass "already set: git config is not run"
+check "no git on this machine: nothing to protect" "$(PATH="$SB/nolimactl" _agent_vm_bare_repo_state)" "nogit"
+check "setup makes the offer" "$(declare -f _agent_vm_setup | grep -c '_agent_vm_offer_bare_repo_setting')" "1"
+# A first run opens on the familiar questions: the security ones come after the
+# wizard, and before the VM exists.
+check "security checks: after the wizard, before the VM" \
+  "$(declare -f _agent_vm_setup | grep -o -e 'Use these defaults' -e 'Running security checks' -e 'Creating base VM' | tr '\n' '|')" \
+  "Use these defaults|Running security checks|Creating base VM|"
+
+# Against the real git, when it is recent enough: only the system and global
+# config count, as for git itself. A repository's own setting must not answer.
+real_git_ver="$(git --version 2>/dev/null)"; real_git_ver="${real_git_ver#git version }"; real_git_ver="${real_git_ver%% *}"
+if [ -n "$real_git_ver" ] && _agent_vm_ver_ge "$real_git_ver" 2.38.0; then
+  mkdir -p "$SB/realgit/home" "$SB/realgit/repo"
+  ( export HOME="$SB/realgit/home" GIT_CONFIG_NOSYSTEM=1 XDG_CONFIG_HOME="$SB/realgit/xdg"
+    cd "$SB/realgit/repo" && git init -q . && git config safe.bareRepository explicit
+    printf '%s ' "$(_agent_vm_bare_repo_state)"
+    git config --global safe.bareRepository explicit
+    printf '%s' "$(_agent_vm_bare_repo_state)" ) > "$SB/realgit/out"
+  check "real git: a repository's own setting does not count, the global one does" "$(cat "$SB/realgit/out")" "unset ok"
+else
+  printf '  skip real git (absent or older than 2.38)\n'
+fi
+rm -f "$PROTECTS"

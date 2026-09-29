@@ -89,7 +89,7 @@ export const en = {
     eyebrow: 'Install',
     title: 'Install, build a template, run an agent.',
     lede:
-      'agent-vm is one shell script, with no daemon. To remove it: `agent-vm destroy-all`, `agent-vm uninstall` (or `brew uninstall agent-vm`), then delete its directory and `~/.agent-vm`.',
+      'agent-vm is a few shell scripts, with no daemon. To remove it: `agent-vm destroy-all`, `agent-vm uninstall` (or `brew uninstall agent-vm`), then delete its directory and `~/.agent-vm`.',
     prerequisitesTitle: 'Prerequisites',
     prerequisites: [
       { name: 'macOS or Linux', note: 'Windows is not supported.', href: '' },
@@ -461,10 +461,11 @@ export const en = {
     structureTitle: 'Where things live',
     structureHeaders: ['File', 'What it is'],
     structure: [
-      ['agent-vm.sh', 'The whole command. Put it on your PATH.'],
+      ['agent-vm.sh', 'The command: settings, the lib/ loader, starting a VM, the commands. What goes on your PATH.'],
+      ['lib/', 'The rest of the command, one file per concern: mounts, .git protection, env, doctor, setup…'],
       ['agent-vm.setup.sh', 'Package installation, runs inside the base VM during setup.'],
       ['install.sh', 'Former installer, now a wrapper for ./agent-vm.sh install.'],
-      ['test.sh', 'Test suite. Stub limactl, no VMs, no network.'],
+      ['test.sh', 'Test suite. Stub limactl, no VMs, no network. Runs tests/, in order.'],
       ['test-e2e.sh', 'End-to-end suite. Builds a real VM in a throwaway LIMA_HOME.'],
       ['runtime.example.sh', 'Commented template for ~/.agent-vm/runtime.sh.'],
       ['CHANGELOG.md', 'What changed in each release.'],

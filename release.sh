@@ -144,7 +144,7 @@ case "$ci" in
   completed*)          die "the test workflow did not pass on ${head:0:12} ($ci)" ;;
   *)                   die "the test workflow is still running on ${head:0:12} ($ci)" ;;
 esac
-for f in agent-vm.sh agent-vm.setup.sh install.sh runtime.example.sh test.sh test-e2e.sh release.sh; do
+for f in agent-vm.sh lib/*.sh agent-vm.setup.sh install.sh runtime.example.sh test.sh tests/*.sh test-e2e.sh release.sh; do
   bash -n "$f" || die "syntax error in $f"
 done
 sh -n www/public/install.sh || die "syntax error in www/public/install.sh"
