@@ -1336,7 +1336,10 @@ case "$1" in
     fi
     echo 'level=warning msg="Non-strict YAML detected; please check for typos" error="[3:158] unknown field \"readonlyNames\""' >&2
     echo 'level=info msg="`probe.yaml`: OK"' >&2 ;;
-  clone) [ -n "${AGENT_VM_TEST_CLONED:-}" ] && touch "$AGENT_VM_TEST_CLONED" ;;
+  clone)
+    [ -z "${AGENT_VM_TEST_CLONE_FAIL:-}" ] || { echo 'level=fatal msg="clone boom"' >&2; exit 1; }
+    [ -n "${AGENT_VM_TEST_CLONED:-}" ] && touch "$AGENT_VM_TEST_CLONED" ;;
+  edit) [ -z "${AGENT_VM_TEST_EDIT_FAIL:-}" ] || { echo 'level=fatal msg="edit boom"' >&2; exit 1; } ;;
   list)
     case "$*" in
       *"{{.Name}} {{.Config.SSH.LocalPort}}"*)
@@ -1364,7 +1367,8 @@ case "$1" in
         case "$*" in *'.agent-vm.env'*) cat >/dev/null; [ -n "${AGENT_VM_TEST_ENV_FAIL:-}" ] || echo env-ok ;; esac
         [ -z "${AGENT_VM_TEST_RO:-}" ] || exit 1 ;;
     esac ;;
-  stop|delete) cat >/dev/null ;;
+  stop) cat >/dev/null ;;
+  delete) [ -z "${AGENT_VM_TEST_CLONED:-}" ] || rm -f "$AGENT_VM_TEST_CLONED"; cat >/dev/null ;;
 esac
 exit 0
 STUB
@@ -1479,6 +1483,26 @@ AGENT_VM_TEST_CLONED="$CLONED" rec --ssh-port 2224 run true >/dev/null
 grep '^edit' "$REC" | head -1 | grep -qF -- "--set .ssh.localPort = 2224" \
   && pass "new VM: the port is set with the mounts, before the first start" \
   || fail "new VM: $(grep '^edit' "$REC")"
+
+section "a VM that cannot be configured is not kept (#21)"
+# The edit giving a new VM its shares and resources used to fail in silence:
+# the VM then ran with the template's config, ~/.agent-vm/volumes entries gone.
+CLONED="$SB/cloned-fail"; rm -f "$CLONED"
+out="$(AGENT_VM_TEST_CLONED="$CLONED" AGENT_VM_TEST_EDIT_FAIL=1 rec --memory 2 run true)"
+case "$?:$out" in
+  1:*"could not configure the new VM '$PV'"*"edit boom"*) pass "a failed edit is said, with Lima's message" ;;
+  *) fail "a failed edit: $out" ;;
+esac
+rec_has "delete $PV --force" && pass "and the half-made VM is deleted" || fail "the half-made VM is kept"
+rec_has "start $PV" && fail "the VM was started anyway" || pass "and it is not started"
+[ -e "$HOME/.agent-vm/.agent-vm-mounts-$PV" ] && fail "its mounts are still recorded" \
+  || pass "and no mounts are recorded for it"
+out="$(AGENT_VM_TEST_CLONED="$CLONED" AGENT_VM_TEST_CLONE_FAIL=1 rec run true)"
+case "$?:$out" in
+  1:*"could not clone the base template into '$PV'"*"clone boom"*) pass "a failed clone is said too" ;;
+  *) fail "a failed clone: $out" ;;
+esac
+rec_has "edit $PV" && fail "a failed clone was edited anyway" || pass "and nothing is done after it"
 
 section "--readonly makes every share read-only"
 # The hypervisor enforces read-only per share, not per host file. A writable

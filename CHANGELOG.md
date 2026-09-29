@@ -144,6 +144,11 @@ has passwordless sudo, so anything enforced there is advisory at best.
 
 ### Fixed
 
+- Creating a VM fails loudly, with Lima's message, when `limactl clone` or
+  the edit that gives the VM its shares, memory, CPUs and SSH port fails, and
+  the half-made VM is deleted so the next run starts over (#21). Both used to
+  be silent: the VM then ran with the template's config, without the
+  `~/.agent-vm/volumes` entries or the requested resources.
 - Symlinks to an absolute path or through `..` work again in `reverse-sshfs`
   shares, `node_modules/.bin` included (#22). Debian's sshfs security update
   (CVE-2026-47187) refuses them by default, with `EPERM`, to protect a client

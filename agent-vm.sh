@@ -1143,7 +1143,12 @@ _agent_vm_ensure_running() {
   if ! _agent_vm_exists "$vm_name"; then
     is_new_vm=1
     echo "Creating VM '$vm_name'..."
-    limactl clone "$AGENT_VM_TEMPLATE" "$vm_name" --tty=false &>/dev/null
+    local create_out
+    if ! create_out=$(limactl clone "$AGENT_VM_TEMPLATE" "$vm_name" --tty=false 2>&1); then
+      echo "Error: could not clone the base template into '$vm_name':" >&2
+      echo "$create_out" >&2
+      return 1
+    fi
     # Apply mount and resource settings via edit after clone
     # Mount and memory/cpus are applied separately from disk, because
     # Lima rejects the entire edit if disk shrinking is attempted.
@@ -1154,12 +1159,22 @@ _agent_vm_ensure_running() {
     [[ -n "$memory" ]] && edit_args+=(--memory "$memory")
     [[ -n "$cpus" ]]   && edit_args+=(--cpus "$cpus")
     [[ -n "$ssh_port" ]] && edit_args+=(--set ".ssh.localPort = $ssh_port")
-    if (cd /tmp && limactl edit "$vm_name" ${edit_args[@]+"${edit_args[@]}"}) &>/dev/null; then
-      _agent_vm_record_mounts "$vm_name" "$mounts_json"
+    # A failure here used to be silent, and the VM went on with the template's
+    # config: no ~/.agent-vm/volumes entries, no --memory, --cpus or
+    # --ssh-port (#21). The clone is new and holds nothing yet, so it goes, and
+    # the next run starts over.
+    if ! create_out=$(cd /tmp && limactl edit "$vm_name" ${edit_args[@]+"${edit_args[@]}"} 2>&1); then
+      echo "Error: could not configure the new VM '$vm_name' (shares, memory, CPUs):" >&2
+      echo "$create_out" >&2
+      limactl delete "$vm_name" --force &>/dev/null
+      _agent_vm_cleanup_state "$vm_name"
+      return 1
     fi
+    _agent_vm_record_mounts "$vm_name" "$mounts_json"
     if [[ -n "$disk" ]]; then
-      if ! (cd /tmp && limactl edit "$vm_name" --disk "$disk") &>/dev/null; then
-        echo "Warning: Cannot set disk to ${disk} GiB (shrinking is not supported). Re-run 'agent-vm setup --disk ${disk}' for a smaller base." >&2
+      if ! create_out=$(cd /tmp && limactl edit "$vm_name" --disk "$disk" 2>&1); then
+        echo "Warning: Cannot set disk to ${disk} GiB (it can grow, not shrink: 'agent-vm setup --disk ${disk}' for a smaller base):" >&2
+        echo "$create_out" >&2
       fi
     fi
     # Resources are printed by the caller, once the VM is up.
