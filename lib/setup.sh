@@ -23,8 +23,13 @@ _agent_vm_scroll_window() {
   fi
   local height=10 size width rows line rest buf="" n=0 drawn=0
   # "rows cols". Not tput: with stdout captured and stderr silenced it has no
-  # terminal left to ask, and answers 80.
-  size="$(stty size 2>/dev/null </dev/tty)"
+  # terminal left to ask, and answers 80. Probed first, as in _agent_vm_box:
+  # without a terminal the open itself errors on stderr (zsh names it).
+  if _agent_vm_have_tty; then
+    size="$(stty size 2>/dev/null </dev/tty)"
+  else
+    size=""
+  fi
   rows="${size% *}"; width="${size#* }"
   [[ "$width" =~ ^[0-9]+$ && "$width" -gt 1 ]] || width=80
   [[ "$rows" =~ ^[0-9]+$ ]] && [[ "$rows" -lt $((height + 2)) ]] && height=$((rows > 3 ? rows - 2 : 1))

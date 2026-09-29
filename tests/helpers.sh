@@ -12,6 +12,11 @@ check() {
 section() { printf '\n%s\n' "$1"; }
 
 SB="$(mktemp -d)"
+# Physical path: the temp dir itself is reached through a link on some
+# machines (macOS /private, msys mounts), and tests compare $SB against paths
+# the tools resolve themselves (git top-level, script dirs, readlink). Two
+# spellings of one directory never match, so settle on one here.
+SB="$(CDPATH= cd -P -- "$SB" >/dev/null && pwd)"
 trap 'rm -rf "$SB"' EXIT
 export HOME="$SB/home"
 # A real directory: `name` and `info` resolve their argument and reject a
@@ -68,7 +73,20 @@ export PATH="$SB/bin:$PATH"
 # shellcheck source=./agent-vm.sh
 source "$AGENT_VM_SH"
 
-# The machine running the tests has no /dev/kvm; that check is not under test.
+# The machine running the tests has no /dev/kvm and no QEMU; those checks are
+# not under test (lib/host.sh covers them, tests/18-windows.sh the branches).
 _agent_vm_check_linux_prereqs() { return 0; }
+_agent_vm_check_windows_prereqs() { return 0; }
+
+# 0 when this machine makes real symlinks. Windows runners lack the privilege,
+# so ln -s silently plants a copy instead, and every test asserting on links
+# (readlink, resolve-through, link-not-file) would test the copy. Those tests
+# skip on the verdict below, with the reason printed.
+if ln -s "$SELF_DIR/test.sh" "$SB/ln-probe" 2>/dev/null && [ -L "$SB/ln-probe" ]; then
+  AGENT_VM_HAS_SYMLINKS=1
+else
+  AGENT_VM_HAS_SYMLINKS=""
+fi
+rm -f "$SB/ln-probe"
 
 printf 'agent-vm test suite (sandbox: %s)\n' "$SB"

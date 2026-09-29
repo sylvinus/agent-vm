@@ -60,7 +60,14 @@ _agent_vm_wrap() {
 # bash and zsh count differently for non-ASCII text.
 _agent_vm_box() {
   local title="$1" size width rule n
-  size="$(stty size 2>/dev/null </dev/tty)"
+  # Probed first: asking stty outright prints the shell's own open error on
+  # stderr when there is no terminal (zsh names it), which a bare 2>/dev/null
+  # does not silence, since it is the redirection itself that fails.
+  if _agent_vm_have_tty; then
+    size="$(stty size 2>/dev/null </dev/tty)"
+  else
+    size=""
+  fi
   width="${size#* }"
   [[ "$width" =~ ^[0-9]+$ ]] || width=72
   [[ "$width" -gt 72 ]] && width=72

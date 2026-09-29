@@ -35,8 +35,8 @@ check "a valid resource value still passes" "$(agent-vm --disk 32 --cpus 4 versi
 # told the secret was stored when it was not is the worst outcome for this file.
 # Root ignores permission bits, so the condition cannot be staged as root —
 # which is exactly what the bash 3.2 container runs as.
-if [ "$(id -u)" -eq 0 ]; then
-  printf '  skip env-set-failure test (running as root: permission bits do not apply)\n'
+if [ "$(id -u)" -eq 0 ] || _agent_vm_on_windows; then
+  printf '  skip env-set-failure test (running as root, or on Windows where chmod bits are emulated)\n'
 else
   RO="$SB/readonly-home"
   mkdir -p "$RO/.agent-vm"

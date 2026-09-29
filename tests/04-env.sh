@@ -38,7 +38,13 @@ if avenv list | grep -q "O'Brien\|k3"; then fail "list must never print values";
 avenv unset ALBERT_API_KEY >/dev/null
 avenv has ALBERT_API_KEY && fail "unset removed the key" || pass "unset removes the key"
 check "unset keeps the others" "$(grep -c '^SOMEONE_ELSE=' "$ENVHOME/.agent-vm/env")" "1"
+# Permission bits are emulated on Windows: the engine still chmods, but
+# ls cannot show a mode the filesystem does not have.
+if _agent_vm_on_windows; then
+  printf '  skip file is mode 600 (permission bits are emulated on Windows)\n'
+else
 check "file is mode 600" "$(ls -l "$ENVHOME/.agent-vm/env" | cut -c2-10)" "rw-------"
+fi
 
 if avenv set "not-a-name" x >/dev/null 2>&1; then
   fail "an invalid variable name must be rejected"
@@ -88,7 +94,11 @@ else
 fi
 pe "$PENV/pa" set NAME "O'Brien" >/dev/null
 check "the shared quoting applies here too" "$(pe "$PENV/pa" get NAME)" "O'Brien"
+if _agent_vm_on_windows; then
+  printf '  skip file is mode 600 (permission bits are emulated on Windows)\n'
+else
 check "the file is mode 600" "$(ls -l "$PENV/pa/.agent-vm.env" | cut -c2-10)" "rw-------"
+fi
 if pe "$PENV/pa" list | grep -q "O'Brien"; then fail "list must never print values"; else pass "list never prints values"; fi
 
 # AGENT_VM_PROJECT_ENV, like AGENT_VM_PROJECT_RUNTIME: an integrator keeps its
@@ -180,3 +190,30 @@ if command -v git >/dev/null 2>&1; then
 else
   echo "  (git absent: gitignore warning not exercised)"
 fi
+
+# =============================================================================
+section "project-env: Git Bash drive-letter spellings"
+# =============================================================================
+# git spells the top C:/... while the shell spells the file /c/.... A fake git
+# answers all three invocations with canned replies, so this runs everywhere:
+# untracked, then unignored, so the warning must fire with the repo-relative
+# name and a suggestion line that names it too.
+mkdir -p "$SB/fakedrive"
+cat > "$SB/fakedrive/git" <<'STUB'
+#!/bin/sh
+case "$*" in
+  *rev-parse*) echo "C:/proj" ;;
+  *ls-files*) exit 1 ;;
+  *check-ignore*) exit 1 ;;
+esac
+STUB
+chmod +x "$SB/fakedrive/git"
+drive_err="$(PATH="$SB/fakedrive:$PATH" _agent_vm_warn_unignored "/c/proj/.agent-vm.env" 2>&1 >/dev/null)"
+case "$drive_err" in
+  *"Warning: .agent-vm.env is not ignored"*) pass "C:/ top over a /c/ file still warns, with the relative name" ;;
+  *) fail "drive-letter mismatch silenced the warning: $drive_err" ;;
+esac
+case "$drive_err" in
+  *"echo '/.agent-vm.env' >> C:/proj/.gitignore"*) pass "the suggested line names the relative file" ;;
+  *) fail "the suggested line is not applicable: $drive_err" ;;
+esac

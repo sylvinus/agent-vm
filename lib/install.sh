@@ -10,18 +10,14 @@ _agent_vm_bin_link() {
 }
 
 # The rc file where a shell function belongs: the interactive one.
-# Git Bash login shells read .bash_profile (like Terminal.app on macOS),
-# not .bashrc, so Windows is answered before $SHELL is consulted.
 _agent_vm_rc_file() {
-  if _agent_vm_on_windows; then
-    printf '%s\n' "$HOME/.bash_profile"
-    return 0
-  fi
   case "${SHELL##*/}" in
     zsh)  printf '%s\n' "$HOME/.zshrc" ;;
     bash)
-      case "$(uname -s)" in
-        Darwin) printf '%s\n' "$HOME/.bash_profile" ;;
+      case "$(uname -s 2>/dev/null)" in
+        # Git Bash login shells read .bash_profile (like Terminal.app),
+        # not .bashrc.
+        Darwin|MINGW*|MSYS*|CYGWIN*) printf '%s\n' "$HOME/.bash_profile" ;;
         *)      printf '%s\n' "$HOME/.bashrc" ;;
       esac ;;
     *)    printf '%s\n' "$HOME/.profile" ;;

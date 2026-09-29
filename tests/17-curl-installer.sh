@@ -52,6 +52,9 @@ winst() {
       AGENT_VM_STATE_DIR="$WH/state"
     sh "${WINSTALLER:-$INSTALLER}" "$@" ) 2>&1
 }
+# Without symlinks each install plants a copy, so a later install would trip
+# over it instead of running: clear it where a check needs a fresh install.
+fresh_link() { [[ -n "$AGENT_VM_HAS_SYMLINKS" ]] || rm -f "$WH/bin/agent-vm"; }
 WDIR="$WH/.local/share/agent-vm"
 
 make_release 1.0.0
@@ -60,22 +63,33 @@ out="$(winst)"; rc=$?
 check "release: installs" "$rc" "0"
 case "$out" in *"agent-vm claude"*) pass "release: base built, nothing asked" ;; *) fail "release: $out" ;; esac
 check "release: the latest tarball is in place" "$(cat "$WDIR/MARK" 2>/dev/null)" "1.0.0"
+if [[ -n "$AGENT_VM_HAS_SYMLINKS" ]]; then
 check "release: linked onto the PATH" "$(readlink "$WH/bin/agent-vm")" "$WDIR/agent-vm.sh"
+else
+  printf '  skip release: readlink (ln -s plants copies on this machine)\n'
+fi
 check "release: sums from latest/, the tarball from its tag" "$(tr '\n' ' ' < "$WF/log")" \
   "https://github.com/sylvinus/agent-vm/releases/latest/download/SHA256SUMS https://github.com/sylvinus/agent-vm/releases/download/v1.0.0/agent-vm-1.0.0.tar.gz "
 
 make_release 1.1.0
+fresh_link
 out="$(winst)"; rc=$?
 check "rerun: replaced by the new release" "$rc:$(cat "$WDIR/MARK")" "0:1.1.0"
 check "rerun: no staging or old copy left" "$(ls -A "$WH/.local/share")" "agent-vm"
+if [[ -n "$AGENT_VM_HAS_SYMLINKS" ]]; then
 case "$out" in *"already linked"*) pass "rerun: the link is kept" ;; *) fail "rerun: $out" ;; esac
+else
+  printf '  skip rerun: the link is kept (ln -s plants copies on this machine)\n'
+fi
 
 make_release 1.2.0 corrupt
+fresh_link
 out="$(winst)"; rc=$?
 check "bad checksum: refused, the install is untouched" "$rc:$(cat "$WDIR/MARK")" "1:1.1.0"
 case "$out" in *"checksum mismatch"*) pass "bad checksum: said" ;; *) fail "bad checksum: $out" ;; esac
 
 : > "$WF/log"
+fresh_link
 out="$(winst --version v1.0.0)"; rc=$?
 check "--version: that release" "$rc:$(cat "$WDIR/MARK")" "0:1.0.0"
 check "--version: its sums, from its tag" "$(head -n 1 "$WF/log")" \
@@ -93,7 +107,12 @@ rm -rf "$WDIR" "$WH/bin"
 : > "$WF/log"
 out="$(winst --git)"; rc=$?
 check "--git: clones" "$rc:$(head -n 1 "$WF/log")" "0:git clone https://github.com/sylvinus/agent-vm.git $WDIR"
+if [[ -n "$AGENT_VM_HAS_SYMLINKS" ]]; then
 check "--git: linked onto the PATH" "$(readlink "$WH/bin/agent-vm")" "$WDIR/agent-vm.sh"
+else
+  printf '  skip --git: readlink (ln -s plants copies on this machine)\n'
+fi
+fresh_link
 out="$(winst --git)"; rc=$?
 check "--git again: pulls" "$rc:$(tail -n 1 "$WF/log")" "0:git -C $WDIR pull --ff-only"
 out="$(winst)"; rc=$?

@@ -41,5 +41,9 @@ case "$win_out" in
   *winget*) pass "the failure names the winget install" ;;
   *) fail "the failure does not say how to install QEMU: $win_out" ;;
 esac
+# The mapping stays SHELL-first: bash on Windows reads .bash_profile (Git
+# Bash login shells, like Terminal.app), anything else is unchanged.
 check "Git Bash login shells read .bash_profile" \
-  "$(PATH="$SB/fakewin:$PATH" _agent_vm_rc_file)" "$HOME/.bash_profile"
+  "$(SHELL=/bin/bash PATH="$SB/fakewin:$PATH" _agent_vm_rc_file)" "$HOME/.bash_profile"
+check "the SHELL contract holds on Windows too" \
+  "$(SHELL=/bin/zsh PATH="$SB/fakewin:$PATH" _agent_vm_rc_file)" "$HOME/.zshrc"

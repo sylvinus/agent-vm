@@ -20,9 +20,15 @@ section "VM names need a hash, and get one without shasum"
 # =============================================================================
 # Without a hash, every directory named `proj` shared the VM `agent-vm-proj-`.
 HB="$SB/hashbin"; mkdir -p "$HB/none" "$HB/sha256sum-only"
+# Wrapper scripts, not symlinks: where the machine makes no real links
+# (Windows runners plant copies), a copied binary cannot find its libraries
+# under the restricted PATH below, while a wrapper execs the real tool by
+# absolute path. /bin/sh exists everywhere these tests run.
 for t in cut basename tr sed; do
-  ln -sf "$(command -v "$t")" "$HB/none/$t"
-  ln -sf "$(command -v "$t")" "$HB/sha256sum-only/$t"
+  tool="$(command -v "$t")"
+  printf '#!/bin/sh\nexec "%s" "$@"\n' "$tool" > "$HB/none/$t"
+  printf '#!/bin/sh\nexec "%s" "$@"\n' "$tool" > "$HB/sha256sum-only/$t"
+  chmod +x "$HB/none/$t" "$HB/sha256sum-only/$t"
 done
 out="$(PATH="$HB/none"; _agent_vm_name /x/proj 2>&1)"
 rc=$?
@@ -31,7 +37,8 @@ case "$rc:$out" in
   *) fail "no hash tool: got $rc '$out'" ;;
 esac
 if command -v sha256sum >/dev/null 2>&1; then
-  ln -sf "$(command -v sha256sum)" "$HB/sha256sum-only/sha256sum"
+  printf '#!/bin/sh\nexec "%s" "$@"\n' "$(command -v sha256sum)" > "$HB/sha256sum-only/sha256sum"
+  chmod +x "$HB/sha256sum-only/sha256sum"
   check "sha256sum gives the same name as shasum" \
     "$(PATH="$HB/sha256sum-only"; _agent_vm_name /x/proj)" "$(_agent_vm_name /x/proj)"
 else

@@ -22,7 +22,12 @@ STUB
 chmod +x "$SB/stock-err/limactl"
 check "stock Lima failing for another reason: no protection" "$(PATH="$SB/stock-err:$PATH" probe)" "no"
 mkdir -p "$SB/nolimactl"
-for t in mktemp rm; do ln -sf "$(command -v "$t")" "$SB/nolimactl/$t"; done
+# Wrappers, not symlinks (see 10-names-and-paths.sh): the probe must run its
+# mktemp while limactl stays missing, on machines without link privilege too.
+for t in mktemp rm; do
+  printf '#!/bin/sh\nexec "%s" "$@"\n' "$(command -v "$t")" > "$SB/nolimactl/$t"
+  chmod +x "$SB/nolimactl/$t"
+done
 check "no limactl: no protection" "$(PATH="$SB/nolimactl" probe)" "no"
 
 # A new VM gets reverse-sshfs and readonlyNames on every share.

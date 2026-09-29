@@ -118,11 +118,23 @@ _agent_vm_project_env_file() {
 # file changes nothing, git keeps staging its edits. Saying "add this line"
 # there would be wrong advice.
 _agent_vm_warn_unignored() {
-  local file="$1" top rel rc=0
+  local file="$1" top rel rc=0 drive rest alt
   command -v git >/dev/null 2>&1 || return 0
   top="$(git -C "$(dirname "$file")" rev-parse --show-toplevel 2>/dev/null)" || return 0
   [ -n "$top" ] || return 0
   rel="${file#"$top"/}"
+  if [[ "$rel" == "$file" ]]; then
+    # Git Bash spells the drive C:/... while the shell spells it /c/.... git
+    # itself takes either form, but the string comparison above needs one.
+    drive="${top%%:*}"; rest="${top#*:}"
+    if [[ "$drive" =~ ^[A-Za-z]$ && "$rest" == /* ]]; then
+      alt="/$(printf '%s' "$drive" | tr '[:upper:]' '[:lower:]')$rest"
+      rel="${file#"$alt"/}"
+    fi
+  fi
+  # Still no common root (a worktree elsewhere, an odd spelling): not
+  # something to lecture about.
+  [[ "$rel" == "$file" ]] && return 0
 
   if git -C "$top" ls-files --error-unmatch "$file" >/dev/null 2>&1; then
     echo "Warning: $rel is tracked by git — its contents are in the repository." >&2
