@@ -87,9 +87,9 @@ export const en = {
 
   install: {
     eyebrow: 'Install',
-    title: 'Clone, build a template, run an agent.',
+    title: 'Install, build a template, run an agent.',
     lede:
-      'agent-vm is one shell script, with no daemon. To remove it: `agent-vm destroy-all`, `agent-vm uninstall`, then delete the clone and `~/.agent-vm`.',
+      'agent-vm is one shell script, with no daemon. To remove it: `agent-vm destroy-all`, `agent-vm uninstall` (or `brew uninstall agent-vm`), then delete its directory and `~/.agent-vm`.',
     prerequisitesTitle: 'Prerequisites',
     prerequisites: [
       { name: 'macOS or Linux', note: 'Windows is not supported.', href: '' },
@@ -104,12 +104,30 @@ export const en = {
         href: '',
       },
     ],
-    steps: [
+    methodsTitle: 'Install the command',
+    methodsBody: 'Pick one. Each puts `agent-vm` on your `PATH` without root.',
+    methodsLabel: 'Install method',
+    methods: [
       {
-        title: 'Clone and install',
-        body: '`install` symlinks `agent-vm` onto your `PATH`, so `git pull` in the clone is the update. It also offers to source it from your shell rc.',
-        code: 'git clone https://github.com/sylvinus/agent-vm.git\ncd agent-vm\n./agent-vm.sh install',
+        id: 'curl',
+        label: 'curl',
+        code: 'curl -fsSL https://www.agent-vm.org/install.sh | sh',
+        note: 'Downloads the latest release from GitHub, checks it against the release’s `SHA256SUMS`, unpacks it in `~/.local/share/agent-vm` and links `agent-vm` into `~/.local/bin`. It also offers to source it from your shell rc, then to run step 2 right away. Run it again to update. `sh -s -- --version X.Y.Z` installs a given release, `sh -s -- --git` a clone of `main`.',
       },
+      {
+        id: 'brew',
+        label: 'Homebrew',
+        code: 'brew install sylvinus/tap/agent-vm',
+        note: 'macOS, or Linux with Homebrew. `brew upgrade agent-vm` updates it.',
+      },
+      {
+        id: 'git',
+        label: 'git',
+        code: 'git clone https://github.com/sylvinus/agent-vm.git\ncd agent-vm && ./agent-vm.sh install',
+        note: '`install` symlinks `agent-vm` onto your `PATH`, so `git pull` in the clone is the update. It also offers to source it from your shell rc, then to run step 2 right away.',
+      },
+    ],
+    steps: [
       {
         title: 'Build the base template',
         body: 'Run once. It first checks that Lima can keep `.git` read-only for the VMs, and offers to install a Lima build that can if not. It also asks to set `safe.bareRepository` in your git config (see [Protecting .git](#git)). Then it creates a Debian 13 VM, installs the toolchain and the agents, and keeps it, stopped, as a reusable template. The wizard offers a default set; press Enter to accept it.',
@@ -137,7 +155,7 @@ export const en = {
     ],
     updateTitle: 'Updating',
     updateBody:
-      'The command is a symlink into the clone, so `git pull` updates it. There is nothing to reinstall. `agent-vm uninstall` removes the link.',
+      'Installed with curl: run the installer again. With Homebrew: `brew upgrade agent-vm`. From a clone: `git pull`, nothing to reinstall. `agent-vm uninstall` removes the link that curl and git installs make.',
   },
 
 
@@ -261,7 +279,7 @@ export const en = {
       {
         title: 'Set up and configure',
         rows: [
-          ['install', 'Put `agent-vm` on your `PATH`, from the clone: `./agent-vm.sh install`.'],
+          ['install', 'Put `agent-vm` on your `PATH`, from the clone: `./agent-vm.sh install`. The curl installer runs it for you.'],
           ['uninstall', 'Remove that link. VMs and `~/.agent-vm` stay.'],
           ['setup', 'Create the base VM template. Run once.'],
           ['env <sub>', '`set`, `get`, `has`, `unset`, `list` on the secrets shared by every VM.'],

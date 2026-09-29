@@ -1,0 +1,171 @@
+---
+import CodeBlock from './CodeBlock.astro';
+import { inline } from '../lib/inline';
+import { t, type Locale } from '../i18n';
+
+interface Props {
+  locale: Locale;
+  /** Keeps ids unique: the hero and the install section both have one. */
+  id: string;
+  /** Command appended to a method's code, by method id. */
+  then?: Record<string, string>;
+  /** Show each method's note under its code. */
+  notes?: boolean;
+}
+
+const { locale, id, then = {}, notes = false } = Astro.props;
+const d = t(locale);
+const methods = d.install.methods;
+---
+
+<div class="tabs" data-tabs>
+  <div class="tabs__list" role="tablist" aria-label={d.install.methodsLabel}>
+    {
+      methods.map((method, index) => (
+        <button
+          type="button"
+          class="tabs__tab"
+          role="tab"
+          id={`${id}-tab-${method.id}`}
+          aria-controls={`${id}-panel-${method.id}`}
+          aria-selected={index === 0 ? 'true' : 'false'}
+          tabindex={index === 0 ? 0 : -1}
+          data-tab={method.id}
+        >
+          {method.label}
+        </button>
+      ))
+    }
+  </div>
+  {
+    methods.map((method, index) => (
+      <div
+        class="tabs__panel"
+        role="tabpanel"
+        id={`${id}-panel-${method.id}`}
+        aria-labelledby={`${id}-tab-${method.id}`}
+        data-panel={method.id}
+        hidden={index !== 0}
+      >
+        <CodeBlock locale={locale} prompt code={then[method.id] ? `${method.code}\n${then[method.id]}` : method.code} />
+        {notes && <p class="prose tabs__note" set:html={inline(method.note)} />}
+      </div>
+    ))
+  }
+</div>
+
+<style>
+  .tabs {
+    display: grid;
+    gap: 0.6rem;
+    min-width: 0;
+  }
+
+  .tabs__list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+  }
+
+  .tabs__tab {
+    padding: 0.3rem 0.75rem;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: transparent;
+    color: var(--ink-3);
+    font-family: var(--font-mono);
+    font-size: 0.74rem;
+    letter-spacing: 0.02em;
+    cursor: pointer;
+    transition: color 0.14s ease, border-color 0.14s ease, background 0.14s ease;
+  }
+
+  .tabs__tab:hover {
+    color: var(--ink);
+    border-color: var(--line-strong);
+  }
+
+  .tabs__tab[aria-selected='true'] {
+    color: var(--accent);
+    border-color: var(--accent-line);
+    background: var(--accent-wash);
+  }
+
+  .tabs__tab:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  .tabs__panel {
+    display: grid;
+    gap: 0.75rem;
+    min-width: 0;
+  }
+
+  .tabs__panel[hidden] {
+    display: none;
+  }
+
+  .tabs__note {
+    font-size: 0.9rem;
+    max-width: 44rem;
+  }
+</style>
+
+<script>
+  // Every tab set on the page shows the same method, and the choice is kept
+  // for the next visit.
+  const KEY = 'agent-vm:install-method';
+
+  function select(method: string, focus?: HTMLElement) {
+    const tabs = document.querySelectorAll<HTMLElement>('[data-tabs] [data-tab]');
+    if (![...tabs].some((tab) => tab.dataset.tab === method)) return;
+    for (const tab of tabs) {
+      const on = tab.dataset.tab === method;
+      tab.setAttribute('aria-selected', on ? 'true' : 'false');
+      tab.tabIndex = on ? 0 : -1;
+    }
+    for (const panel of document.querySelectorAll<HTMLElement>('[data-tabs] [data-panel]')) {
+      panel.hidden = panel.dataset.panel !== method;
+    }
+    focus?.focus();
+  }
+
+  function remember(method: string) {
+    try {
+      localStorage.setItem(KEY, method);
+    } catch {}
+  }
+
+  try {
+    const saved = localStorage.getItem(KEY);
+    if (saved) select(saved);
+  } catch {}
+
+  document.addEventListener('click', (event) => {
+    const tab = (event.target as Element | null)?.closest<HTMLElement>('[data-tabs] [data-tab]');
+    if (!tab?.dataset.tab) return;
+    select(tab.dataset.tab);
+    remember(tab.dataset.tab);
+  });
+
+  // Arrow keys, Home and End move between tabs and select as they go.
+  document.addEventListener('keydown', (event) => {
+    const tab = (event.target as Element | null)?.closest<HTMLElement>('[data-tabs] [data-tab]');
+    const list = tab?.parentElement;
+    if (!tab || !list) return;
+    const tabs = [...list.querySelectorAll<HTMLElement>('[data-tab]')];
+    const at = tabs.indexOf(tab);
+    const moves: Record<string, HTMLElement | undefined> = {
+      ArrowRight: tabs[(at + 1) % tabs.length],
+      ArrowLeft: tabs[(at - 1 + tabs.length) % tabs.length],
+      Home: tabs[0],
+      End: tabs[tabs.length - 1],
+    };
+    const next = moves[event.key];
+    if (!next?.dataset.tab) return;
+    event.preventDefault();
+    select(next.dataset.tab, next);
+    remember(next.dataset.tab);
+  });
+</script>

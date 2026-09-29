@@ -20,6 +20,32 @@ Feedback welcome!
 ## Install
 
 ```bash
+curl -fsSL https://www.agent-vm.org/install.sh | sh
+```
+
+The [installer](www/public/install.sh) downloads the latest GitHub release,
+checks it against the release's `SHA256SUMS`, unpacks it in
+`~/.local/share/agent-vm` (`--dir` overrides) and runs `agent-vm.sh install`,
+described below. It needs no root. Run it again to update. Options go after
+`sh -s --`:
+
+```bash
+curl -fsSL https://www.agent-vm.org/install.sh | sh -s -- --version 0.2.0   # that release
+curl -fsSL https://www.agent-vm.org/install.sh | sh -s -- --git             # a clone of main
+```
+
+To read it before it runs: `curl -fsSLO https://www.agent-vm.org/install.sh`,
+then `sh install.sh`.
+
+With Homebrew, on macOS or Linux (`brew upgrade agent-vm` updates it):
+
+```bash
+brew install sylvinus/tap/agent-vm
+```
+
+From a clone:
+
+```bash
 git clone https://github.com/sylvinus/agent-vm.git
 cd agent-vm
 ./agent-vm.sh install
@@ -34,6 +60,9 @@ for `./agent-vm.sh install`, and will go in a later release.
 It also offers to define `agent-vm` as a shell function. Prefer the symlink: a
 shell function is not inherited by child processes, so anything that calls
 agent-vm from a script needs the `PATH` entry anyway.
+
+When the base VM is not built yet and there is a terminal to ask on, it then
+offers to run [`agent-vm setup`](#one-time-setup) right away.
 
 ## Usage
 
@@ -581,6 +610,7 @@ host and a few minutes.
 | `CHANGELOG.md` | What changed in each release |
 | `release.sh` | Tags and publishes a release after checking it (`./release.sh X.Y.Z --dry-run` first) |
 | `www/` | The www.agent-vm.org website |
+| `www/public/install.sh` | The `curl \| sh` installer, served at www.agent-vm.org/install.sh |
 
 ## What's in the VM
 

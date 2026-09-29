@@ -66,29 +66,51 @@ echo '$nrconf{restart} = '"'"'a'"'"';' | sudo tee /etc/needrestart/conf.d/no-pro
 # language off doesn't strip the libs the user may still want to build with).
 # sshfs: the project VMs use Lima's reverse-sshfs when it can keep .git
 # read-only. Lima would install it on each clone's first boot otherwise.
+#
+# Every install passes --no-install-recommends. Recommends pulled in hundreds
+# of MB nobody uses here (Chromium alone brought printer config, Samba,
+# avahi-daemon, upower, Vulkan drivers), some of them running daemons. The
+# recommended packages that are used are listed by name instead.
 echo "Installing base packages..."
 apt_get update
-apt_get install -y \
+apt_get install -y --no-install-recommends \
   git curl jq zsh \
-  wget build-essential \
+  wget build-essential pkgconf patch \
   ripgrep fd-find htop \
   unzip zip \
   ca-certificates sshfs \
   libssl-dev libreadline-dev zlib1g-dev libyaml-dev libffi-dev
 
+# sshfs 3.7.6 (and Debian's 3.7.3-1.2~deb13u1) refuses symlinks whose target
+# is absolute or contains "..", with EPERM: contain_symlinks, on by default
+# (CVE-2026-47187). That breaks every node_modules/.bin link in a share. It
+# protects a client from a rogue SFTP server; here the server is the user's
+# own host, and a link followed in the VM only reaches the VM's files. Lima
+# runs `sshfs` from PATH and takes no extra option, so the wrapper adds it.
+sudo tee /usr/local/bin/sshfs > /dev/null <<'EOF'
+#!/bin/sh
+# Installed by agent-vm: see agent-vm.setup.sh.
+if /usr/bin/sshfs -h 2>&1 | grep -q no_contain_symlinks; then
+  exec /usr/bin/sshfs "$@" -o no_contain_symlinks
+fi
+exec /usr/bin/sshfs "$@"
+EOF
+sudo chmod 755 /usr/local/bin/sshfs
+
 if [[ "$INSTALL_PYTHON" == "1" ]]; then
   echo "Installing Python 3..."
-  apt_get install -y python3 python3-pip python3-venv
+  # python3-dev: headers for pip builds of C extensions.
+  apt_get install -y --no-install-recommends python3 python3-pip python3-venv python3-dev
 fi
 
 if [[ "$INSTALL_RUBY" == "1" ]]; then
   echo "Installing Ruby..."
-  apt_get install -y ruby-full
+  apt_get install -y --no-install-recommends ruby-full
 fi
 
 if [[ "$INSTALL_GOLANG" == "1" ]]; then
   echo "Installing Go..."
-  apt_get install -y golang-go
+  apt_get install -y --no-install-recommends golang-go
 fi
 
 if [[ "$INSTALL_RUST" == "1" ]]; then
@@ -131,21 +153,37 @@ if [[ "$INSTALL_DOCKER" == "1" ]]; then
   sudo chmod a+r /etc/apt/keyrings/docker.asc
   echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
   apt_get update
-  apt_get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+  # buildx and pigz are Recommends: `docker build` needs buildx, pigz speeds
+  # up layer decompression. docker-ce-rootless-extras is left out: the user is
+  # in the docker group of the rootful daemon.
+  apt_get install -y --no-install-recommends docker-ce docker-ce-cli containerd.io \
+    docker-compose-plugin docker-buildx-plugin pigz
   sudo usermod -aG docker "$(whoami)"
 fi
 
 if [[ "$INSTALL_NODE" == "1" ]]; then
   # Install Node.js 24 LTS (needed for MCP servers and Codex CLI)
+  # The NodeSource repo is set up by hand, as their setup_24.x script does,
+  # rather than piping that script to a root shell: it also installs gnupg
+  # just to dearmor the key, while apt reads an armored .asc key as is. The pin
+  # keeps apt on NodeSource's nodejs over Debian's older one.
   echo "Installing Node.js 24..."
-  curl -fsSL https://deb.nodesource.com/setup_24.x | sudo -E bash -
-  apt_get install -y nodejs
+  sudo install -m 0755 -d /etc/apt/keyrings
+  sudo curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key -o /etc/apt/keyrings/nodesource.asc
+  sudo chmod a+r /etc/apt/keyrings/nodesource.asc
+  echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/nodesource.asc] https://deb.nodesource.com/node_24.x nodistro main" | sudo tee /etc/apt/sources.list.d/nodesource.list > /dev/null
+  printf 'Package: nodejs\nPin: origin deb.nodesource.com\nPin-Priority: 600\n' | sudo tee /etc/apt/preferences.d/nodejs > /dev/null
+  apt_get update
+  apt_get install -y --no-install-recommends nodejs
 fi
 
 if [[ "$INSTALL_CHROMIUM" == "1" ]]; then
   # Install Chromium and dependencies for headless browsing
   echo "Installing Chromium..."
-  apt_get install -y chromium fonts-liberation xvfb
+  # xauth: xvfb-run needs it, and it is only a Recommends of xvfb.
+  # fonts-dejavu-core: with Liberation alone, fontconfig resolves the generic
+  # sans-serif and serif to Liberation Mono.
+  apt_get install -y --no-install-recommends chromium fonts-liberation fonts-dejavu-core xvfb xauth
   sudo ln -sf /usr/bin/chromium /usr/bin/google-chrome
   sudo ln -sf /usr/bin/chromium /usr/bin/google-chrome-stable
   sudo mkdir -p /opt/google/chrome
@@ -160,7 +198,7 @@ if [[ "$INSTALL_GH" == "1" ]]; then
   sudo chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg
   echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
   apt_get update
-  apt_get install -y gh
+  apt_get install -y --no-install-recommends gh
 fi
 
 if [[ "$INSTALL_CLAUDE" == "1" ]]; then

@@ -23,6 +23,9 @@ jobs:
             echo "bash -n $f"
             bash -n "$f"
           done
+          # Served as `curl | sh`: plain sh, not bash.
+          echo "sh -n www/public/install.sh"
+          sh -n www/public/install.sh
 
       - name: Test suite
         run: ./test.sh

@@ -89,9 +89,9 @@ export const fr: Dictionary = {
 
   install: {
     eyebrow: 'Installation',
-    title: 'Cloner, construire une image de base, lancer un agent.',
+    title: 'Installer, construire une image de base, lancer un agent.',
     lede:
-      'agent-vm, c\'est un script shell, sans démon. Pour tout retirer : `agent-vm destroy-all`, `agent-vm uninstall`, puis supprime le clone et `~/.agent-vm`.',
+      'agent-vm, c\'est un script shell, sans démon. Pour tout retirer : `agent-vm destroy-all`, `agent-vm uninstall` (ou `brew uninstall agent-vm`), puis supprime son dossier et `~/.agent-vm`.',
     prerequisitesTitle: 'Prérequis',
     prerequisites: [
       { name: 'macOS ou Linux', note: 'Windows n\'est pas pris en charge.', href: '' },
@@ -106,12 +106,30 @@ export const fr: Dictionary = {
         href: '',
       },
     ],
-    steps: [
+    methodsTitle: 'Installer la commande',
+    methodsBody: 'Au choix. Chacune met `agent-vm` dans ton `PATH`, sans root.',
+    methodsLabel: 'Méthode d\'installation',
+    methods: [
       {
-        title: 'Cloner et installer',
-        body: '`install` place un lien symbolique `agent-vm` dans ton `PATH` : un `git pull` dans le clone suffit ensuite pour mettre à jour. Il propose aussi de le sourcer depuis le fichier rc de ton shell.',
-        code: 'git clone https://github.com/sylvinus/agent-vm.git\ncd agent-vm\n./agent-vm.sh install',
+        id: 'curl',
+        label: 'curl',
+        code: 'curl -fsSL https://www.agent-vm.org/install.sh | sh',
+        note: 'Télécharge la dernière version publiée sur GitHub, la vérifie avec le `SHA256SUMS` de la version, la décompresse dans `~/.local/share/agent-vm` et place un lien `agent-vm` dans `~/.local/bin`. Propose aussi de le sourcer depuis le fichier rc de ton shell, puis de lancer l\'étape 2 dans la foulée. Relance-le pour mettre à jour. `sh -s -- --version X.Y.Z` installe une version donnée, `sh -s -- --git` un clone de `main`.',
       },
+      {
+        id: 'brew',
+        label: 'Homebrew',
+        code: 'brew install sylvinus/tap/agent-vm',
+        note: 'macOS, ou Linux avec Homebrew. `brew upgrade agent-vm` le met à jour.',
+      },
+      {
+        id: 'git',
+        label: 'git',
+        code: 'git clone https://github.com/sylvinus/agent-vm.git\ncd agent-vm && ./agent-vm.sh install',
+        note: '`install` place un lien symbolique `agent-vm` dans ton `PATH` : un `git pull` dans le clone suffit ensuite pour mettre à jour. Il propose aussi de le sourcer depuis le fichier rc de ton shell, puis de lancer l\'étape 2 dans la foulée.',
+      },
+    ],
+    steps: [
       {
         title: 'Construire l\'image de base',
         body: 'À faire une seule fois. Vérifie d\'abord que Lima peut garder les `.git` en lecture seule pour les VM, et sinon propose d\'installer une version de Lima qui le peut. Demande aussi à régler `safe.bareRepository` dans ta config git (voir [Protéger .git](#git)). Crée ensuite une VM Debian 13, y installe la chaîne d\'outils et les agents, puis l\'arrête et la garde comme image de base. L\'assistant propose une sélection par défaut : il suffit d\'appuyer sur Entrée pour l\'accepter.',
@@ -139,7 +157,7 @@ export const fr: Dictionary = {
     ],
     updateTitle: 'Mise à jour',
     updateBody:
-      'La commande est un lien symbolique vers le clone : un `git pull` suffit, rien à réinstaller. `agent-vm uninstall` retire le lien.',
+      'Installé avec curl : relance l\'installeur. Avec Homebrew : `brew upgrade agent-vm`. Depuis un clone : `git pull`, rien à réinstaller. `agent-vm uninstall` retire le lien que posent les installations curl et git.',
   },
 
 
@@ -262,7 +280,7 @@ export const fr: Dictionary = {
       {
         title: 'Installer et configurer',
         rows: [
-          ['install', 'Met `agent-vm` dans ton `PATH`, depuis le clone : `./agent-vm.sh install`.'],
+          ['install', 'Met `agent-vm` dans ton `PATH`, depuis le clone : `./agent-vm.sh install`. L\'installeur curl le lance pour toi.'],
           ['uninstall', 'Retire ce lien. Les VM et `~/.agent-vm` restent.'],
           ['setup', 'Crée l\'image de base. Une seule fois.'],
           ['env <sub>', '`set`, `get`, `has`, `unset`, `list` sur les secrets partagés par toutes les VM.'],

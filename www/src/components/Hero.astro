@@ -1,5 +1,5 @@
 ---
-import CodeBlock from './CodeBlock.astro';
+import InstallTabs from './InstallTabs.astro';
 import { t, type Locale } from '../i18n';
 
 interface Props {
@@ -38,10 +38,11 @@ const session: Array<{ kind: 'cmd' | 'out' | 'ok' | 'dim' | 'gap'; text: string 
 
       <div class="hero__install">
         <p class="hero__install-label">{d.hero.installLabel}</p>
-        <CodeBlock
+        {/* The curl installer offers to run setup itself. */}
+        <InstallTabs
           locale={locale}
-          prompt
-          code={'git clone https://github.com/sylvinus/agent-vm.git\ncd agent-vm && ./agent-vm.sh install\nagent-vm setup'}
+          id="hero-install"
+          then={{ brew: 'agent-vm setup', git: 'agent-vm setup' }}
         />
       </div>
 

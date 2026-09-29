@@ -450,13 +450,15 @@ check "no symlink (the historical sourcing)" "$(script_dir_of "$AGENT_VM_SH")"  
 section "install / uninstall"
 # =============================================================================
 # A throwaway HOME and bin directory. TTY=1 stands for a terminal to ask on,
-# ANSWER for the reply (1 yes, 0 no).
+# ANSWER for the reply (1 yes, 0 no), BASE=1 for a base VM already built.
 IH="$SB/ihome"; IBIN="$SB/ibin"
 mkdir -p "$IH"
 inst() {
   ( export HOME="$IH" AGENT_VM_BIN_DIR="$IBIN" SHELL=/bin/zsh PATH="$IBIN:$PATH"
     _agent_vm_have_tty() { [ -n "${TTY:-}" ]; }
     _agent_vm_ask_yn() { echo "${ANSWER:-1}"; }
+    _agent_vm_base_exists() { [ -n "${BASE:-}" ]; }
+    _agent_vm_setup() { echo "SETUP RAN $#"; return "${SETUP_RC:-0}"; }
     agent-vm "$@" ) 2>&1
 }
 out="$(inst install)"
@@ -473,6 +475,16 @@ rm -f "$IH/.zshrc"
 TTY=1 ANSWER=0 inst install >/dev/null
 [ -e "$IH/.zshrc" ] && fail "no: the rc was written" || pass "no: the rc is left alone"
 check "install takes no argument (exit 2)" "$(inst install --force >/dev/null; echo $?)" "2"
+
+# Then setup, when there is no base yet and a terminal to ask on.
+case "$(TTY=1 inst install)" in *"SETUP RAN 0"*) pass "no base, yes: setup runs" ;; *) fail "no base, yes: setup did not run" ;; esac
+check "no base, setup fails: install says so" "$(TTY=1 SETUP_RC=3 inst install >/dev/null; echo $?)" "3"
+out="$(TTY=1 ANSWER=0 inst install)"
+case "$out" in *"SETUP RAN"*) fail "no base, no: setup ran" ;; *"agent-vm setup "*) pass "no base, no: setup is named, not run" ;; *) fail "no base, no: $out" ;; esac
+out="$(inst install)"
+case "$out" in *"SETUP RAN"*) fail "no terminal: setup ran" ;; *"agent-vm setup "*) pass "no terminal: setup is named, not run" ;; *) fail "no terminal: $out" ;; esac
+out="$(TTY=1 BASE=1 inst install)"
+case "$out" in *"SETUP RAN"*|*"agent-vm setup "*) fail "base built: setup offered again" ;; *"agent-vm claude"*) pass "base built: points at an agent instead" ;; *) fail "base built: $out" ;; esac
 
 # Someone else's file or link at that path is never replaced.
 rm -f "$IBIN/agent-vm"; echo mine > "$IBIN/agent-vm"
@@ -782,9 +794,14 @@ agent-vm version --min 0.10.0 >/dev/null 2>&1
 check "0.10.0 is a higher floor than 0.2.0" "$?" "1"
 too_old="$(agent-vm version --min 99.0.0 2>&1 >/dev/null)"
 case "$too_old" in
-  *"older than the required 99.0.0"*"git pull"*) pass "an unmet floor says what to do" ;;
+  *"older than the required 99.0.0"*"Update it:  "*) pass "an unmet floor says what to do" ;;
   *) fail "unhelpful message for an unmet floor: $too_old" ;;
 esac
+mkdir -p "$SB/upd/clone/.git" "$SB/upd/Cellar/agent-vm/1.0.0/libexec" "$SB/upd/release"
+update_of() { ( AGENT_VM_SCRIPT_DIR="$1"; _agent_vm_update_command ); }
+check "update: a clone pulls"        "$(update_of "$SB/upd/clone")" "git -C \"$SB/upd/clone\" pull"
+check "update: a keg upgrades"       "$(update_of "$SB/upd/Cellar/agent-vm/1.0.0/libexec")" "brew upgrade agent-vm"
+check "update: a release reinstalls" "$(update_of "$SB/upd/release")" "curl -fsSL https://www.agent-vm.org/install.sh | sh"
 
 # A malformed call must be distinguishable from "too old": a typo in the
 # caller's own code should not send a user chasing an upgrade.
@@ -901,6 +918,32 @@ if grep -q 'sudo env DEBIAN_FRONTEND=noninteractive apt-get' "$SETUP_SH"; then
 else
   fail "apt_get no longer passes DEBIAN_FRONTEND through sudo"
 fi
+# Recommends pull in Samba, avahi-daemon, printer config... via Chromium.
+if grep -E '^[^#]*apt_get install' "$SETUP_SH" | grep -qv -- '--no-install-recommends'; then
+  fail "an install pulls in Recommends: $(grep -nE '^[^#]*apt_get install' "$SETUP_SH" | grep -v -- '--no-install-recommends' | head -1)"
+else
+  pass "every apt install skips Recommends"
+fi
+if grep -qE '^[^#]*\| *sudo( -E)? bash' "$SETUP_SH"; then
+  fail "a remote script is piped to a root shell: $(grep -nE '^[^#]*\| *sudo( -E)? bash' "$SETUP_SH" | head -1)"
+else
+  pass "no remote script runs as root"
+fi
+
+# The sshfs wrapper, run against a stub that stands for /usr/bin/sshfs:
+# no_contain_symlinks is added only when that sshfs knows it (#22).
+sed -n '/^sudo tee \/usr\/local\/bin\/sshfs/,/^EOF$/p' "$SETUP_SH" | sed '1d;$d' \
+  | sed "s|/usr/bin/sshfs|$SB/sshfs-real|g" > "$SB/sshfs-wrapper"
+sshfs_stub() {  # <help text>
+  printf '#!/bin/sh\n[ "$1" = -h ] && { echo "%s"; exit 1; }\necho "$*"\n' "$1" > "$SB/sshfs-real"
+  chmod +x "$SB/sshfs-real"
+}
+sshfs_stub '    -o no_contain_symlinks allow all symlink targets'
+check "sshfs wrapper: turns contain_symlinks off where it exists" \
+  "$(sh "$SB/sshfs-wrapper" ':/p' /p -o slave -o allow_other)" ":/p /p -o slave -o allow_other -o no_contain_symlinks"
+sshfs_stub '    -o follow_symlinks'
+check "sshfs wrapper: an older sshfs gets the arguments unchanged" \
+  "$(sh "$SB/sshfs-wrapper" ':/p' /p -o slave)" ":/p /p -o slave"
 
 # =============================================================================
 section "MCP config writer"
@@ -1878,6 +1921,113 @@ else
   printf '  skip real git (absent or older than 2.38)\n'
 fi
 rm -f "$PROTECTS"
+
+# =============================================================================
+section "www/public/install.sh (curl | sh)"
+# =============================================================================
+# Stub curl and git serve releases from $WF, one directory per tag, and log
+# what was asked for. A release is agent-vm.sh plus a MARK file naming it.
+INSTALLER="$SELF_DIR/www/public/install.sh"
+WF="$SB/wfix"; WBIN="$SB/wbin"; WH="$SB/whome"
+mkdir -p "$WBIN" "$WH"
+cat > "$WBIN/curl" <<'STUB'
+#!/bin/sh
+out=""; url=""
+while [ $# -gt 0 ]; do
+  case "$1" in -o) out="$2"; shift ;; https://*) url="$1" ;; esac
+  shift
+done
+echo "$url" >> "$WF/log"
+case "$url" in
+  */releases/latest/download/*) f="$WF/$(cat "$WF/latest")/${url##*/}" ;;
+  */releases/download/*) t="${url%/*}"; f="$WF/${t##*/}/${url##*/}" ;;
+  *) exit 22 ;;
+esac
+[ -f "$f" ] || exit 22
+cp "$f" "$out"
+STUB
+cat > "$WBIN/git" <<'STUB'
+#!/bin/sh
+echo "git $*" >> "$WF/log"
+case "$1" in
+  clone) mkdir -p "$3/.git" && cp "$WF/src/agent-vm.sh" "$3/" ;;
+  -C) [ -d "$2/.git" ] ;;
+esac
+STUB
+chmod +x "$WBIN/curl" "$WBIN/git"
+make_release() {  # <version> [corrupt]
+  local d="$WF/v$1" s="$WF/stage/agent-vm-$1"
+  mkdir -p "$d" "$s"
+  cp "$AGENT_VM_SH" "$s/agent-vm.sh"; echo "$1" > "$s/MARK"
+  tar -czf "$d/agent-vm-$1.tar.gz" -C "$WF/stage" "agent-vm-$1"
+  local sum; sum="$(_agent_vm_sha256 < "$d/agent-vm-$1.tar.gz" | cut -d' ' -f1)"
+  [ -z "${2:-}" ] || sum="0000$sum"
+  printf '%s  agent-vm-%s.tar.gz\n' "$sum" "$1" > "$d/SHA256SUMS"
+  echo "v$1" > "$WF/latest"
+}
+mkdir -p "$WF/src"; cp "$AGENT_VM_SH" "$WF/src/agent-vm.sh"
+# The rc already names agent-vm.sh and the base is built (the stub limactl
+# lists it), so `install` has nothing to ask on a terminal.
+echo ': agent-vm.sh' > "$WH/.zshrc"
+mkdir -p "$WH/state"; echo 1 > "$WH/state/.agent-vm-base-version"
+winst() {
+  ( export HOME="$WH" WF XDG_DATA_HOME= AGENT_VM_BIN_DIR="$WH/bin" SHELL=/bin/zsh PATH="$WBIN:$PATH" \
+      AGENT_VM_STATE_DIR="$WH/state"
+    sh "${WINSTALLER:-$INSTALLER}" "$@" ) 2>&1
+}
+WDIR="$WH/.local/share/agent-vm"
+
+make_release 1.0.0
+: > "$WF/log"
+out="$(winst)"; rc=$?
+check "release: installs" "$rc" "0"
+case "$out" in *"agent-vm claude"*) pass "release: base built, nothing asked" ;; *) fail "release: $out" ;; esac
+check "release: the latest tarball is in place" "$(cat "$WDIR/MARK" 2>/dev/null)" "1.0.0"
+check "release: linked onto the PATH" "$(readlink "$WH/bin/agent-vm")" "$WDIR/agent-vm.sh"
+check "release: sums from latest/, the tarball from its tag" "$(tr '\n' ' ' < "$WF/log")" \
+  "https://github.com/sylvinus/agent-vm/releases/latest/download/SHA256SUMS https://github.com/sylvinus/agent-vm/releases/download/v1.0.0/agent-vm-1.0.0.tar.gz "
+
+make_release 1.1.0
+out="$(winst)"; rc=$?
+check "rerun: replaced by the new release" "$rc:$(cat "$WDIR/MARK")" "0:1.1.0"
+check "rerun: no staging or old copy left" "$(ls -A "$WH/.local/share")" "agent-vm"
+case "$out" in *"already linked"*) pass "rerun: the link is kept" ;; *) fail "rerun: $out" ;; esac
+
+make_release 1.2.0 corrupt
+out="$(winst)"; rc=$?
+check "bad checksum: refused, the install is untouched" "$rc:$(cat "$WDIR/MARK")" "1:1.1.0"
+case "$out" in *"checksum mismatch"*) pass "bad checksum: said" ;; *) fail "bad checksum: $out" ;; esac
+
+: > "$WF/log"
+out="$(winst --version v1.0.0)"; rc=$?
+check "--version: that release" "$rc:$(cat "$WDIR/MARK")" "0:1.0.0"
+check "--version: its sums, from its tag" "$(head -n 1 "$WF/log")" \
+  "https://github.com/sylvinus/agent-vm/releases/download/v1.0.0/SHA256SUMS"
+check "--version: not a version (exit 1)" "$(winst --version 1.0 >/dev/null; echo $?)" "1"
+check "--version with --git (exit 1)" "$(winst --version 1.0.0 --git >/dev/null; echo $?)" "1"
+check "unknown option (exit 2)" "$(winst --nope >/dev/null; echo $?)" "2"
+
+make_release 1.3.0
+mkdir -p "$SB/wother"; echo mine > "$SB/wother/notes"
+out="$(winst --dir "$SB/wother")"; rc=$?
+check "a directory of the user's: refused, left as it was" "$rc:$(ls "$SB/wother")" "1:notes"
+
+rm -rf "$WDIR" "$WH/bin"
+: > "$WF/log"
+out="$(winst --git)"; rc=$?
+check "--git: clones" "$rc:$(head -n 1 "$WF/log")" "0:git clone https://github.com/sylvinus/agent-vm.git $WDIR"
+check "--git: linked onto the PATH" "$(readlink "$WH/bin/agent-vm")" "$WDIR/agent-vm.sh"
+out="$(winst --git)"; rc=$?
+check "--git again: pulls" "$rc:$(tail -n 1 "$WF/log")" "0:git -C $WDIR pull --ff-only"
+out="$(winst)"; rc=$?
+check "release over a clone: refused" "$rc" "1"
+case "$out" in *"is a git clone"*"git -C"*) pass "release over a clone: says how to update it" ;; *) fail "release over a clone: $out" ;; esac
+
+# A download cut short must run nothing: only the last line calls main.
+rm -rf "$WDIR"
+sed '$d' "$INSTALLER" > "$SB/install-cut.sh"
+out="$(WINSTALLER="$SB/install-cut.sh" winst)"; rc=$?
+check "cut short: runs nothing" "$rc:$([ -e "$WDIR" ] && echo there)" "0:"
 
 # =============================================================================
 printf '\n%s passed, %s failed\n' "$PASSED" "$FAIL"

@@ -1,46 +1,5 @@
 # Changelog
 
-## Unreleased
-
-### Added
-
-- `agent-vm pi` runs [Pi](https://pi.dev), opt-in at setup (`pi` in
-  `--preinstall`, not in `default`). It pulls in `node`. Pi has no permission
-  prompts, so it takes no flag; setup trusts a project's `.pi/` extensions and
-  skills, which `pi -p` would skip otherwise. Pi has no MCP support, so the
-  `mcp-*` servers are not wired into it.
-- Starting a VM prints when its base VM was built (`Base VM: built
-  2026-09-28, 3 days ago`): its agents and packages are that old.
-
-### Changed
-
-- The base VM is created without Lima's containerd. Its unit shadowed Docker's
-  `containerd.service`, and `docker` could not reach its daemon. Existing VMs
-  keep it until `agent-vm setup` and `--reset`.
-- Every agent-vm command that uses a VM makes one `limactl shell` round trip
-  fewer: the env push and the check that the project share is writable share
-  one.
-- `setup` shows the creation and first start of the base VM (which downloads
-  the Debian image) and the package install in a 10-line window that scrolls
-  in place and is cleared when done. The full output goes to
-  `~/.agent-vm/setup.log`, whose end is printed again if a step fails. Without
-  a terminal, the output is printed as before.
-- `setup` opens on the wizard, agents first, and runs its security checks
-  (`.git` protection, `safe.bareRepository`) last, before creating the VM.
-  Their warnings are shorter, in a box fitted to the terminal, with the
-  question right below.
-
-### Fixed
-
-- Version checks compare each component as a decimal number: `1.0.1000` no
-  longer outranks `1.1.0`, and `08` is no longer an octal error.
-- `AGENT_VM_HOST_SHARE` that is not a positive integer falls back to 2 with a
-  warning, instead of a division error or being evaluated as a variable name.
-- A shared env file without a final newline no longer merges its last line
-  into the project env's first one.
-- Removing every env entry on the host now empties `~/.agent-vm.env` in the
-  VM, instead of leaving the previous values there.
-
 ## 0.2.0
 
 ### Security
@@ -119,13 +78,45 @@ has passwordless sudo, so anything enforced there is advisory at best.
   otherwise).
 - `agent-vm shell` rejects arguments it does not know instead of skipping them.
 - `setup` rejects `--reset` and `--readonly` instead of ignoring them.
+- The base VM is about 300 MB smaller and runs fewer daemons: apt no longer
+  installs Recommends. Those brought in, through Chromium, printer
+  configuration, Samba libraries, `avahi-daemon`, `upower` and Vulkan
+  drivers. The recommended packages that are used (`docker-buildx-plugin`,
+  `xauth`, `python3-dev`...) are installed by name, as is `pkgconf`, which
+  mise builds use and which was only there with Go.
+- Node.js comes from the NodeSource repository configured directly, instead
+  of running NodeSource's setup script as root, which also installed `gnupg`.
+- `fonts-dejavu-core` is installed with Chromium. With Liberation alone, pages
+  asking for the generic `sans-serif` or `serif` rendered in Liberation Mono.
+- The base VM is created without Lima's containerd. Its unit shadowed Docker's
+  `containerd.service`, and `docker` could not reach its daemon. Existing VMs
+  keep it until `agent-vm setup` and `--reset`.
+- Every agent-vm command that uses a VM makes one `limactl shell` round trip
+  fewer: the env push and the check that the project share is writable share
+  one.
+- `setup` shows the creation and first start of the base VM (which downloads
+  the Debian image) and the package install in a 10-line window that scrolls
+  in place and is cleared when done. The full output goes to
+  `~/.agent-vm/setup.log`, whose end is printed again if a step fails. Without
+  a terminal, the output is printed as before.
+- `setup` opens on the wizard, agents first, and runs its security checks
+  (`.git` protection, `safe.bareRepository`) last, before creating the VM.
+  Their warnings are shorter, in a box fitted to the terminal, with the
+  question right below.
 
 ### Added
 
+- `curl -fsSL https://www.agent-vm.org/install.sh | sh` installs the latest
+  release, checked against its `SHA256SUMS`, in `~/.local/share/agent-vm`, and
+  runs `agent-vm install`. Running it again updates. `--version X.Y.Z` picks a
+  release, `--git` installs a clone instead. `version --min` now names the
+  update command that fits the install: `git pull`, `brew upgrade` or the
+  installer.
 - `agent-vm install` and `agent-vm uninstall` replace `install.sh`, which
   stays for now as a wrapper (`--uninstall` included). `uninstall` works from
   anywhere, not only from the clone, and `install` refuses a dangling link in
-  the way instead of failing on it.
+  the way instead of failing on it. When the base VM is not built yet,
+  `install` offers to run `setup` right away.
 - `agent-vm doctor`: read-only checks of the host, Lima, the base template and
   the current directory, with what to run about each problem. It also says
   whether Lima and the current directory's VM keep `.git` read-only, and
@@ -137,9 +128,22 @@ has passwordless sudo, so anything enforced there is advisory at best.
 - `test-e2e.sh`, which builds a real VM in a throwaway `LIMA_HOME` and checks
   that root in the guest cannot lift `--readonly`, nor write `.git` when Lima
   has `readonlyNames`.
+- `agent-vm pi` runs [Pi](https://pi.dev), opt-in at setup (`pi` in
+  `--preinstall`, not in `default`). It pulls in `node`. Pi has no permission
+  prompts, so it takes no flag; setup trusts a project's `.pi/` extensions and
+  skills, which `pi -p` would skip otherwise. Pi has no MCP support, so the
+  `mcp-*` servers are not wired into it.
+- Starting a VM prints when its base VM was built (`Base VM: built
+  2026-09-28, 3 days ago`): its agents and packages are that old.
 
 ### Fixed
 
+- Symlinks to an absolute path or through `..` work again in `reverse-sshfs`
+  shares, `node_modules/.bin` included (#22). Debian's sshfs security update
+  (CVE-2026-47187) refuses them by default, with `EPERM`, to protect a client
+  from a rogue server. Here the server is your host, so the base VM runs sshfs
+  with `-o no_contain_symlinks`. Rebuild the base with `setup`, then `--reset`
+  the project VMs.
 - VM names fall back to `sha256sum` when `shasum` is missing, and naming fails
   rather than dropping the hash (two projects with the same directory name
   would have shared one VM).
@@ -149,6 +153,14 @@ has passwordless sudo, so anything enforced there is advisory at best.
 - Prompts no longer print a `/dev/tty` error when there is no terminal.
 - The VM's mise install uses `curl -f`, so an HTTP error fails setup instead of
   piping an error page into `sh`.
+- Version checks compare each component as a decimal number: `1.0.1000` no
+  longer outranks `1.1.0`, and `08` is no longer an octal error.
+- `AGENT_VM_HOST_SHARE` that is not a positive integer falls back to 2 with a
+  warning, instead of a division error or being evaluated as a variable name.
+- A shared env file without a final newline no longer merges its last line
+  into the project env's first one.
+- Removing every env entry on the host now empties `~/.agent-vm.env` in the
+  VM, instead of leaving the previous values there.
 
 ## 0.1.0
 

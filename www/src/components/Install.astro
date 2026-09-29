@@ -1,5 +1,6 @@
 ---
 import CodeBlock from './CodeBlock.astro';
+import InstallTabs from './InstallTabs.astro';
 import { inline } from '../lib/inline';
 import Heading from './Heading.astro';
 import { slug } from '../lib/slug';
@@ -46,12 +47,22 @@ const d = t(locale);
       </aside>
 
       <ol class="install__steps">
+        <li class="install__step">
+          <div class="install__step-head">
+            <span class="install__step-n" aria-hidden="true">01</span>
+            <div>
+              <Heading as="h3" id={slug(en.install.methodsTitle)} locale={locale} class="install__step-title">{d.install.methodsTitle}</Heading>
+              <p class="prose install__step-body" set:html={inline(d.install.methodsBody)} />
+            </div>
+          </div>
+          <InstallTabs locale={locale} id="install-methods" notes />
+        </li>
         {
           d.install.steps.map((step, index) => (
             <li class="install__step">
               <div class="install__step-head">
                 <span class="install__step-n" aria-hidden="true">
-                  {String(index + 1).padStart(2, '0')}
+                  {String(index + 2).padStart(2, '0')}
                 </span>
                 <div>
                   <Heading as="h3" id={slug(en.install.steps[index]!.title)} locale={locale} class="install__step-title">{step.title}</Heading>

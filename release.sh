@@ -147,6 +147,7 @@ esac
 for f in agent-vm.sh agent-vm.setup.sh install.sh runtime.example.sh test.sh test-e2e.sh release.sh; do
   bash -n "$f" || die "syntax error in $f"
 done
+sh -n www/public/install.sh || die "syntax error in www/public/install.sh"
 ./test.sh >/dev/null 2>&1 || die "./test.sh fails here: run it to see why"
 ok "./test.sh passes here"
 

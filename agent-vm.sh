@@ -264,6 +264,18 @@ _agent_vm_ver_ge() {
   return 0
 }
 
+# How this copy of agent-vm is updated: a git clone, a Homebrew keg, or a
+# release put there by www.agent-vm.org/install.sh.
+_agent_vm_update_command() {
+  if [[ -e "$AGENT_VM_SCRIPT_DIR/.git" ]]; then
+    printf 'git -C "%s" pull\n' "$AGENT_VM_SCRIPT_DIR"
+  elif [[ "$AGENT_VM_SCRIPT_DIR" == */Cellar/agent-vm/* ]]; then
+    echo "brew upgrade agent-vm"
+  else
+    echo "curl -fsSL https://www.agent-vm.org/install.sh | sh"
+  fi
+}
+
 # `version` prints the version. `version --min X.Y.Z` turns it into a check an
 # integrator can put in front of everything else: silent with status 0 when
 # this engine is recent enough, one actionable line on stderr and status 1
@@ -308,7 +320,7 @@ _agent_vm_version() {
   _agent_vm_ver_ge "$AGENT_VM_VERSION" "$want" && return 0
 
   echo "Error: agent-vm $AGENT_VM_VERSION is older than the required $want." >&2
-  echo "  Update it:  cd \"$AGENT_VM_SCRIPT_DIR\" && git pull" >&2
+  echo "  Update it:  $(_agent_vm_update_command)" >&2
   return 1
 }
 
@@ -1632,7 +1644,18 @@ _agent_vm_install() {
     fi
   fi
   echo ""
-  echo "agent-vm $AGENT_VM_VERSION installed. Next:"
+  echo "agent-vm $AGENT_VM_VERSION installed."
+  if _agent_vm_base_exists; then
+    echo "Next:  cd your-project && agent-vm claude   # or opencode, codex, vibe"
+    return 0
+  fi
+  if _agent_vm_have_tty \
+     && [[ "$(_agent_vm_ask_yn "Build the base VM now with 'agent-vm setup'? It takes a few minutes." Y)" == "1" ]]; then
+    echo ""
+    _agent_vm_setup
+    return
+  fi
+  echo "Next:"
   echo "  agent-vm setup     # build the base VM, once"
 }
 

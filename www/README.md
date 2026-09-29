@@ -37,6 +37,13 @@ Adding a section means adding a key in both dictionaries, a component in
 English is served from `/` (`prefixDefaultLocale: false`), every other language
 from `/<code>/`.
 
+## The installer
+
+`public/install.sh` is served as-is at `/install.sh`, for
+`curl -fsSL https://www.agent-vm.org/install.sh | sh`. It is plain `sh`, not
+bash. Its tests are in `../test.sh`, and CI runs `sh -n` on it. A change goes
+live with the next deploy of the site, not with a release.
+
 ## Social image
 
 `public/og.png` is committed. Regenerate it after changing the wording:
