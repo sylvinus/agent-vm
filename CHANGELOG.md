@@ -4,6 +4,45 @@
 
 ### Security
 
+- The host no longer reads the project's `.agent-vm.env` and
+  `.agent-vm.runtime.sh` by their path. The VM can write the project and
+  make either a symlink to any file of yours: the host followed it on every
+  start and handed the content to the VM (`ln -s ~/.ssh/id_ed25519
+  .agent-vm.env` got the key on the next command), and `project-env set`
+  copied it into the project. The VM now reads both itself, where a link only
+  reaches the VM's own files, and `project-env` refuses a file that is a
+  link, or reached through one, without a window the VM could race; it needs
+  `perl` for that. A file kept outside the project with an absolute
+  `AGENT_VM_PROJECT_ENV` or `AGENT_VM_PROJECT_RUNTIME` is read on the host,
+  as before.
+- `agent-vm.sh` sourced from zsh loaded `lib/` from the current directory:
+  in a zsh function, `$0` is the function's name. Every new shell opened in a
+  project where the agent had written a `lib/ui.sh` ran it on the host.
+- The git commands agent-vm runs in a project (the "not ignored" warning of
+  `project-env set` and `doctor`) refuse a bare repository and run no
+  `core.fsmonitor` or pager: the VM could plant a repository there whose
+  config names a command, run on the host whatever the user's
+  `safe.bareRepository`.
+- A relative destination in `~/.agent-vm/volumes` is created in the project
+  without following a symlink the VM swaps in after the check. `mkdir -p`
+  followed it, and made directories or an empty file anywhere on the host.
+- The home directory, `/`, agent-vm's own directory, its state directory,
+  Lima's, and any directory containing one of them are refused as a project:
+  `cd ~ && agent-vm shell` shared `~/.ssh` and every dotfile read-write.
+- `--readonly` on a stopped VM that last ran writable makes it read-only
+  before it boots. It used to start it writable, then stop it and apply the
+  change.
+- Whether `--readonly` is enforced on the host is decided from what Lima
+  reports for the VM, not by asking the guest, which could lie.
+- A `limactl stop` that did not stop the VM is caught before its shares are
+  changed. The record then said read-only while the running VM kept its
+  writable shares.
+- The Lima build for Windows is checked against checksums pinned in
+  agent-vm, not against the `SHA256SUMS` of the release that serves it.
+- `env get/has` refuse a key named after a line they do not understand: after
+  an open quote or a trailing backslash, the shell reads the next lines
+  differently than they look, so `get` could answer a value the VM does not
+  have.
 - Every `.git` in the shared folders is read-only for the VMs, at any depth,
   when Lima has `sshfs.readonlyNames`. Before, a VM could write a project's
   `.git/config` or hooks, and git on the host (editors and shell prompts
@@ -159,7 +198,7 @@ has passwordless sudo, so anything enforced there is advisory at best.
   runs `agent-vm install`. Running it again updates. `--version X.Y.Z` picks a
   release, `--git` installs a clone instead. `version --min` now names the
   update command that fits the install: `git pull`, `brew upgrade` or the
-  installer.
+  installer, with `--dir` when it is not in the installer's default place.
 - `agent-vm install` and `agent-vm uninstall` replace `install.sh`, which
   stays for now as a wrapper (`--uninstall` included). `uninstall` works from
   anywhere, not only from the clone, and `install` refuses a dangling link in
@@ -189,6 +228,14 @@ has passwordless sudo, so anything enforced there is advisory at best.
 
 ### Fixed
 
+- `setup` only marks the base ready once it has stopped: Lima cannot clone a
+  running instance, so every new project VM failed after a stop that did not
+  take.
+- `setup --disk`, `--memory` or `--cpus` without a value is one clear error,
+  also under a caller's `set -u`.
+- The base setup script no longer loses its own lines to a command reading
+  standard input (a dpkg prompt, an npm install script): it reaches bash on
+  stdin, so such a command read the rest of the script, which never ran.
 - Creating a VM fails loudly, with Lima's message, when `limactl clone` or
   the edit that gives the VM its shares, memory, CPUs and SSH port fails, and
   the half-made VM is deleted so the next run starts over (#21). Both used to

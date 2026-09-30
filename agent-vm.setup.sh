@@ -20,8 +20,12 @@ export DEBIAN_FRONTEND=noninteractive
 # `sudo env VAR=value` rather than `sudo -E` or `sudo VAR=value cmd`: both of
 # those need the sudoers policy to allow setting the environment, while
 # passing the variable to `env` is just a command with arguments.
+#
+# </dev/null: this script reaches bash on its stdin, so a command reading
+# stdin (dpkg asking about a changed config file, an npm install script)
+# would swallow the lines after it, which then never run.
 apt_get() {
-  sudo env DEBIAN_FRONTEND=noninteractive apt-get "$@"
+  sudo env DEBIAN_FRONTEND=noninteractive apt-get "$@" </dev/null
 }
 
 # Component toggles. The host wizard prepends `export` lines for these before
@@ -260,7 +264,7 @@ if [[ "$INSTALL_CODEX" == "1" ]]; then
     echo "Skipping Codex CLI: requires Node.js (re-run setup with Node.js enabled)." >&2
   else
     echo "Installing Codex CLI..."
-    sudo npm i -g @openai/codex
+    sudo npm i -g @openai/codex </dev/null
   fi
 fi
 
@@ -279,7 +283,7 @@ if [[ "$INSTALL_PI" == "1" ]]; then
     # @earendil-works is the maintained scope; @mariozechner/pi-coding-agent is
     # deprecated and misses security fixes. --ignore-scripts as Pi's docs say.
     echo "Installing Pi..."
-    sudo npm i -g --ignore-scripts @earendil-works/pi-coding-agent
+    sudo npm i -g --ignore-scripts @earendil-works/pi-coding-agent </dev/null
     # Pi never asks before running tools. Its one gate is trust for a project's
     # .pi/ extensions and skills, which the VM makes moot and which `pi -p`
     # silently skips. Telemetry covers the install ping and the attribution

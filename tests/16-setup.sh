@@ -4,6 +4,15 @@ case "$(agent-vm setup --reset 2>&1 </dev/null)" in
   *) fail "setup accepted --reset" ;;
 esac
 
+# A value option at the end is one clear error, also under a caller's set -u.
+for opt in --disk --memory --cpus; do
+  out="$( (set -u; agent-vm setup "$opt") 2>&1 </dev/null)"
+  case "$?:$out" in
+    1:"Error: $opt needs a value.") pass "setup $opt without a value: said" ;;
+    *) fail "setup $opt without a value: $out" ;;
+  esac
+done
+
 section "setup wizard: the opt-in components default to no"
 # Pressing Enter at every per-component prompt must give the default set's
 # languages: Ruby, Rust and Go stay out, like Pi and Playwright MCP.
@@ -155,6 +164,15 @@ if command -v setsid >/dev/null 2>&1; then
     0:*) pass "no terminal: the wizard is skipped and setup completes" ;;
     *) fail "setup with no terminal: '$out'" ;;
   esac
+  # A base that did not stop is not marked ready: Lima cannot clone it.
+  out="$(AGENT_VM_STATE_DIR="$SB/wizard-state2" AGENT_VM_TEST_REC="$REC" AGENT_VM_TEST_PROTECTS="$PROTECTS" \
+         AGENT_VM_TEST_BASE_RUNNING=1 PATH="$SB/fakebrew:$PATH" notty '_agent_vm_check_linux_prereqs() { return 0; }; agent-vm setup')"
+  case "${out##*rc=}:$out" in
+    1:*"the base VM is set up but did not stop"*) pass "a base that does not stop: setup fails, and says so" ;;
+    *) fail "a base that does not stop: '$out'" ;;
+  esac
+  [ ! -e "$SB/wizard-state2/.agent-vm-base-version" ] && pass "and it is not marked ready" \
+    || fail "a running base was marked ready"
   # Lima's containerd is never installed: Docker brings its own when chosen.
   grep -q "^create .*--containerd=none" "$REC" && pass "Lima's containerd is off" \
     || fail "Lima's containerd stays on: $(grep '^create' "$REC")"

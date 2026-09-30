@@ -102,7 +102,13 @@ mkdir -p "$SB/upd/clone/.git" "$SB/upd/Cellar/agent-vm/1.0.0/libexec" "$SB/upd/r
 update_of() { ( AGENT_VM_SCRIPT_DIR="$1"; _agent_vm_update_command ); }
 check "update: a clone pulls"        "$(update_of "$SB/upd/clone")" "git -C \"$SB/upd/clone\" pull"
 check "update: a keg upgrades"       "$(update_of "$SB/upd/Cellar/agent-vm/1.0.0/libexec")" "brew upgrade agent-vm"
-check "update: a release reinstalls" "$(update_of "$SB/upd/release")" "curl -fsSL https://www.agent-vm.org/install.sh | sh"
+mkdir -p "$HOME/.local/share/agent-vm" "$SB/upd/agent-vm"
+check "update: a release reinstalls" "$(update_of "$HOME/.local/share/agent-vm")" "curl -fsSL https://www.agent-vm.org/install.sh | sh"
+check "update: a release installed elsewhere reinstalls there" \
+  "$(update_of "$SB/upd/release")" "curl -fsSL https://www.agent-vm.org/install.sh | sh -s -- --dir '$SB/upd/release'"
+check "update: XDG_DATA_HOME moves the default" \
+  "$(XDG_DATA_HOME="$SB/upd"; update_of "$SB/upd/agent-vm")" "curl -fsSL https://www.agent-vm.org/install.sh | sh"
+rm -rf "$HOME/.local/share/agent-vm"
 
 # A malformed call must be distinguishable from "too old": a typo in the
 # caller's own code should not send a user chasing an upgrade.

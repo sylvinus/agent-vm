@@ -18,14 +18,22 @@ _agent_vm_ver_ge() {
 }
 
 # How this copy of agent-vm is updated: a git clone, a Homebrew keg, or a
-# release put there by www.agent-vm.org/install.sh.
+# release put there by www.agent-vm.org/install.sh. The installer's --dir
+# goes with it when this copy is not in the installer's default directory:
+# without it, the update lands next to this one and this one stays old.
 _agent_vm_update_command() {
+  local default="${XDG_DATA_HOME:-$HOME/.local/share}/agent-vm"
+  # Physical, as AGENT_VM_SCRIPT_DIR is.
+  default="$(CDPATH= cd -P -- "$default" 2>/dev/null && pwd)" || default=""
   if [[ -e "$AGENT_VM_SCRIPT_DIR/.git" ]]; then
     printf 'git -C "%s" pull\n' "$AGENT_VM_SCRIPT_DIR"
   elif [[ "$AGENT_VM_SCRIPT_DIR" == */Cellar/agent-vm/* ]]; then
     echo "brew upgrade agent-vm"
-  else
+  elif [[ "$AGENT_VM_SCRIPT_DIR" == "$default" ]]; then
     echo "curl -fsSL https://www.agent-vm.org/install.sh | sh"
+  else
+    printf "curl -fsSL https://www.agent-vm.org/install.sh | sh -s -- --dir '%s'\n" \
+      "$(_agent_vm_sq_escape "$AGENT_VM_SCRIPT_DIR")"
   fi
 }
 

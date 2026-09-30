@@ -21,6 +21,12 @@ _agent_vm_sq_escape() {
 # double-quoted parts with nothing to expand, and bare characters other than
 # $ ` \ ; & | < > ( ) ~. A trailing `# comment` is allowed. The last
 # assignment wins, like in the shell.
+#
+# From the first line refused, the rest of the file is unreadable: a quote
+# left open or a trailing backslash makes the shell read the next lines as part
+# of that value, and any other syntax can change what comes after. A key named
+# anywhere in that rest gets status 3, not what its lines seem to say. A line
+# that is not an assignment, a comment or blank counts as refused.
 _agent_vm_env_read() {
   awk -v k="$2" -v q="'" '
     function parse(s,    v, c, e, more) {
@@ -51,16 +57,30 @@ _agent_vm_env_read() {
       VAL = v
       return 0
     }
+    function names(s) {
+      return s ~ ("(^|[^A-Za-z0-9_])" k "([^A-Za-z0-9_]|$)")
+    }
     {
+      if (broken) { if (names($0)) tainted = 1; next }
       line = $0
       sub(/^[ \t]+/, "", line)
+      if (line ~ /^(#.*)?\r?$/) next
       sub(/^export[ \t]+/, "", line)
-      if (line !~ /^[A-Za-z_][A-Za-z0-9_]*=/) next
+      if (line !~ /^[A-Za-z_][A-Za-z0-9_]*=/) {
+        broken = 1
+        if (names(line)) tainted = 1
+        next
+      }
       eq = index(line, "=")
       rc = parse(substr(line, eq + 1))
       if (substr(line, 1, eq - 1) == k) { found = 1; bad = rc; val = VAL }
+      if (rc) {
+        broken = 1
+        if (names(substr(line, eq + 1))) tainted = 1
+      }
     }
     END {
+      if (tainted) exit 3
       if (!found) exit 1
       if (bad) exit 3
       printf "%s", val
@@ -150,10 +170,13 @@ _agent_vm_project_env_file() {
 # Already tracked is the worse case and a different fix: ignoring a tracked
 # file changes nothing, git keeps staging its edits. Saying "add this line"
 # there would be wrong advice.
+#
+# git runs here in a directory the VM can write, so on a repository the VM may
+# have planted: see _agent_vm_git_untrusted.
 _agent_vm_warn_unignored() {
   local file="$1" top rel rc=0 drive rest alt
   command -v git >/dev/null 2>&1 || return 0
-  top="$(git -C "$(dirname "$file")" rev-parse --show-toplevel 2>/dev/null)" || return 0
+  top="$(_agent_vm_git_untrusted -C "$(dirname "$file")" rev-parse --show-toplevel 2>/dev/null)" || return 0
   [ -n "$top" ] || return 0
   rel="${file#"$top"/}"
   if [[ "$rel" == "$file" ]]; then
@@ -174,22 +197,35 @@ _agent_vm_warn_unignored() {
   local q_top q_rel
   q_top="$(_agent_vm_sq_escape "$top")"
   q_rel="$(_agent_vm_sq_escape "$rel")"
-  if git -C "$top" ls-files --error-unmatch "$file" >/dev/null 2>&1; then
+  if _agent_vm_git_untrusted -C "$top" ls-files --error-unmatch "$file" >/dev/null 2>&1; then
     echo "Warning: $rel is tracked by git — its contents are in the repository." >&2
     echo "         git -C '$q_top' rm --cached '$q_rel' && echo '/$q_rel' >> '$q_top/.gitignore'" >&2
     return 0
   fi
 
-  git -C "$top" check-ignore -q "$file" 2>/dev/null || rc=$?
+  _agent_vm_git_untrusted -C "$top" check-ignore -q "$file" 2>/dev/null || rc=$?
   [ "$rc" -eq 1 ] || return 0
   echo "Warning: $rel is not ignored by git — it can be committed by accident." >&2
   echo "         echo '/$q_rel' >> '$q_top/.gitignore'" >&2
+}
+
+# 0 when <path> is inside the project directory <dir>, where the VM can write.
+# The host must not read such a file by its path: the VM can make it a symlink,
+# and the host would follow it to any file of the user's and hand the content
+# over. It is read in the VM instead, where a link resolves among the VM's own
+# files (see _agent_vm_push_env_and_probe), or with _agent_vm_nofollow.
+_agent_vm_in_project() {
+  [[ "$2" == "${1%/}/"* ]]
 }
 
 # What gets pushed into a VM: the shared file first, this project's next.
 # The guest sources it, so the last assignment wins and the project's value
 # overrides the shared one. A function of its own so that order is testable
 # without starting a VM — it is the whole meaning of "per project".
+#
+# The project's file is only in here when AGENT_VM_PROJECT_ENV puts it outside
+# the project. Inside, the VM reads it and appends it (see
+# _agent_vm_in_project).
 _agent_vm_env_payload() {
   local host_dir="${1:-$(pwd)}" project_env
   project_env="$(_agent_vm_project_env_file "$host_dir")"
@@ -197,8 +233,117 @@ _agent_vm_env_payload() {
   # line to the project's first one. CRs go: a CRLF file (Windows) would put
   # one at the end of every value in the guest.
   [ -f "$AGENT_VM_STATE_DIR/env" ] && { _agent_vm_strip_cr < "$AGENT_VM_STATE_DIR/env"; echo; }
-  [ -f "$project_env" ] && _agent_vm_strip_cr < "$project_env"
+  if ! _agent_vm_in_project "$host_dir" "$project_env" && [ -f "$project_env" ]; then
+    _agent_vm_strip_cr < "$project_env"
+  fi
   return 0
+}
+
+# _agent_vm_nofollow <read|write|mkdir|touch> <dir> <rel>: print the file
+# <dir>/<rel>, replace it with stdin, make it a directory (mkdir -p), or make
+# it an empty file unless it is one already, following no symlink below <dir>:
+# the one way the host touches the project, which the VM can write. Through a link
+# planted there, a plain read would copy any file of the user's into the
+# project, and a write could land anywhere. Checking for links first is not
+# enough: the VM can swap one in between the check and the use.
+#
+# So each directory is entered and checked to be the one lstat saw, the file
+# is opened with O_NOFOLLOW (and O_NONBLOCK, so a FIFO cannot hang it), and a
+# write goes to a new file renamed over the old one, which replaces a link
+# rather than following it. Perl, because the shell can do none of this.
+# Missing directories are created except on a read. A file written is mode
+# 600; one made by touch has the umask's mode, like `: > file`.
+#
+# Status: 0 done, 1 no such file (read), 3 a symlink or something other than a
+# directory or a regular file on the way, 2 any other failure.
+_agent_vm_nofollow() {
+  if ! command -v perl >/dev/null 2>&1; then
+    echo "Error: perl is needed to use a file in the project without following symlinks." >&2
+    return 2
+  fi
+  perl -e '
+    use strict;
+    use Fcntl qw(O_RDONLY O_WRONLY O_CREAT O_EXCL O_NOFOLLOW O_NONBLOCK);
+    my ($op, $top, $rel) = @ARGV;
+    chdir $top or exit 2;
+    my @dirs = grep { $_ ne "" && $_ ne "." } split m{/}, $rel;
+    my $name = pop @dirs;
+    exit 3 if !defined $name || grep { $_ eq ".." } @dirs, $name;
+    push @dirs, $name if $op eq "mkdir";
+    for my $d (@dirs) {
+      my @l = lstat $d;
+      if (!@l) {
+        exit 1 if $op eq "read";
+        mkdir $d or exit 2;
+        @l = lstat $d or exit 2;
+      }
+      exit 3 unless -d _;
+      chdir $d or exit 2;
+      my @s = stat ".";
+      exit 3 unless @s && $s[0] == $l[0] && $s[1] == $l[1];
+    }
+    exit 0 if $op eq "mkdir";
+    if ($op eq "touch") {
+      if (lstat $name) {
+        exit(-f _ ? 0 : 3);
+      }
+      sysopen(my $new, $name, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0666) or exit 2;
+      close $new;
+      exit 0;
+    }
+    local $/;
+    if ($op eq "read") {
+      sysopen(my $in, $name, O_RDONLY | O_NOFOLLOW | O_NONBLOCK) or exit($!{ENOENT} ? 1 : 3);
+      exit 3 unless -f $in;
+      binmode $in; binmode STDOUT;
+      my $data = <$in>;
+      print $data if defined $data;
+      exit 0;
+    }
+    binmode STDIN;
+    my $data = <STDIN>;
+    $data = "" unless defined $data;
+    my ($tmp, $out);
+    for (1 .. 20) {
+      $tmp = sprintf ".%s.agent-vm.%d.%d", $name, $$, int rand 1e9;
+      last if sysopen $out, $tmp, O_WRONLY | O_CREAT | O_EXCL, 0600;
+      undef $out;
+    }
+    exit 2 unless $out;
+    binmode $out;
+    unless ((print {$out} $data) && close $out && rename $tmp, $name) {
+      unlink $tmp;
+      exit 2;
+    }
+    exit 0;
+  ' "$@"
+}
+
+# _agent_vm_env_file <read|write> <file> <top>: an env file, read to stdout or
+# replaced with stdin. With <top> set, <file> is inside that project directory
+# and goes through _agent_vm_nofollow. Without, it is one of the user's own
+# (~/.agent-vm/env, or a project file kept outside the project), used as is.
+# Status as _agent_vm_nofollow's.
+_agent_vm_env_file() {
+  local op="$1" file="$2" top="$3" tmp
+  if [[ -n "$top" ]]; then
+    _agent_vm_nofollow "$op" "$top" "${file#"${top%/}"/}"
+    return
+  fi
+  if [[ "$op" == read ]]; then
+    [[ -f "$file" ]] || return 1
+    cat "$file" || return 2
+    return 0
+  fi
+  mkdir -p "$(dirname "$file")" || return 2
+  tmp="$(mktemp "${file}.XXXXXX")" || return 2
+  chmod 600 "$tmp"
+  if cat > "$tmp" && mv "$tmp" "$file"; then
+    chmod 600 "$file"
+    return 0
+  fi
+  rm -f "$tmp"
+  return 2
 }
 
 # Read, write and delete entries in ~/.agent-vm/env, the dotenv file pushed
@@ -220,8 +365,13 @@ _agent_vm_env_payload() {
 # (one file per project). Same code for both on purpose: this file is SOURCED
 # by the VM's shell, so the quoting and the atomic replace below are the whole
 # point of the engine owning it. A second copy would be a second set of bugs.
+#
+# Usage: _agent_vm_env <verb> <file> <top> [action [KEY [VALUE]]], where <top>
+# is the project directory when <file> is inside it (see _agent_vm_env_file),
+# empty otherwise. The file is read once, into a variable: never into a
+# temporary file, since it holds secrets.
 _agent_vm_env() {
-  local verb="$1" file="$2"; shift 2
+  local verb="$1" file="$2" top="$3"; shift 3
   local action="${1:-list}"
   local key="${2:-}"
 
@@ -237,63 +387,64 @@ _agent_vm_env() {
         echo "Error: '$key' is not a valid environment variable name." >&2
         return 1
       fi ;;
+    list) ;;
+    *)
+      echo "Usage: agent-vm $verb {set KEY VALUE|get KEY|has KEY|unset KEY|list}" >&2
+      return 1 ;;
+  esac
+  if [[ "$action" == set && $# -lt 3 ]]; then
+    echo "Error: 'agent-vm $verb set' needs a VALUE." >&2
+    return 1
+  fi
+
+  # The x keeps the file's trailing newlines, which $(...) would strip.
+  local content have=1 st=0
+  content="$(_agent_vm_env_file read "$file" "$top" && printf x)" || st=$?
+  content="${content%x}"
+  case "$st" in
+    0) ;;
+    1) have="" ;;
+    3)
+      echo "Error: $file is a symlink, is reached through one, or is not a regular file." >&2
+      echo "  agent-vm follows no link in the project, which the VM can write. Replace it with a plain file." >&2
+      return 2 ;;
+    *)
+      echo "Error: could not read $file" >&2
+      return 2 ;;
   esac
 
   case "$action" in
-    set)
-      if [[ $# -lt 3 ]]; then
-        echo "Error: 'agent-vm $verb set' needs a VALUE." >&2
-        return 1
-      fi
-      local value="$3" tmp
-      mkdir -p "$(dirname "$file")"
-      tmp="$(mktemp "${file}.XXXXXX")"
-      chmod 600 "$tmp"
-      if [[ -f "$file" ]] && ! _agent_vm_env_lines drop "$file" "$key" > "$tmp"; then
-        rm -f "$tmp"
+    set|unset)
+      [[ "$action" == unset && -z "$have" ]] && return 0
+      local new
+      new="$(printf '%s' "$content" | _agent_vm_env_lines drop - "$key" && printf x)" || {
         echo "Error: could not read $file" >&2
         return 1
+      }
+      new="${new%x}"
+      if [[ "$action" == set ]]; then
+        new="$new$(printf "%s='%s'" "$key" "$(_agent_vm_sq_escape "$3")")"$'\n'
       fi
-      printf "%s='%s'\n" "$key" "$(_agent_vm_sq_escape "$value")" >> "$tmp"
       # A silently-dropped write here means the caller is told the secret was
       # stored when it was not — the worst possible failure for this file.
-      if ! mv "$tmp" "$file"; then
-        rm -f "$tmp"
+      if ! printf '%s' "$new" | _agent_vm_env_file write "$file" "$top"; then
         echo "Error: could not write $file" >&2
         return 1
       fi
-      chmod 600 "$file"
-      ;;
-    unset)
-      [[ -f "$file" ]] || return 0
-      local tmp
-      tmp="$(mktemp "${file}.XXXXXX")"
-      chmod 600 "$tmp"
-      if ! _agent_vm_env_lines drop "$file" "$key" > "$tmp"; then
-        rm -f "$tmp"
-        echo "Error: could not read $file" >&2
-        return 1
-      fi
-      if ! mv "$tmp" "$file"; then
-        rm -f "$tmp"
-        echo "Error: could not write $file" >&2
-        return 1
-      fi
-      chmod 600 "$file"
       ;;
     get|has)
-      [[ -f "$file" ]] || return 1
+      [[ -n "$have" ]] || return 1
       # Read, never source. The project file sits in a directory the VM can
       # write to, and sourcing it here would run whatever the agent put in it
       # on the host. Only the forms `set` writes and plain dotenv lines are
       # accepted; anything the shell would expand is refused, not evaluated.
       local value rc=0
-      value="$(_agent_vm_env_read "$file" "$key")" || rc=$?
+      value="$(printf '%s' "$content" | _agent_vm_env_read - "$key")" || rc=$?
       case "$rc" in
         0) ;;
         1) return 1 ;;
         *)
-          echo "Error: $key in $file uses shell syntax agent-vm does not evaluate" >&2
+          echo "Error: $key in $file uses, or comes after, shell syntax agent-vm does not evaluate" >&2
           echo "  (\$, backquotes, backslashes, ~, ;, | ...). Rewrite it with 'agent-vm $verb set'." >&2
           return 2 ;;
       esac
@@ -301,12 +452,9 @@ _agent_vm_env() {
       printf '%s\n' "$value"
       ;;
     list)
-      [[ -f "$file" ]] || return 0
+      [[ -n "$have" ]] || return 0
       # Names only — never values, so this stays safe to paste into an issue.
-      _agent_vm_env_lines list "$file" | awk '!seen[$0]++'
+      printf '%s' "$content" | _agent_vm_env_lines list - | awk '!seen[$0]++'
       ;;
-    *)
-      echo "Usage: agent-vm $verb {set KEY VALUE|get KEY|has KEY|unset KEY|list}" >&2
-      return 1 ;;
   esac
 }

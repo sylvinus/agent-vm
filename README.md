@@ -218,7 +218,10 @@ was put there. They understand what `set` writes and plain dotenv lines
 (`KEY=value`, `export KEY=value`, single or double quotes, a trailing
 `# comment`). A value that needs the shell to be interpreted (`$`, backquotes,
 backslashes, an unquoted `~`, `;`, `|`…) is refused with exit status 2 and a
-message; `set` writes it back in a form they can read.
+message; `set` writes it back in a form they can read. From such a line on,
+the rest of the file is refused too for any key it names: after an open quote
+or a trailing backslash, the shell reads the next lines differently than they
+look.
 
 `agent-vm project-env` is the same thing scoped to the current project: same
 subcommands, same quoting, same file format. Its values are pushed into the VM
@@ -233,6 +236,15 @@ ignored by git it prints the exact `echo … >> .gitignore` line to run (and, if
 the file is already tracked, the `git rm --cached` that a gitignore line alone
 would not fix). `info` prints the path as `project_env=`, so nobody has to
 rebuild it.
+
+The VM can write the project, so it can turn that file into a symlink to any
+file of yours. agent-vm never follows one there: on each start the VM itself
+reads the project's env file (and runs the project's runtime script), where a
+link only reaches the VM's own files, and `project-env` refuses a file that
+is a link or is reached through one, checked in a way the VM cannot race
+(this needs `perl`, which macOS and most Linux systems ship). A file kept
+outside the project with an absolute `AGENT_VM_PROJECT_ENV` is yours, and
+read on the host as before.
 
 `AGENT_VM_STATE_DIR` moves the whole state directory (default `~/.agent-vm`).
 Set it to give a test, a CI job or a second install its own state without
@@ -311,7 +323,7 @@ agent-vm --readonly shell              # Nothing on the host is writable from th
 
 All shares, and not just the project, because read-only is enforced per share and not per file: a writable volume that contains the project (`~/work:/mnt/work:rw`) would be a second way to write the same files. With no writable share left, there is none.
 
-It is set on the Lima shares, so the host is what refuses the writes: root inside the VM cannot remount them read-write. That holds for the mount types Lima defaults to (virtiofs on `vz`, 9p on QEMU), and for the `reverse-sshfs` shares agent-vm sets up to [protect `.git`](#protecting-git), whose SFTP server runs on the host. Under any other `reverse-sshfs` the flag only reaches the guest's sshfs, and under QEMU virtiofs only reaches the guest's mount table (virtiofsd has no read-only mode, [virtio-fs/virtiofsd#97](https://gitlab.com/virtio-fs/virtiofsd/-/issues/97)): agent-vm refuses `--readonly` in both cases. QEMU's default, 9p, is fine; only a Lima config that sets `mountType: virtiofs` for QEMU runs into it. Because the mode lives in the VM's config, switching it restarts the VM. agent-vm records the mounts it gave each VM, so a VM that still has a writable share is restarted when `--readonly` is asked for, even if its project is already read-only.
+It is set on the Lima shares, so the host is what refuses the writes: root inside the VM cannot remount them read-write. That holds for the mount types Lima defaults to (virtiofs on `vz`, 9p on QEMU), and for the `reverse-sshfs` shares agent-vm sets up to [protect `.git`](#protecting-git), whose SFTP server runs on the host. Under any other `reverse-sshfs` the flag only reaches the guest's sshfs, and under QEMU virtiofs only reaches the guest's mount table (virtiofsd has no read-only mode, [virtio-fs/virtiofsd#97](https://gitlab.com/virtio-fs/virtiofsd/-/issues/97)): agent-vm refuses `--readonly` in both cases. QEMU's default, 9p, is fine; only a Lima config that sets `mountType: virtiofs` for QEMU runs into it. Whether it holds is decided on the host, from the VM and mount types Lima has for the VM, never by asking the guest. Because the mode lives in the VM's config, switching it on a running VM restarts it; a stopped VM gets it before it boots. agent-vm records the mounts it gave each VM, so a VM that still has a writable share is changed when `--readonly` is asked for, even if its project is already read-only.
 
 The mode is applied before the runtime scripts run, so a `~/.agent-vm/runtime.sh`
 or `.agent-vm.runtime.sh` that writes into the project fails under `--readonly`.
@@ -465,7 +477,7 @@ List host files or directories to mount inside every VM. One path per line, `~` 
 
 When no destination is specified, the path is mounted at the same location inside the VM. Non-existent paths are skipped with a warning. Changes to this file take effect on new VMs (use `--reset` to re-apply to existing ones).
 
-A relative destination is inside the project: `~/notes:notes` appears at `<project>/notes` in the VM, over whatever the project has there. agent-vm creates the mount point in the project on your machine if it is missing (an empty directory, or an empty file for a file source), so it shows up there too. A destination that goes out of the project with `..`, or through a symlink in the project, is skipped with a warning: the agent can write the project, and could otherwise point the mount point anywhere.
+A relative destination is inside the project: `~/notes:notes` appears at `<project>/notes` in the VM, over whatever the project has there. agent-vm creates the mount point in the project on your machine if it is missing (an empty directory, or an empty file for a file source), so it shows up there too. A destination that goes out of the project with `..`, or through a symlink in the project, is skipped with a warning: the agent can write the project, and could otherwise point the mount point anywhere. The mount point is made without a window where the VM could swap a link in, which needs `perl` (macOS and most Linux systems ship it).
 
 An entry can be limited to some projects with a fourth field, after an explicit mode: `source:destination:mode:project`. `project` is the project directory as `agent-vm info` prints it in `dir=`; `~` is expanded and `*` matches anything, `/` included. Leave the destination empty to mount at the same path:
 
@@ -556,7 +568,10 @@ bundle install
 **Interpreter.** The script runs under the shell its shebang names — `bash` and
 `sh` are honoured, anything else (another language, or no shebang) runs under
 `zsh` as before. It is fed on standard input, so `$0` is the shell, not the
-file.
+file, and a command in it that reads its standard input reads the rest of the
+script instead: give such a command `</dev/null`. The same goes for
+`~/.agent-vm/runtime.sh` and `~/.agent-vm/setup.sh`. Inside the project, the VM reads it, never the host: see
+[Scripting against agent-vm](#scripting-against-agent-vm) on symlinks.
 
 **Another location.** Set `AGENT_VM_PROJECT_RUNTIME` to keep the script in your
 own directory instead of the project root — useful for a tool that already has
@@ -631,7 +646,7 @@ To add more MCP servers, add them to `~/.claude.json` in your `~/.agent-vm/setup
 3. The VM persists after exit. Running any agent command or `agent-vm shell` in the same directory reuses the same VM
 4. Use `agent-vm stop` to stop the VM or `agent-vm rm` to delete it. Use `--rm` to auto-delete after the command exits
 
-Each VM is fully isolated — agents must authenticate independently inside their VM (e.g. `claude login`). Credentials persist within the VM across restarts but are not shared between VMs or with the host.
+Agents authenticate inside their VM (e.g. `claude login`). Credentials persist within the VM across restarts but are not shared between VMs or with the host. The VMs are not isolated from each other on the network, though: see [Security model](#security-model).
 
 ## Tests
 
@@ -729,7 +744,9 @@ This is not a theoretical risk. The [Shai-Hulud](https://unit42.paloaltonetworks
 
 An AI agent running with `--dangerously-skip-permissions` on your host would give such an attack full access to everything: your SSH keys, your cloud credentials, your browser sessions, your entire filesystem.
 
-**agent-vm runs all code inside the VM.** Its filesystem is your project directory (read-write, or read-only with `--readonly`, which also makes any extra mount read-only) and nothing else of yours: no SSH keys, no npm tokens, no cloud credentials, no git config, no browser sessions. A supply chain attack that executes in there finds your source code and whatever you put in `~/.agent-vm/env`. It does still have the network, and that includes your own machine: Lima puts the host loopback at `192.168.5.2`, which is the VM's default gateway, so anything you have listening on `localhost` (a dev Postgres, Redis, an unauthenticated local API) is reachable from inside the VM. Blocking that is [on the roadmap](https://www.agent-vm.org/#roadmap), not something agent-vm can do today.
+**agent-vm runs all code inside the VM.** Its filesystem is your project directory (read-write, or read-only with `--readonly`, which also makes any extra mount read-only) and nothing else of yours: no SSH keys, no npm tokens, no cloud credentials, no git config, no browser sessions. A supply chain attack that executes in there finds your source code and whatever you put in `~/.agent-vm/env`. It does still have the network, and that includes your own machine: Lima puts the host loopback at `192.168.5.2`, which is the VM's default gateway, so anything you have listening on `localhost` (a dev Postgres, Redis, an unauthenticated local API) is reachable from inside the VM. That includes the other VMs: Lima forwards the ports each VM listens on to the host's loopback, even ports bound to the VM's own `127.0.0.1`, so one VM can reach a dev server running in another project's VM. Blocking that is [on the roadmap](https://www.agent-vm.org/#roadmap), not something agent-vm can do today.
+
+agent-vm refuses to share your home directory, `/`, its own directory, its state directory (`~/.agent-vm`) or Lima's, or any directory containing one of them: `cd ~ && agent-vm shell` would otherwise hand the VM your dotfiles and SSH keys, read-write.
 
 Meanwhile, your host machine stays clean. You don't need Node.js, Docker, or any dev tooling installed locally. The only host dependency is Lima. Your SSH keys and signing credentials never enter the VM — we recommend running `git commit` on the host yourself.
 
@@ -751,15 +768,18 @@ cd lima && make native && sudo make install
 ```
 
 On Windows (Git Bash, AMD64 shown), `agent-vm setup` offers this download;
-by hand, both zips, verified against the release's `SHA256SUMS`, unpacked on
-your `PATH`:
+by hand, both zips, verified against the checksums agent-vm pins in
+`lib/git.sh` (not the release's own `SHA256SUMS`, which whoever could replace
+the zips could replace too), unpacked on your `PATH`:
 
 ```bash
 base=https://github.com/sylvinus/lima/releases/download/v2.3.0-sylvinus.2
 curl -fsSLO "$base/lima-2.3.0-sylvinus.2-Windows-AMD64.zip" \
-     -fsSLO "$base/lima-additional-guestagents-2.3.0-sylvinus.2-Windows-AMD64.zip" \
-     -fsSLO "$base/SHA256SUMS"
-grep -E 'Windows-AMD64' SHA256SUMS | sha256sum -c
+     -fsSLO "$base/lima-additional-guestagents-2.3.0-sylvinus.2-Windows-AMD64.zip"
+sha256sum -c <<'EOF'
+053f3479b397628b79fe46b0268a50a7f1fc51073691d7d8bce78c9be2ae2787  lima-2.3.0-sylvinus.2-Windows-AMD64.zip
+a0828aa4518e21c9519d341be9f32adf07cbeb74a3f8beadaa2f350c45b5933b  lima-additional-guestagents-2.3.0-sylvinus.2-Windows-AMD64.zip
+EOF
 for z in lima-2.3.0-sylvinus.2-Windows-AMD64.zip lima-additional-guestagents-2.3.0-sylvinus.2-Windows-AMD64.zip; do
   unzip -q -o "$z" -d ~/.local/share/lima-sylvinus
 done

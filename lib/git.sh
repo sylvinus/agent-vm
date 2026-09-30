@@ -14,6 +14,13 @@
 # Lima build that has it: the Homebrew formula, or the tag it is built from.
 AGENT_VM_LIMA_FORMULA="sylvinus/tap/lima-sylvinus"
 AGENT_VM_LIMA_FORK_TAG="v2.3.0-sylvinus.2"
+# The Windows zips of that tag, in SHA256SUMS format. The download is checked
+# against these, not against the SHA256SUMS of the release, which whoever can
+# replace the zips can replace too. Updated with the tag.
+AGENT_VM_LIMA_FORK_SHA256="053f3479b397628b79fe46b0268a50a7f1fc51073691d7d8bce78c9be2ae2787  lima-2.3.0-sylvinus.2-Windows-AMD64.zip
+a0828aa4518e21c9519d341be9f32adf07cbeb74a3f8beadaa2f350c45b5933b  lima-additional-guestagents-2.3.0-sylvinus.2-Windows-AMD64.zip
+1cb2d94a9a5f38b2f38f9c14715d850a861a9623b9a7f7ae7b0f6431b75aaa81  lima-2.3.0-sylvinus.2-Windows-ARM64.zip
+1ae0b7b054191f4197898bd59697ee99350d3b7e95b895c1b0ec061c7ea87e7f  lima-additional-guestagents-2.3.0-sylvinus.2-Windows-ARM64.zip"
 AGENT_VM_LIMA_ISSUE="https://github.com/lima-vm/lima/issues/5529"
 
 # 0 when this Lima enforces sshfs.readonlyNames. Stock Lima accepts the field
@@ -90,15 +97,14 @@ _agent_vm_lima_fork_arch() {
   esac
 }
 
-# The fork release's files for this machine: both zips, then the checksums.
-# One per line, so the installer loops over it and the tests pin the names.
+# The fork release's files for this machine: both zips. One per line, so the
+# installer loops over it and the tests pin the names.
 _agent_vm_lima_fork_files() {
   local arch tag
   arch="$(_agent_vm_lima_fork_arch)" || return 1
   tag="${AGENT_VM_LIMA_FORK_TAG#v}"
   printf 'lima-%s-Windows-%s.zip\n' "$tag" "$arch"
   printf 'lima-additional-guestagents-%s-Windows-%s.zip\n' "$tag" "$arch"
-  printf 'SHA256SUMS\n'
 }
 
 # Every file named in "$@" inside <dir> must match its SHA256SUMS entry
@@ -128,8 +134,8 @@ _agent_vm_sha256_sums_check() {
   done
 }
 
-# Download and install the fork's Windows build: both zips plus SHA256SUMS,
-# verified, then unpacked into a staging dir next to AGENT_VM_LIMA_DIR
+# Download and install the fork's Windows build: both zips, verified against
+# AGENT_VM_LIMA_FORK_SHA256, then unpacked into a staging dir next to AGENT_VM_LIMA_DIR
 # (default ~/.local/share/lima-sylvinus), which takes its place only once
 # complete. A failed run leaves the previous install, or none, as it was.
 #
@@ -172,6 +178,7 @@ _agent_vm_install_fork_windows() {
         return 1
       fi
     done <<< "$files"
+    printf '%s\n' "$AGENT_VM_LIMA_FORK_SHA256" > "$tmp/SHA256SUMS"
     # In a subshell under $tmp, so the glob below names the downloads and not
     # whatever lima-*.zip the caller's directory happens to hold.
     if ! ( cd "$tmp" && _agent_vm_sha256_sums_check "$tmp" lima-*.zip ); then
@@ -340,6 +347,17 @@ _agent_vm_offer_git_protection() {
 # some of it names commands git runs: core.pager on `git log`, for one. The VM
 # can create such a folder anywhere in a share. safe.bareRepository=explicit (git 2.38+)
 # makes git use a bare repository only when --git-dir or GIT_DIR names it.
+
+# git, for agent-vm's own calls in a directory the VM can write. The VM may have
+# planted a repository there: a bare one, whatever the user's
+# safe.bareRepository, or a .git where Lima cannot protect it. -c is honoured
+# for safe.bareRepository (command-line config is trusted, a repository's own
+# is not), which refuses the bare one. core.fsmonitor=false stops the command
+# a repository's config names from running on commands that read the index,
+# and --no-pager the one pager.<cmd> and core.pager would start on a terminal.
+_agent_vm_git_untrusted() {
+  git --no-pager -c safe.bareRepository=explicit -c core.fsmonitor=false "$@"
+}
 
 # ok, unset, old (git before 2.38, which ignores the setting) or nogit. Read
 # from /, outside any repository: git only honours the setting from the system

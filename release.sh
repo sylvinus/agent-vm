@@ -23,7 +23,9 @@
 #      AGENT_VM_TAP=<path to a homebrew-tap clone>, Formula/agent-vm.rb there
 #      is updated too, and the commands to commit it are printed.
 #
-# Needs git, gh (logged in) and shasum or sha256sum.
+# Needs git, gh (logged in) and shasum or sha256sum. A dry run reads origin
+# without fetching, and without gh skips the checks that need it, with a
+# warning.
 
 set -euo pipefail
 
@@ -96,9 +98,16 @@ while [ $# -gt 0 ]; do
 done
 
 cd "$REPO_DIR"
-for tool in git gh; do
-  command -v "$tool" >/dev/null 2>&1 || die "$tool is required"
-done
+command -v git >/dev/null 2>&1 || die "git is required"
+# A dry run changes nothing, here included: no fetch (origin is read with
+# ls-remote), and gh only for reading, skipped with a warning when it is
+# missing or not logged in.
+GH=1
+if ! command -v gh >/dev/null 2>&1 || ! gh auth status >/dev/null 2>&1; then
+  [ -n "$DRY_RUN" ] || die "gh is required, and logged in"
+  GH=""
+  warn "gh is missing or not logged in: the checks that need it are skipped"
+fi
 
 # --- 1. the repository ---------------------------------------------------------
 echo "Checking the repository"
@@ -111,20 +120,31 @@ current="$(git rev-parse --abbrev-ref HEAD)"
 [ "$current" = "$BRANCH" ] || die "on branch '$current', not '$BRANCH' (RELEASE_BRANCH overrides)"
 ok "on $BRANCH"
 
-git fetch --quiet --tags origin "$BRANCH"
 head="$(git rev-parse HEAD)"
-[ "$head" = "$(git rev-parse "origin/$BRANCH")" ] \
+remote_head="$(git ls-remote origin "refs/heads/$BRANCH" | cut -f1)"
+[ -n "$remote_head" ] || die "could not read origin/$BRANCH"
+[ "$head" = "$remote_head" ] \
   || die "HEAD is not origin/$BRANCH: push or pull first"
 ok "level with origin/$BRANCH (${head:0:12})"
 
 # A tag already at HEAD with no release behind it is a previous run that
-# pushed the tag and then failed: pick up from the release.
+# pushed the tag and then failed: pick up from the release. The commit a tag
+# names: the peeled line of an annotated tag, or the tag itself.
+tag_commit() {
+  local local_c remote
+  if local_c="$(git rev-parse -q --verify "refs/tags/$TAG^{commit}")"; then
+    printf '%s\n' "$local_c"
+    return
+  fi
+  remote="$(git ls-remote --tags origin "refs/tags/$TAG" "refs/tags/$TAG^{}")"
+  printf '%s\n' "$remote" | awk -v t="refs/tags/$TAG" '$2 == t "^{}" { p = $1 } $2 == t { l = $1 } END { print (p != "" ? p : l) }'
+}
 RESUME=""
 if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null \
    || [ -n "$(git ls-remote --tags origin "refs/tags/$TAG")" ]; then
-  git fetch --quiet origin "refs/tags/$TAG:refs/tags/$TAG" 2>/dev/null || true
-  if [ "$(git rev-parse -q --verify "refs/tags/$TAG^{commit}")" = "$head" ] \
-     && ! gh release view "$TAG" >/dev/null 2>&1; then
+  if [ -z "$GH" ]; then
+    die "tag $TAG already exists (without gh, whether it has a release cannot be checked)"
+  elif [ "$(tag_commit)" = "$head" ] && ! gh release view "$TAG" >/dev/null 2>&1; then
     RESUME=1
     warn "tag $TAG is already at ${head:0:12}, with no release: resuming from the release"
   else
@@ -148,9 +168,11 @@ ok "CHANGELOG.md has a $VERSION section ($(printf '%s\n' "$NOTES" | wc -l | tr -
 # --- 3. tests ------------------------------------------------------------------
 # CI is the authority: it runs bash 3.2 and zsh, which this machine may lack.
 echo "Checking the tests"
-ci="$(gh run list --workflow test.yml --commit "$head" --limit 1 \
+ci="skipped"
+[ -z "$GH" ] || ci="$(gh run list --workflow test.yml --commit "$head" --limit 1 \
         --json status,conclusion --jq '.[0] | "\(.status) \(.conclusion)"' 2>/dev/null || true)"
 case "$ci" in
+  skipped)             warn "the test workflow on ${head:0:12} was not checked (no gh)" ;;
   "completed success") ok "the test workflow passed on ${head:0:12}" ;;
   "")                  die "no test workflow run for ${head:0:12}: push and wait for CI" ;;
   completed*)          die "the test workflow did not pass on ${head:0:12} ($ci)" ;;
@@ -187,13 +209,16 @@ elif [ -z "$(git ls-remote --tags origin "refs/tags/$TAG")" ]; then
   # Resumed from a tag that only exists here: `gh release create --verify-tag`
   # needs it on origin.
   run git push origin "refs/tags/$TAG"
+elif ! git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+  # Resumed from a tag that only exists on origin: the tarball is built from it.
+  run git fetch --quiet origin "refs/tags/$TAG:refs/tags/$TAG"
 fi
 # Built from the tag, not the working tree, so the asset is what was tagged.
 # It only writes into $WORK, so a dry run builds it too (from HEAD, which is
-# what the tag would point at) to show the checksum. www/ and the tests are
-# left out by export-ignore in .gitattributes.
+# what the tag points at, or would) to show the checksum. www/ and the tests
+# are left out by export-ignore in .gitattributes.
 ref="$TAG"
-[ -z "$DRY_RUN" ] || [ -n "$RESUME" ] || ref="HEAD"
+[ -z "$DRY_RUN" ] || ref="HEAD"
 git archive --format=tar.gz --prefix="agent-vm-$VERSION/" -o "$WORK/$TARBALL" "$ref"
 SHA="$(sha256_of "$WORK/$TARBALL")"
 printf '%s  %s\n' "$SHA" "$TARBALL" > "$WORK/SHA256SUMS"
@@ -201,7 +226,12 @@ run gh release create "$TAG" --verify-tag --title "agent-vm $VERSION" \
   --notes-file "$WORK/notes.md" "$WORK/$TARBALL" "$WORK/SHA256SUMS"
 
 # --- 6. Homebrew -----------------------------------------------------------------
-SLUG="$(gh repo view --json nameWithOwner --jq .nameWithOwner)"
+if [ -n "$GH" ]; then
+  SLUG="$(gh repo view --json nameWithOwner --jq .nameWithOwner)"
+else
+  # owner/repo from the origin URL, https or ssh.
+  SLUG="$(git remote get-url origin | sed -E 's#^.*github\.com[:/]##; s#\.git$##')"
+fi
 URL="https://github.com/$SLUG/releases/download/$TAG/$TARBALL"
 echo
 echo "Homebrew formula:"

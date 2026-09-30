@@ -173,13 +173,26 @@ mkdir -p "$d/bin" && cp "$z" "$d/bin/limactl.exe" && chmod +x "$d/bin/limactl.ex
 STUB
 chmod +x "$SB/forkbin/curl" "$SB/forkbin/unzip"
 # Under set -u, as a script sourcing agent-vm may run.
+# The checksums are pinned in the engine: those of the stub release stand for
+# them, unless PINNED gives others.
 fork() {  # <tag> [function]
   ( set -u; PATH="$SB/fakewin:$SB/forkbin:$PATH"; AGENT_VM_LIMA_DIR="$SB/lima-fork"; AGENT_VM_LIMA_FORK_TAG="$1"
+    AGENT_VM_LIMA_FORK_SHA256="${PINNED:-$(cat "$FORKSRV/$1/SHA256SUMS")}"
     _agent_vm_have_tty() { return 0; }; _agent_vm_ask_yn() { echo 1; }
     "${2:-_agent_vm_install_fork_windows}" ) 2>&1
 }
 make_fork_release v9.0.0-sylvinus.1
 make_fork_release v9.0.0-sylvinus.2
+# A zip that does not match the pinned checksum is refused, even when the
+# release's own SHA256SUMS agrees with it: whoever replaces one can replace both.
+: > "$SB/fork.log"
+out="$(PINNED="$(sed 's/^[0-9a-f]\{8\}/deadbeef/' "$FORKSRV/v9.0.0-sylvinus.1/SHA256SUMS")" fork v9.0.0-sylvinus.1)"
+case "$?:$out" in
+  1:*"checksum mismatch"*) pass "install: a zip that differs from the pinned checksum is refused" ;;
+  *) fail "install: pinned checksum not enforced: $out" ;;
+esac
+check "and nothing is installed" "$([ -e "$SB/lima-fork" ] && echo yes || echo no)" "no"
+check "the release's SHA256SUMS is not downloaded" "$(grep -c 'SHA256SUMS' "$SB/fork.log")" "0"
 : > "$SB/fork.log"
 out="$(fork v9.0.0-sylvinus.1)"
 check "install: the build of the tag, and a clean exit" \
@@ -290,14 +303,23 @@ if PATH="$SB/fakewinodd:$PATH" _agent_vm_lima_fork_arch >/dev/null 2>&1; then
 else
   pass "an architecture with no build is refused"
 fi
-# Both zips plus the checksums, spelled exactly as the release publishes
-# them: the installer downloads these names, so a rename breaks it loudly.
+# Both zips, spelled exactly as the release publishes them: the installer
+# downloads these names, so a rename breaks it loudly.
 check "the asset names for AMD64" \
   "$(PATH="$SB/fakewin:$PATH" _agent_vm_lima_fork_files | tr '\n' ' ')" \
-  "lima-2.3.0-sylvinus.2-Windows-AMD64.zip lima-additional-guestagents-2.3.0-sylvinus.2-Windows-AMD64.zip SHA256SUMS "
+  "lima-2.3.0-sylvinus.2-Windows-AMD64.zip lima-additional-guestagents-2.3.0-sylvinus.2-Windows-AMD64.zip "
 check "the asset names for ARM64" \
   "$(PATH="$SB/fakewinarm:$PATH" _agent_vm_lima_fork_files | tr '\n' ' ')" \
-  "lima-2.3.0-sylvinus.2-Windows-ARM64.zip lima-additional-guestagents-2.3.0-sylvinus.2-Windows-ARM64.zip SHA256SUMS "
+  "lima-2.3.0-sylvinus.2-Windows-ARM64.zip lima-additional-guestagents-2.3.0-sylvinus.2-Windows-ARM64.zip "
+# Every file downloaded, for either architecture, has a pinned checksum, of
+# the pinned tag.
+pinned_ok=yes
+for a in "$SB/fakewin" "$SB/fakewinarm"; do
+  for f in $(PATH="$a:$PATH" _agent_vm_lima_fork_files); do
+    printf '%s\n' "$AGENT_VM_LIMA_FORK_SHA256" | grep -Eq "^[0-9a-f]{64}  $f\$" || pinned_ok="no: $f"
+  done
+done
+check "each zip has a pinned checksum" "$pinned_ok" "yes"
 case "$(PATH="$SB/fakewin:$PATH" _agent_vm_lima_fork_release)" in
   *"/releases/download/v2.3.0-sylvinus.2") pass "the release URL carries the fork tag" ;;
   *) fail "the release URL does not carry the fork tag: $(PATH="$SB/fakewin:$PATH" _agent_vm_lima_fork_release)" ;;

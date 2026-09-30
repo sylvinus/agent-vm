@@ -109,6 +109,15 @@ _agent_vm_setup() {
   local install_mcp_chrome=1 install_mcp_playwright=0
 
   while [[ $# -gt 0 ]]; do
+    # A value-taking option at the end: said here, rather than an "unbound
+    # variable" from $2 under a caller's `set -u`, or zsh's error on `shift 2`.
+    case "$1" in
+      --disk|--memory|--ram|--cpus)
+        if [[ $# -lt 2 ]]; then
+          echo "Error: $1 needs a value." >&2
+          return 1
+        fi ;;
+    esac
     case "$1" in
       --help|-h)
         cat << 'EOF'
@@ -194,7 +203,7 @@ EOF
         # value, not another option. Bare `--preinstall` falls back to the
         # default set (handled below) without swallowing e.g. a following
         # `--disk`.
-        if [[ -n "$2" && "$2" != -* ]]; then
+        if [[ -n "${2:-}" && "$2" != -* ]]; then
           preinstall="$2"
           shift 2
         else
@@ -535,7 +544,12 @@ EOF
       || { _agent_vm_setup_aborted "Custom setup script failed."; return 1; }
   fi
 
-  limactl stop "$AGENT_VM_TEMPLATE" &>/dev/null
+  # The ready marker only for a stopped template: Lima clones only a stopped
+  # instance, so every new project VM would fail on a base still running.
+  if ! _agent_vm_stop_vm "$AGENT_VM_TEMPLATE"; then
+    echo "Error: the base VM is set up but did not stop: 'limactl stop $AGENT_VM_TEMPLATE', then 'agent-vm setup' again." >&2
+    return 1
+  fi
 
   # Record base VM version so we can warn about stale clones
   mkdir -p "$AGENT_VM_STATE_DIR"

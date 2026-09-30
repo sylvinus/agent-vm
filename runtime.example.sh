@@ -11,7 +11,9 @@
 # To get started:
 #   cp runtime.example.sh ~/.agent-vm/runtime.sh
 #   # Edit the file with your own values
-#   chmod +x ~/.agent-vm/runtime.sh
+#
+# It is piped into the interpreter its first line names (bash, sh or zsh), so
+# it needs no execute bit. It runs in the project directory.
 #
 # Keep private keys out of this file: it runs in every VM, where the agent can
 # read whatever it sets up. For GitHub, a fine-grained GH_TOKEN in
@@ -43,18 +45,21 @@
 # 3. Claude Code skills
 # =============================================================================
 #
-# Clone shared skills into the global skills directory.
+# Clone shared skills into the global skills directory, once per VM (this
+# script runs again on every command), and update them after that.
 # These will be available in all projects.
 
 # mkdir -p ~/.claude/skills
-# git clone https://github.com/your-org/claude-skills.git ~/.claude/skills/your-org-skills
+# if [ -d ~/.claude/skills/your-org-skills ]; then
+#   git -C ~/.claude/skills/your-org-skills pull --ff-only --quiet
+# else
+#   git clone https://github.com/your-org/claude-skills.git ~/.claude/skills/your-org-skills
+# fi
 
-# You can also install skills into the current project's directory.
-# These will only be available when working in that project.
-
-# PROJECT_DIR="$(pwd)"
-# mkdir -p "$PROJECT_DIR/.claude/skills"
-# git clone https://github.com/your-org/project-skills.git "$PROJECT_DIR/.claude/skills/project-skills"
+# Skills for the current project only belong in that project's
+# .agent-vm.runtime.sh: this file runs in every project. There, the same
+# pattern, in "$PWD/.claude/skills/project-skills" (which fails under
+# --readonly, where the project cannot be written).
 
 
 # =============================================================================
@@ -62,8 +67,10 @@
 # =============================================================================
 #
 # Add MCP servers available to Claude Code in all projects (--scope user).
+# `add` fails on a name that exists, so only when it is not there yet.
 #
-# claude mcp add --scope user my-mcp-server npx -y my-mcp-server@latest
+# claude mcp get my-mcp-server >/dev/null 2>&1 \
+#   || claude mcp add --scope user my-mcp-server npx -y my-mcp-server@latest
 
 
 # =============================================================================
@@ -76,12 +83,12 @@
 # For example, to show the current git branch:
 #
 # cat > /tmp/statusline-patch.json << 'PATCH'
-# {"statusLine": {"command": "git branch --show-current 2>/dev/null || echo ''"}}
+# {"statusLine": {"type": "command", "command": "git branch --show-current 2>/dev/null || echo ''"}}
 # PATCH
 #
 # if [ -f ~/.claude/settings.json ]; then
-#   jq -s '.[0] * .[1]' ~/.claude/settings.json /tmp/statusline-patch.json > /tmp/settings-merged.json
-#   mv /tmp/settings-merged.json ~/.claude/settings.json
+#   jq -s '.[0] * .[1]' ~/.claude/settings.json /tmp/statusline-patch.json > /tmp/settings-merged.json \
+#     && mv /tmp/settings-merged.json ~/.claude/settings.json
 # else
 #   mkdir -p ~/.claude
 #   cp /tmp/statusline-patch.json ~/.claude/settings.json

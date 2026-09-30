@@ -99,4 +99,9 @@ else
 fi
 rm -f "$SB/ln-probe"
 
+# project-env needs perl for a file inside the project (_agent_vm_nofollow).
+# macOS and most Linux hosts have it; minimal images (bash:3.2) do not, and
+# the tests that need it skip there, with the reason printed.
+if command -v perl >/dev/null 2>&1; then AGENT_VM_HAS_PERL=1; else AGENT_VM_HAS_PERL=""; fi
+
 printf 'agent-vm test suite (sandbox: %s)\n' "$SB"

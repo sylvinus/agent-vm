@@ -51,7 +51,7 @@ AGENT_VM_STATE_DIR="${AGENT_VM_STATE_DIR:-${HOME}/.agent-vm}"
 # the current directory and prints where it landed, so without clearing it this
 # would resolve the wrong directory and capture a stray line.
 _agent_vm_script_dir() {
-  local src="${BASH_SOURCE[0]:-$0}" dir
+  local src="$1" dir
   while [ -L "$src" ]; do
     dir="$(CDPATH= cd -P -- "$(dirname "$src")" >/dev/null && pwd)"
     src="$(readlink "$src")"
@@ -62,7 +62,22 @@ _agent_vm_script_dir() {
   done
   (CDPATH= cd -P -- "$(dirname "$src")" >/dev/null && pwd)
 }
-AGENT_VM_SCRIPT_DIR="$(_agent_vm_script_dir)"
+# The path of this file, read here at the top level and not in the function:
+# in a zsh function, $0 is the function's name, so lib/ was looked up in the
+# current directory, and a lib/ui.sh planted there ran on the host. zsh has no
+# BASH_SOURCE; its %x prompt escape is the file being sourced. The eval keeps
+# bash from parsing zsh syntax.
+if [[ -n "${ZSH_VERSION:-}" ]]; then
+  eval '_agent_vm_src="${(%):-%x}"'
+else
+  _agent_vm_src="${BASH_SOURCE[0]:-$0}"
+fi
+AGENT_VM_SCRIPT_DIR="$(_agent_vm_script_dir "$_agent_vm_src")"
+unset _agent_vm_src
+if [[ -z "$AGENT_VM_SCRIPT_DIR" ]]; then
+  echo "agent-vm: cannot find the directory of agent-vm.sh" >&2
+  return 1 2>/dev/null || exit 1
+fi
 
 # The rest of agent-vm, one file per concern, sourced like this one. Only
 # functions and settings: nothing runs until a command does. A file that is
@@ -121,6 +136,16 @@ _agent_vm_ensure_running() {
       echo "Error: SSH port $ssh_port is already set for VM '$other'." >&2
       return 1
     fi
+  fi
+
+  # `cd ~ && agent-vm shell` would hand the VM your dotfiles and SSH keys,
+  # read-write, and a share holding agent-vm's own files lets the VM change
+  # what the host runs next.
+  local unsafe
+  if unsafe="$(_agent_vm_unsafe_project "$host_dir")"; then
+    echo "Error: refusing to share $host_dir with a VM: it is, or contains, $unsafe." >&2
+    echo "Run agent-vm from a project directory." >&2
+    return 1
   fi
 
   # Lima's host mount cannot share a path containing whitespace: the mount
@@ -241,7 +266,10 @@ _agent_vm_ensure_running() {
       IFS= read -r reply 2>/dev/null </dev/tty || reply=""
       if [[ "$reply" =~ ^[Yy]$ ]]; then
         echo "Stopping VM..."
-        limactl stop "$vm_name" &>/dev/null
+        if ! _agent_vm_stop_vm "$vm_name"; then
+          echo "Error: could not stop VM '$vm_name'; its settings are unchanged." >&2
+          return 1
+        fi
       else
         echo "Not applied: the VM keeps its current settings."
         apply_resize=""
@@ -288,23 +316,33 @@ _agent_vm_ensure_running() {
 
   # A VM whose shares were set up for another Lima or another opt-out setting:
   # .git writable while it should be protected, or reverse-sshfs while it
-  # should not (see _agent_vm_mounts_expr). The shares only change on a
-  # stopped VM, so before starting it. A running one keeps what it has until
-  # it stops.
-  local was_protected=""
+  # should not (see _agent_vm_mounts_expr). Or set up for another mode than
+  # the one asked: --readonly on a VM that last ran writable (or has no
+  # record), or the reverse. The shares only change on a stopped VM, so before
+  # starting it: booting it with the old shares first would give whatever
+  # starts with the VM (a service, a job of the agent's) a writable window. A
+  # running one keeps what it has until it stops; for the mode, the reconcile
+  # step after the start asks to restart it.
+  local was_protected="" git_stale="" mode_stale=""
   _agent_vm_mounts_protect_git "$vm_name" && was_protected=1
-  if [[ "$was_protected" != "$protect_git" ]]; then
-    if [[ -n "$was_running" ]]; then
-      if [[ -n "$protect_git" ]]; then
-        echo "Warning: VM '$vm_name' is running with .git writable, so the agent can still write .git. 'agent-vm stop', then run again." >&2
-      elif _agent_vm_writable_git_optout; then
-        echo "Note: VM '$vm_name' keeps .git read-only until it stops." >&2
-      else
-        echo "Warning: this Lima cannot keep .git read-only; VM '$vm_name' keeps its current shares until it stops." >&2
-      fi
+  [[ "$was_protected" != "$protect_git" ]] && git_stale=1
+  if [[ "$want_writable" == "false" ]]; then
+    _agent_vm_mounts_all_readonly "$vm_name" || mode_stale=1
+  elif _agent_vm_mounts_all_readonly "$vm_name"; then
+    mode_stale=1
+  fi
+  if [[ -n "$git_stale" && -n "$was_running" ]]; then
+    if [[ -n "$protect_git" ]]; then
+      echo "Warning: VM '$vm_name' is running with .git writable, so the agent can still write .git. 'agent-vm stop', then run again." >&2
+    elif _agent_vm_writable_git_optout; then
+      echo "Note: VM '$vm_name' keeps .git read-only until it stops." >&2
     else
-      # Names of their own: zsh prints a local declared twice in one function.
-      local shares_json shares_out
+      echo "Warning: this Lima cannot keep .git read-only; VM '$vm_name' keeps its current shares until it stops." >&2
+    fi
+  elif [[ -z "$was_running" && ( -n "$git_stale" || -n "$mode_stale" ) ]]; then
+    # Names of their own: zsh prints a local declared twice in one function.
+    local shares_json shares_out
+    if [[ -n "$git_stale" ]]; then
       if [[ -n "$protect_git" ]]; then
         echo "Making every .git read-only for VM '$vm_name'..."
       elif _agent_vm_writable_git_optout; then
@@ -312,15 +350,20 @@ _agent_vm_ensure_running() {
       else
         echo "Warning: this Lima cannot keep .git read-only; VM '$vm_name' goes back to Lima's default mount type." >&2
       fi
-      shares_json=$(_agent_vm_build_mounts_json "$vm_name" "$host_dir" "$want_writable" "$protect_git")
-      if ! shares_out=$(cd /tmp && limactl edit "$vm_name" \
-        --set "$(_agent_vm_mounts_expr "$shares_json" "$protect_git")" 2>&1); then
-        echo "Error: could not change the shares of '$vm_name':" >&2
-        echo "$shares_out" >&2
-        return 1
-      fi
-      _agent_vm_record_mounts "$vm_name" "$shares_json"
     fi
+    if [[ -n "$mode_stale" && "$want_writable" == "false" ]]; then
+      echo "Making every share of VM '$vm_name' read-only..."
+    elif [[ -n "$mode_stale" ]]; then
+      echo "VM '$vm_name' was left read-only by --readonly; making it writable again..."
+    fi
+    shares_json=$(_agent_vm_build_mounts_json "$vm_name" "$host_dir" "$want_writable" "$protect_git")
+    if ! shares_out=$(cd /tmp && limactl edit "$vm_name" \
+      --set "$(_agent_vm_mounts_expr "$shares_json" "$protect_git")" 2>&1); then
+      echo "Error: could not change the shares of '$vm_name':" >&2
+      echo "$shares_out" >&2
+      return 1
+    fi
+    _agent_vm_record_mounts "$vm_name" "$shares_json"
   fi
 
   if [[ -z "$was_running" ]]; then
@@ -358,10 +401,15 @@ _agent_vm_ensure_running() {
   # On the common path both agree and nothing happens.
   # The env push rides along with the first probe: see
   # _agent_vm_push_env_and_probe. The file is on the VM's disk, so a restart
-  # below keeps it.
-  local is_writable="false" probe_out
-  probe_out="$(_agent_vm_push_env_and_probe "$vm_name" "$host_dir" "$(_agent_vm_env_payload "$host_dir")")" \
-    && is_writable="true"
+  # below keeps it. So does the question of whether the project's runtime
+  # script is there, which only the VM reads when it is in the project.
+  local is_writable="false" probe_out guest_env="" guest_runtime="" project_env project_runtime
+  project_env="$(_agent_vm_project_env_file "$host_dir")"
+  project_runtime="$(_agent_vm_project_runtime_path "$host_dir")"
+  _agent_vm_in_project "$host_dir" "$project_env" && guest_env="$project_env"
+  _agent_vm_in_project "$host_dir" "$project_runtime" && guest_runtime="$project_runtime"
+  probe_out="$(_agent_vm_push_env_and_probe "$vm_name" "$host_dir" "$(_agent_vm_env_payload "$host_dir")" \
+    "$guest_env" "$guest_runtime")" && is_writable="true"
   [[ "$probe_out" == *env-ok* ]] || echo "Warning: failed to push the env files into VM '$vm_name'." >&2
   local needs_remount=""
   [[ "$is_writable" != "$want_writable" ]] && needs_remount=1
@@ -391,7 +439,12 @@ _agent_vm_ensure_running() {
       echo "Project mount is not writable; repairing..." >&2
     fi
 
-    limactl stop "$vm_name" &>/dev/null
+    # Checked: editing the config and recording read-only shares while the VM
+    # still runs with its writable ones would claim what is not true.
+    if ! _agent_vm_stop_vm "$vm_name"; then
+      echo "Error: could not stop VM '$vm_name' to change its shares; nothing was changed." >&2
+      return 1
+    fi
     # Rebuild the full mounts JSON so any ~/.agent-vm/volumes entries are
     # preserved (a plain project-dir-only set would silently drop them).
     local reconcile_mounts_json
@@ -434,7 +487,7 @@ _agent_vm_ensure_running() {
   # the VM can lift. "Could not tell" is refused too: the caller asked for a
   # boundary, and the only honest answers are "it is there" or an error.
   if [[ -n "$rdonly" ]]; then
-    _agent_vm_mount_is_host_enforced "$vm_name" "$host_dir"
+    _agent_vm_mount_is_host_enforced "$vm_name"
     case $? in
       0) echo "Read-only: the project and every other share (enforced on the host)." ;;
       1) echo "Error: --readonly cannot be enforced with this mount type." >&2
@@ -469,10 +522,15 @@ _agent_vm_ensure_running() {
     _agent_vm_run_runtime "$vm_name" "$host_dir" "$AGENT_VM_STATE_DIR/runtime.sh"
   fi
 
-  # Run project-specific runtime script if it exists.
-  local project_runtime
-  project_runtime="$(_agent_vm_project_runtime_path "$host_dir")"
-  if [ -f "$project_runtime" ]; then
+  # Run project-specific runtime script if it exists: by its path in the VM
+  # when it is in the project (the probe above said whether it is there),
+  # piped from the host when AGENT_VM_PROJECT_RUNTIME puts it elsewhere.
+  if [[ -n "$guest_runtime" ]]; then
+    if [[ "$probe_out" == *runtime-found* ]]; then
+      echo "Running project runtime setup..."
+      _agent_vm_run_project_runtime "$vm_name" "$host_dir" "$guest_runtime"
+    fi
+  elif [ -f "$project_runtime" ]; then
     echo "Running project runtime setup..."
     _agent_vm_run_runtime "$vm_name" "$host_dir" "$project_runtime"
   fi
@@ -614,12 +672,13 @@ agent-vm() {
       _agent_vm_info "$info_dir"
       ;;
     env)
-      _agent_vm_env env "$AGENT_VM_STATE_DIR/env" "$@"
+      _agent_vm_env env "$AGENT_VM_STATE_DIR/env" "" "$@"
       ;;
     project-env)
-      local project_env_file
+      local project_env_file project_top=""
       project_env_file="$(_agent_vm_project_env_file)"
-      _agent_vm_env project-env "$project_env_file" "$@" || return $?
+      _agent_vm_in_project "$(pwd)" "$project_env_file" && project_top="$(pwd)"
+      _agent_vm_env project-env "$project_env_file" "$project_top" "$@" || return $?
       # Only after a write, and only if it worked: that is when the file is
       # new to the repository and when the user is looking.
       if [ "${1:-}" = "set" ]; then

@@ -51,29 +51,42 @@ esac
 
 # Read-only is only a real boundary for mount types the host enforces. Lima
 # applies it inside the guest for reverse-sshfs and for virtiofs under QEMU,
-# where root can remount it rw. $2: the VM type `limactl list` reports.
-mount_fstype() {
+# where root can remount it rw. Answered from what `limactl list` reports for
+# the VM, "<VM type> <mount type>" ($1), never from the guest: this stub's
+# guest claims 9p, which must not count.
+mount_types() {
   cat > "$SB/bin/limactl" <<STUB
 #!/usr/bin/env bash
-[ "\$1" = shell ] && { printf '%s\n' "$1"; exit 0; }
-[ "\$1" = list ] && { printf '%s\n' "${2:-}"; exit 0; }
+[ "\$1" = shell ] && { echo 9p; exit 0; }
+[ "\$1" = list ] && { printf '%s\n' "$1"; exit 0; }
 exit 1
 STUB
   chmod +x "$SB/bin/limactl"
-  _agent_vm_mount_is_host_enforced agent-vm-t "$PROJ"
+  _agent_vm_mount_is_host_enforced agent-vm-t
   printf '%s' "$?"
 }
-check "virtiofs on vz is host-enforced"  "$(mount_fstype virtiofs vz)"   "0"
-check "virtiofs under QEMU is not"      "$(mount_fstype virtiofs qemu)" "1"
-check "virtiofs, VM type unknown: undecided" "$(mount_fstype virtiofs '')" "2"
-check "9p is host-enforced"            "$(mount_fstype 9p)"         "0"
-check "reverse-sshfs is not"           "$(mount_fstype fuse.sshfs)" "1"
-check "an empty answer is undecided"   "$(mount_fstype '')"         "2"
+check "virtiofs on vz is host-enforced"      "$(mount_types 'vz virtiofs')"   "0"
+check "virtiofs under QEMU is not"          "$(mount_types 'qemu virtiofs')" "1"
+check "virtiofs, VM type unknown: undecided" "$(mount_types ' virtiofs')"     "2"
+check "9p on QEMU is host-enforced"         "$(mount_types 'qemu 9p')"       "0"
+check "reverse-sshfs is not"                "$(mount_types 'vz reverse-sshfs')" "1"
+check "an empty answer is undecided"        "$(mount_types '')"              "2"
+check "an unknown VM type is undecided"     "$(mount_types 'wsl2 wsl2')"     "2"
+# Left unset, Lima's driver picks it at start: virtiofs on vz, 9p on QEMU for
+# a VM made by Lima 1.0 or later (its lima-version file), reverse-sshfs before.
+check "unset on vz: virtiofs, enforced"     "$(mount_types 'vz <nil>')"      "0"
+mkdir -p "$SB/lima-home/agent-vm-t"
+echo 2.1.0 > "$SB/lima-home/agent-vm-t/lima-version"
+check "unset on QEMU, Lima >= 1.0: 9p, enforced" "$(LIMA_HOME="$SB/lima-home" mount_types 'qemu <nil>')" "0"
+echo 0.23.2 > "$SB/lima-home/agent-vm-t/lima-version"
+check "unset on QEMU, Lima < 1.0: reverse-sshfs, not" "$(LIMA_HOME="$SB/lima-home" mount_types 'qemu <nil>')" "1"
+rm -f "$SB/lima-home/agent-vm-t/lima-version"
+check "unset on QEMU, no lima-version: reverse-sshfs, not" "$(LIMA_HOME="$SB/lima-home" mount_types 'qemu')" "1"
 # Served by the builtin server of a Lima with readonlyNames, it is. The guest
 # cannot tell the servers apart: the record of the applied mounts does.
 mkdir -p "$HOME/.agent-vm"
 printf '[{"location": "%s", "writable": false, %s}]\n' "$PROJ" "$SSHFS_RO" > "$HOME/.agent-vm/.agent-vm-mounts-agent-vm-t"
-check "reverse-sshfs with readonlyNames is" "$(mount_fstype fuse.sshfs)" "0"
+check "reverse-sshfs with readonlyNames is" "$(mount_types 'qemu reverse-sshfs')" "0"
 rm -f "$HOME/.agent-vm/.agent-vm-mounts-agent-vm-t"
 # Restore the shared stub: mount_fstype replaced it with its own.
 cat > "$SB/bin/limactl" <<'STUB'

@@ -46,9 +46,11 @@ _agent_vm_volume_matches() {
 # file for a file source): virtiofs and 9p create mount points before the
 # project is mounted, and --readonly refuses the write from the guest.
 # No component may be ".." or a symlink: the agent can write the project, and
-# mkdir would follow a link it planted there to anywhere on the host.
+# mkdir would follow a link it planted there to anywhere on the host. Checked
+# here for the message, and made with _agent_vm_nofollow, since the VM could
+# swap a link in after the check.
 _agent_vm_project_mountpoint() {
-  local dir="$1" rel="$2" src="$3" p="$1" comp rest="$2/"
+  local dir="$1" rel="$2" src="$3" p="$1" comp rest="$2/" norm=""
   while [[ -n "$rest" ]]; do
     comp="${rest%%/*}"
     rest="${rest#*/}"
@@ -58,6 +60,7 @@ _agent_vm_project_mountpoint() {
       return 1
     fi
     p="$p/$comp"
+    norm="${norm:+$norm/}$comp"
     if [[ -L "$p" ]]; then
       echo "Warning: Mount destination '${rel}' (from ~/.agent-vm/volumes) goes through a symlink in the project ($p), skipping." >&2
       return 1
@@ -67,14 +70,20 @@ _agent_vm_project_mountpoint() {
     echo "Warning: Mount destination '${rel}' (from ~/.agent-vm/volumes) is the project itself, skipping." >&2
     return 1
   fi
-  if [[ -d "$src" ]]; then
-    mkdir -p "$p" 2>/dev/null
-  else
-    mkdir -p "$(dirname "$p")" 2>/dev/null && { [[ -f "$p" ]] || : > "$p"; } 2>/dev/null
-  fi || {
-    echo "Warning: Cannot create the mount point '$p' (from ~/.agent-vm/volumes), skipping." >&2
-    return 1
-  }
+  local op=touch st=0
+  [[ -d "$src" ]] && op=mkdir
+  _agent_vm_nofollow "$op" "$dir" "$norm" 2>/dev/null || st=$?
+  case "$st" in
+    0) ;;
+    3)
+      echo "Warning: Mount destination '${rel}' (from ~/.agent-vm/volumes) goes through a symlink in the project, or is not a $([[ "$op" == mkdir ]] && echo directory || echo file) there, skipping." >&2
+      return 1 ;;
+    *)
+      command -v perl >/dev/null 2>&1 \
+        || echo "Warning: perl is needed to create the mount point '$p' in the project without following symlinks." >&2
+      echo "Warning: Cannot create the mount point '$p' (from ~/.agent-vm/volumes), skipping." >&2
+      return 1 ;;
+  esac
   printf '%s\n' "$p"
 }
 
@@ -276,53 +285,72 @@ _agent_vm_project_writable() {
     sh "$host_dir" &>/dev/null
 }
 
-# _agent_vm_push_env_and_probe <vm> <dir> <payload> — the same probe, in the
-# same `limactl shell` as the env push every start makes: each one is a round
-# trip. Prints env-ok once the env file is written; returns the probe's answer.
+# _agent_vm_push_env_and_probe <vm> <dir> <payload> [<env> [<runtime>]]:
+# the same probe, in the same `limactl shell` as the env push every start
+# makes: each one is a round trip. Prints env-ok once the env file is written,
+# and runtime-found when <runtime> is a file; returns the probe's answer.
 #
-# The payload (~/.agent-vm/env, then the project's env, see
-# _agent_vm_env_payload) becomes $HOME/.agent-vm.env, which the base VM's
-# ~/.zshenv sources with `set -a`: plain KEY=value lines, the project's last so
-# it wins. On every start, so edits on the host need no --reset, and when
-# empty too, so env removed on the host goes from the VM. `umask 077`: it
-# usually holds secrets.
+# The payload (~/.agent-vm/env, then the project's env when it is outside the
+# project, see _agent_vm_env_payload), then <env>, becomes
+# $HOME/.agent-vm.env, which the base VM's ~/.zshenv sources with `set -a`:
+# plain KEY=value lines, the project's last so it wins. On every start, so
+# edits on the host need no --reset, and when empty too, so env removed on the
+# host goes from the VM. `umask 077`: it usually holds secrets.
+#
+# <env> and <runtime> are the project's files when they are inside the
+# project: the VM reads them, not the host (see _agent_vm_in_project). CRs are
+# dropped from <env> here, as the host does for the payload.
 _agent_vm_push_env_and_probe() {
   local vm_name="$1" host_dir="$2" payload="$3"
   { [ -z "$payload" ] || printf '%s\n' "$payload"; } \
     | limactl shell "$vm_name" sh -c '
-        (umask 077 && rm -f "$HOME/.agent-vm.env" && cat > "$HOME/.agent-vm.env") && echo env-ok
+        (umask 077 && rm -f "$HOME/.agent-vm.env" && { cat; [ -z "$2" ] || [ ! -f "$2" ] || awk "{ sub(/\r\$/, \"\"); print }" "$2"; } > "$HOME/.agent-vm.env") && echo env-ok
+        [ -z "$3" ] || [ ! -f "$3" ] || echo runtime-found
         p="$1/.agent-vm-write-probe.$$"; touch "$p" 2>/dev/null || exit 1; rm -f "$p"' \
-      sh "$host_dir" 2>/dev/null
+      sh "$host_dir" "${4:-}" "${5:-}" 2>/dev/null
 }
 
-# Is the project share one whose read-only flag is enforced outside the guest?
-# Answers from the mount that is actually there, not from the configured
-# mountType: what matters is what got mounted, and a stale VM can disagree with
-# the config. 9p is enforced by QEMU (`readonly=on` on -virtfs). virtiofs is
-# enforced on vz only, by Virtualization.framework: under QEMU, virtiofsd has
-# no read-only mode and Lima passes none (virtio-fs/virtiofsd#97), so the flag
-# only reaches the guest's fstab. fuse.sshfs (Lima's reverse-sshfs) is
-# enforced only when served by the builtin SFTP server of a Lima with
-# readonlyNames, which the guest cannot tell apart from the OpenSSH one: that
-# part is answered from the mounts agent-vm last applied. Otherwise it only
-# gets `-o ro` inside the guest, where root can remount it rw.
-# Returns 0 (enforced), 1 (not enforced), or 2 (could not tell).
+# Are <vm>'s shares ones whose read-only flag is enforced outside the guest?
+# Answered on the host, from the VM type and mount type Lima has for the VM,
+# never by asking the guest: a compromised one would say whatever passes.
+# agent-vm only changes the mount type of a stopped VM, so the config is what
+# the VM runs with. 9p is enforced by QEMU (`readonly=on` on -virtfs).
+# virtiofs is enforced on vz only, by Virtualization.framework: under QEMU,
+# virtiofsd has no read-only mode and Lima passes none
+# (virtio-fs/virtiofsd#97), so the flag only reaches the guest's fstab.
+# reverse-sshfs is enforced only when served by the builtin SFTP server of a
+# Lima with readonlyNames, which is answered from the mounts agent-vm last
+# applied. Otherwise it only gets `-o ro` inside the guest, where root can
+# remount it rw. Returns 0 (enforced), 1 (not enforced), or 2 (could not tell).
 _agent_vm_mount_is_host_enforced() {
-  local vm_name="$1" host_dir="$2" fstype vmtype
-  fstype=$(limactl shell "$vm_name" findmnt -no FSTYPE "$host_dir" 2>/dev/null) || return 2
-  [[ -z "$fstype" ]] && return 2
-  case "$fstype" in
-    9p) return 0 ;;
-    virtiofs)
-      vmtype=$(limactl list --format '{{.VMType}}' "$vm_name" 2>/dev/null) || return 2
+  local types vmtype mtype ver
+  types="$(limactl list --format '{{.VMType}} {{.Config.MountType}}' "$1" 2>/dev/null)" || return 2
+  vmtype="${types%% *}"
+  mtype="${types#* }"
+  [[ "$types" == *" "* ]] || mtype=""
+  # Left unset (as agent-vm leaves it without the .git protection), Lima's
+  # driver picks it at start, and `limactl list` shows it unset. The same
+  # choice as Lima's drivers: virtiofs on vz, 9p on QEMU except on Windows or
+  # for a VM made by a Lima before 1.0 (no lima-version file before 0.20).
+  case "$mtype" in
+    ""|default|"<nil>"|"<no value>")
       case "$vmtype" in
-        vz)   return 0 ;;
-        qemu) return 1 ;;
-        *)    return 2 ;;
+        vz) mtype=virtiofs ;;
+        qemu)
+          ver="$(cat "$(_agent_vm_lima_home)/$1/lima-version" 2>/dev/null)"
+          if _agent_vm_on_windows || [[ -z "$ver" ]] || ! _agent_vm_ver_ge "$ver" 1.0.0; then
+            mtype=reverse-sshfs
+          else
+            mtype=9p
+          fi ;;
       esac ;;
-    fuse.sshfs)
-      _agent_vm_mounts_protect_git "$vm_name" && return 0
+  esac
+  case "$vmtype $mtype" in
+    "vz virtiofs"|"qemu 9p") return 0 ;;
+    "qemu virtiofs") return 1 ;;
+    ?*" reverse-sshfs")
+      _agent_vm_mounts_protect_git "$1" && return 0
       return 1 ;;
-    *)           return 1 ;;
+    *) return 2 ;;
   esac
 }

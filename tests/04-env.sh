@@ -80,6 +80,9 @@ section "project-env: one env per project"
 # moves, clones and disappears with it.
 PENV="$SB/penv"; mkdir -p "$PENV/pa/.mytool" "$PENV/pb" "$PENV/state"
 pe() { ( cd "$1" && AGENT_VM_STATE_DIR="$PENV/state" bash "$AGENT_VM_SH" project-env "${@:2}" ); }
+if [[ -z "$AGENT_VM_HAS_PERL" ]]; then
+  printf '  skip project-env in the project (perl is not installed)\n'
+else
 
 pe "$PENV/pa" set OPENCODE_CONFIG "/a/.albert-code/opencode.json" >/dev/null
 pe "$PENV/pb" set OPENCODE_CONFIG "/b/.albert-code/opencode.json" >/dev/null
@@ -110,14 +113,18 @@ check "and the default file is untouched by it" "$(pe "$PENV/pa" get OPENCODE_CO
 check "info publishes the path, so nobody rebuilds it" \
   "$( ( cd "$PENV/pa" && AGENT_VM_PROJECT_ENV=.mytool/env AGENT_VM_STATE_DIR="$PENV/state" bash "$AGENT_VM_SH" info | sed -n 's/^project_env=//p' ) )" \
   "$PENV/pa/.mytool/env"
+fi
 
 # Precedence: the payload pushed into the VM is shared-then-project, because it
 # is sourced — so a key set in both ends up with the project's value. Without
-# this order, "per project" would mean nothing.
+# this order, "per project" would mean nothing. The host only reads a project
+# file kept outside the project; one inside is appended by the VM, after the
+# payload (tests/20-project-files.sh).
 ( AGENT_VM_STATE_DIR="$PENV/state"
+  export AGENT_VM_PROJECT_ENV="$PENV/outside.env"
   mkdir -p "$AGENT_VM_STATE_DIR"
   printf "SHARED_ONLY='s'\nBOTH='shared'\n" > "$AGENT_VM_STATE_DIR/env"
-  printf "BOTH='project'\n" > "$PENV/pa/.agent-vm.env"
+  printf "BOTH='project'\n" > "$PENV/outside.env"
   payload="$(_agent_vm_env_payload "$PENV/pa")"
   val="$(set -a; eval "$payload"; set +a; printf '%s' "${BOTH:-MISSING}")"
   shared="$(set -a; eval "$payload"; set +a; printf '%s' "${SHARED_ONLY:-MISSING}")"
@@ -130,11 +137,18 @@ else
 fi
 # A shared file without a trailing newline must not glue onto the project's.
 ( AGENT_VM_STATE_DIR="$PENV/state"
+  export AGENT_VM_PROJECT_ENV="$PENV/outside.env"
   printf "SHARED_LAST='s'" > "$AGENT_VM_STATE_DIR/env"
-  printf "BOTH='project'\n" > "$PENV/pa/.agent-vm.env"
+  printf "BOTH='project'\n" > "$PENV/outside.env"
   payload="$(_agent_vm_env_payload "$PENV/pa")"
   printf '%s\n' "$payload" | grep -qx "BOTH='project'" )
 check "a shared file with no final newline stays separate" "$?" "0"
+( AGENT_VM_STATE_DIR="$PENV/state"
+  printf "S='s'\n" > "$AGENT_VM_STATE_DIR/env"
+  printf "IN_PROJECT='p'\n" > "$PENV/pa/.agent-vm.env"
+  _agent_vm_env_payload "$PENV/pa" ) > "$SB/payload-in-project"
+check "a project file inside the project is not read by the host" "$(cat "$SB/payload-in-project")" "S='s'"
+rm -f "$PENV/state/env" "$PENV/outside.env"
 
 # =============================================================================
 section "project-env: the file is in a repository, so say so"
@@ -142,7 +156,9 @@ section "project-env: the file is in a repository, so say so"
 # The failure that matters for this file is committing it. The warning has to
 # name the fix, and the fix has to work — a printed line nobody can apply is
 # worse than no warning.
-if command -v git >/dev/null 2>&1; then
+if [[ -z "$AGENT_VM_HAS_PERL" ]]; then
+  printf '  skip project-env set in a repository (perl is not installed)\n'
+elif command -v git >/dev/null 2>&1; then
   GI="$SB/gitrepo"; mkdir -p "$GI"
   ( cd "$GI" && git init -q && git config user.email t@t && git config user.name t )
   gpe() { ( cd "$GI" && AGENT_VM_STATE_DIR="$PENV/state" bash "$AGENT_VM_SH" project-env "$@" ); }
@@ -196,6 +212,20 @@ if command -v git >/dev/null 2>&1; then
   ( cd "$GS/sub" && eval "$(fix_of "$out")" ) >/dev/null 2>&1
   check "tracked, from a subdirectory: the printed command untracks and ignores it" \
     "$( cd "$GS" && git ls-files sub/.agent-vm.env; git check-ignore -q sub/.agent-vm.env && echo ignored )" "ignored"
+
+  # The VM can plant a bare repository in the project, whose config names a
+  # command git runs on the host (core.fsmonitor, on reading the index). The
+  # warning runs git there: it must refuse that repository, whatever the
+  # user's safe.bareRepository, and run nothing it names.
+  PLANT="$SB/planted"; mkdir -p "$PLANT"
+  ( cd "$PLANT" && git init -q --bare . \
+    && git config core.bare false && git config core.worktree "$PLANT" \
+    && git config core.fsmonitor "touch '$SB/pwned-fsmonitor'" ) 2>/dev/null
+  : > "$PLANT/.agent-vm.env"
+  ( HOME="$SB/nogitconfig"; export GIT_CONFIG_NOSYSTEM=1; _agent_vm_warn_unignored "$PLANT/.agent-vm.env" ) >/dev/null 2>&1
+  check "a planted bare repository runs nothing on the host" \
+    "$(ls "$SB" | grep -c '^pwned-')" "0"
+  rm -rf "$PLANT" "$SB"/pwned-*
 
   # Outside a repository there is nothing to warn about.
   OUTSIDE="$SB/outside"; mkdir -p "$OUTSIDE"

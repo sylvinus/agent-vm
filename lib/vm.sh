@@ -41,6 +41,41 @@ _agent_vm_abs_dir() {
   (CDPATH= cd -- "$dir" >/dev/null && pwd)
 }
 
+# Prints why <dir> must not be shared with a VM, and returns 0, when it is or
+# contains your home directory (dotfiles, SSH keys, every other project),
+# agent-vm itself (the host runs its files), agent-vm's state (every VM's env)
+# or Lima's (the VMs' SSH key and disks). Returns 1 when it is none of them.
+# Compared as physical paths: a share is the directory a path resolves to.
+_agent_vm_unsafe_project() {
+  local dir p what
+  dir="$(CDPATH= cd -P -- "$1" 2>/dev/null && pwd)" || dir="$1"
+  for what in "your home directory" "agent-vm itself" "agent-vm's state" "Lima's state"; do
+    case "$what" in
+      "your home directory") p="$HOME" ;;
+      "agent-vm itself")     p="$AGENT_VM_SCRIPT_DIR" ;;
+      "agent-vm's state")    p="$AGENT_VM_STATE_DIR" ;;
+      *)                     p="$(_agent_vm_lima_home)" ;;
+    esac
+    [[ -n "$p" ]] || continue
+    p="$(CDPATH= cd -P -- "$p" 2>/dev/null && pwd)" || p="${p%/}"
+    case "${p%/}/" in
+      "${dir%/}/"*)
+        printf '%s\n' "$what"
+        return 0 ;;
+    esac
+  done
+  return 1
+}
+
+# Stop <vm> and check that it did: limactl's status does not say (it fails on
+# a VM that was already stopped). 1 when it still runs or Lima cannot tell.
+_agent_vm_stop_vm() {
+  local st=0
+  limactl stop "$1" </dev/null &>/dev/null
+  _agent_vm_running "$1" || st=$?
+  [[ "$st" -eq 1 ]]
+}
+
 # SHA-256 of stdin, hex first. shasum ships with macOS and with perl on most
 # Linux systems; minimal ones (Fedora, Arch containers) only have sha256sum.
 # Both print the same digest, so a VM keeps its name across the two.

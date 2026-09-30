@@ -72,11 +72,11 @@ _agent_vm_mounts_protect_git "$PV" && fail "the record still says protected" || 
 # Lima with readonlyNames, and refused otherwise.
 touch "$PROTECTS"
 protected_rec false
-out="$(AGENT_VM_TEST_STOPPED=1 AGENT_VM_TEST_RO=1 AGENT_VM_TEST_FSTYPE=fuse.sshfs rec --readonly run true)"
+out="$(AGENT_VM_TEST_STOPPED=1 AGENT_VM_TEST_RO=1 AGENT_VM_TEST_MOUNTTYPE=reverse-sshfs rec --readonly run true)"
 case "$out" in *"enforced on the host"*) pass "--readonly on protected reverse-sshfs: accepted" ;; *) fail "--readonly on protected reverse-sshfs: $out" ;; esac
 rm -f "$PROTECTS"
 printf '[{"location": "%s", "writable": false}]\n' "$PROJ" > "$REC_MOUNTS"
-out="$(AGENT_VM_TEST_STOPPED=1 AGENT_VM_TEST_RO=1 AGENT_VM_TEST_FSTYPE=fuse.sshfs rec --readonly run true)"
+out="$(AGENT_VM_TEST_STOPPED=1 AGENT_VM_TEST_RO=1 AGENT_VM_TEST_MOUNTTYPE=reverse-sshfs rec --readonly run true)"
 case "$out" in *"--readonly cannot be enforced"*) pass "--readonly on plain reverse-sshfs: refused" ;; *) fail "--readonly on plain reverse-sshfs: $out" ;; esac
 
 # The opt-out: .git writable although this Lima could protect it, said on

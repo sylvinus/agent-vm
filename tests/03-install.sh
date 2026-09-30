@@ -23,6 +23,30 @@ else
 fi
 check "no symlink (the historical sourcing)" "$(script_dir_of "$AGENT_VM_SH")"     "$REALDIR"
 
+# Sourced from a shell rc, the current directory is anyone's: a project where
+# the agent may have written a lib/ui.sh. In zsh, a function's $0 is its own
+# name, and the directory of that was ".": lib/ was loaded from there.
+ELSEWHERE="$SB/elsewhere"; mkdir -p "$ELSEWHERE/lib"
+printf 'touch "%s/planted-lib-ran"\n' "$SB" > "$ELSEWHERE/lib/ui.sh"
+source_from_elsewhere() {  # <shell> <file>
+  ( cd "$ELSEWHERE" && "$1" -c '. "$1" >/dev/null 2>&1; printf "%s" "$AGENT_VM_SCRIPT_DIR"' _ "$2" )
+}
+for sh in bash zsh; do
+  if ! command -v "$sh" >/dev/null 2>&1; then
+    printf '  skip sourced by %s from another directory (%s is not installed)\n' "$sh" "$sh"
+    continue
+  fi
+  check "sourced by $sh from another directory: lib/ next to agent-vm.sh" \
+    "$(source_from_elsewhere "$sh" "$AGENT_VM_SH")" "$REALDIR"
+  if [[ -n "$AGENT_VM_HAS_SYMLINKS" ]]; then
+    check "sourced by $sh through a symlink, from another directory" \
+      "$(source_from_elsewhere "$sh" "$SB/link2/agent-vm")" "$REALDIR"
+  fi
+  check "sourced by $sh: a lib/ in the current directory never runs" \
+    "$([ -e "$SB/planted-lib-ran" ] && echo ran || echo no)" "no"
+  rm -f "$SB/planted-lib-ran"
+done
+
 # lib/ is found next to the real file; a copy without it says so and stops.
 if [[ -n "$AGENT_VM_HAS_SYMLINKS" ]]; then
 check "through a symlink, lib/ loads too" \

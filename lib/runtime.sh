@@ -7,33 +7,28 @@
 # the program from stdin) is a shell convention. A python runtime piped into
 # zsh was already broken; it stays broken, loudly, rather than being executed
 # by the wrong thing in a new way.
+#
+# An awk program, so the VM runs the same one on a project's runtime script,
+# which only the VM reads (see _agent_vm_run_project_runtime). The program is
+# the first word of the shebang ("#!/bin/bash -e") or, through env, the first
+# word after env's own options and VAR=value assignments
+# ("#!/usr/bin/env -S bash -e"). A CRLF file ends its shebang with a CR.
+_AGENT_VM_SHEBANG_AWK='
+  NR == 1 {
+    sub(/\r$/, "")
+    if (substr($0, 1, 2) == "#!") {
+      n = split(substr($0, 3), w)
+      for (i = 1; i < n; i++)
+        if (w[i] != "env" && w[i] !~ /\/env$/ && w[i] !~ /^-/ && w[i] !~ /=/) break
+      p = w[i]
+      sub(/.*\//, "", p)
+    }
+    exit
+  }
+  END { print ((p == "bash" || p == "sh") ? p : "zsh") }
+'
 _agent_vm_runtime_interpreter() {
-  local first rest w
-  IFS= read -r first < "$1" || true
-  # A file saved with CRLF (Windows editors) ends its shebang with a CR.
-  first="${first%$'\r'}"
-  case "$first" in
-    '#!'*) ;;
-    *) printf 'zsh\n'; return 0 ;;
-  esac
-  # The program is the first word: "#!/bin/bash -e". Through env, the first
-  # word after env's own options and VAR=value assignments:
-  # "#!/usr/bin/env -S bash -e".
-  rest="${first#??}"
-  while :; do
-    rest="${rest#"${rest%%[![:space:]]*}"}"
-    w="${rest%%[[:space:]]*}"
-    rest="${rest#"$w"}"
-    case "$w" in
-      */env|env|-*|*=*) [[ -n "$rest" ]] && continue ;;
-    esac
-    break
-  done
-  case "${w##*/}" in
-    bash) printf 'bash\n' ;;
-    sh)   printf 'sh\n' ;;
-    *)    printf 'zsh\n' ;;
-  esac
+  awk "$_AGENT_VM_SHEBANG_AWK" "$1"
 }
 
 # Where this project's runtime script lives.
@@ -59,9 +54,10 @@ _agent_vm_project_runtime_path() {
 # with `#!/usr/bin/env bash` silently got zsh's arrays and globbing, which
 # differ where it matters.
 #
-# The script is still piped rather than executed by path: the per-user runtime
-# lives in ~/.agent-vm on the host and is not mounted inside the VM, so its
-# path means nothing there. One transport for both runtimes beats two.
+# This one pipes a script the host reads: the per-user runtime lives in
+# ~/.agent-vm on the host and is not mounted inside the VM, so its path means
+# nothing there. A project's runtime is the other way round, see
+# _agent_vm_run_project_runtime.
 #
 # Line-ending CRs are dropped on the way: Git for Windows checks files out
 # with CRLF by default, and the shells in the VM read the CR as part of each
@@ -71,6 +67,18 @@ _agent_vm_run_runtime() {
   interp="$(_agent_vm_runtime_interpreter "$file")"
   _agent_vm_strip_cr < "$file" \
     | limactl shell --workdir "$host_dir" "$vm_name" zsh -lc "exec $interp -s"
+}
+
+# A runtime script inside the project, run the same way but read by the VM, by
+# its path: the host never reads it. The VM can make it a symlink, which on the
+# host would lead to any file of the user's, and the content would go to the
+# VM. In the VM, it resolves among the VM's own files. A script that is not
+# there (any more) is skipped.
+_agent_vm_run_project_runtime() {
+  local vm_name="$1" host_dir="$2" file="$3"
+  limactl shell --workdir "$host_dir" "$vm_name" zsh -lc \
+    '[ -f "$3" ] || exit 0; i="$(awk "$1" "$3")" && awk "$2" "$3" | "$i" -s' \
+    agent-vm "$_AGENT_VM_SHEBANG_AWK" '{ sub(/\r$/, ""); print }' "$file"
 }
 
 # stdin to stdout without a CR at the end of each line.

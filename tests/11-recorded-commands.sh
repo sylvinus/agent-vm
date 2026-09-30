@@ -2,13 +2,17 @@
 section "commands against a recording limactl"
 # =============================================================================
 # One stub for the sections below. It logs every call, lists the base template
-# and the VM named by AGENT_VM_TEST_VM, and reports the project share as
-# virtiofs (AGENT_VM_TEST_FSTYPE to change it) on vz (AGENT_VM_TEST_VMTYPE). With AGENT_VM_TEST_CLONED set,
+# and the VM named by AGENT_VM_TEST_VM, and reports its mount type as
+# virtiofs (AGENT_VM_TEST_MOUNTTYPE to change it) on vz (AGENT_VM_TEST_VMTYPE). With AGENT_VM_TEST_CLONED set,
 # that VM only exists once `clone` has created the file. AGENT_VM_TEST_STOPPED
-# lists it as stopped, and AGENT_VM_TEST_RO makes the project write probe fail,
-# as a read-only share would. `validate` answers like stock Lima 2.2 does to
-# readonlyNames, or, while the file $PROTECTS exists, like a Lima that has it
-# (both messages copied from the real binaries).
+# lists it as stopped, as does a `stop` until the next `start`, and
+# AGENT_VM_TEST_RO makes the project write probe fail, as a read-only share
+# would. AGENT_VM_TEST_STOP_FAIL makes `stop` leave it running.
+# AGENT_VM_TEST_RUNTIME_FOUND makes the probe find the project's runtime
+# script. What is piped into the env push goes to AGENT_VM_TEST_STDIN.
+# `validate` answers like stock Lima 2.2 does to readonlyNames, or, while the
+# file $PROTECTS exists, like a Lima that has it (both messages copied from
+# the real binaries).
 REC="$SB/rec.log"
 PROTECTS="$SB/lima-protects"
 cat > "$SB/bin/limactl" <<'STUB'
@@ -36,12 +40,13 @@ case "$1" in
         listed && echo "$AGENT_VM_TEST_VM ${AGENT_VM_TEST_SSH_PORT:-0}" ;;
       *"{{.Config.SSH.LocalPort}}"*) listed && echo "${AGENT_VM_TEST_SSH_PORT:-0}" ;;
       *"{{.SSHConfigFile}}"*) listed && echo "/lima/$AGENT_VM_TEST_VM/ssh.config" ;;
-      *"{{.VMType}}"*) echo "${AGENT_VM_TEST_VMTYPE:-vz}" ;;
+      *"{{.VMType}}"*) echo "${AGENT_VM_TEST_VMTYPE:-vz} ${AGENT_VM_TEST_MOUNTTYPE:-virtiofs}" ;;
       *"{{.CPUs}}"*"{{.Disk}}"*) listed && echo "$AGENT_VM_TEST_VM|1|3221225472|10737418240" ;;
       *"{{.Status}}|"*) listed && echo "$AGENT_VM_TEST_VM|Running|1|3221225472" ;;
       *"{{.Status}}"*)
-        echo "agent-vm-base Stopped"
-        listed && echo "$AGENT_VM_TEST_VM ${AGENT_VM_TEST_STOPPED:+Stopped}${AGENT_VM_TEST_STOPPED:-Running}" ;;
+        if [ -n "${AGENT_VM_TEST_BASE_RUNNING:-}" ]; then echo "agent-vm-base Running"; else echo "agent-vm-base Stopped"; fi
+        if [ -n "${AGENT_VM_TEST_STOPPED:-}" ] || [ -e "$AGENT_VM_TEST_REC.stopped" ]; then st=Stopped; else st=Running; fi
+        listed && echo "$AGENT_VM_TEST_VM $st" ;;
       *-q*) echo "agent-vm-base"; listed && echo "$AGENT_VM_TEST_VM" ;;
       *)
         echo "NAME STATUS"
@@ -50,12 +55,19 @@ case "$1" in
     esac ;;
   shell)
     case "$*" in
-      *findmnt*) echo "${AGENT_VM_TEST_FSTYPE:-virtiofs}" ;;
+      # A guest asked for its mount type lies: agent-vm must not ask it.
+      *findmnt*) echo 9p ;;
       *agent-vm-write-probe*)
-        case "$*" in *'.agent-vm.env'*) cat >/dev/null; [ -n "${AGENT_VM_TEST_ENV_FAIL:-}" ] || echo env-ok ;; esac
+        case "$*" in *'.agent-vm.env'*)
+          cat >> "${AGENT_VM_TEST_STDIN:-/dev/null}"
+          [ -n "${AGENT_VM_TEST_ENV_FAIL:-}" ] || echo env-ok
+          [ -z "${AGENT_VM_TEST_RUNTIME_FOUND:-}" ] || echo runtime-found ;;
+        esac
         [ -z "${AGENT_VM_TEST_RO:-}" ] || exit 1 ;;
+      *"exec "*" -s"*) cat >> "${AGENT_VM_TEST_STDIN:-/dev/null}" ;;
     esac ;;
-  stop) cat >/dev/null ;;
+  start) rm -f "$AGENT_VM_TEST_REC.stopped" ;;
+  stop) cat >/dev/null; [ -n "${AGENT_VM_TEST_STOP_FAIL:-}" ] || touch "$AGENT_VM_TEST_REC.stopped" ;;
   delete) [ -z "${AGENT_VM_TEST_CLONED:-}" ] || rm -f "$AGENT_VM_TEST_CLONED"; cat >/dev/null ;;
 esac
 exit 0
@@ -71,6 +83,7 @@ _agent_vm_check_linux_prereqs() { return 0; }
 _agent_vm_check_windows_prereqs() { return 0; }
 rec() {
   : > "$REC"
+  rm -f "$REC.stopped"
   ( cd "$PROJ" || exit 1
     export AGENT_VM_TEST_REC="$REC" AGENT_VM_TEST_VM="$PV" AGENT_VM_TEST_PROTECTS="$PROTECTS"
     agent-vm "$@" </dev/null 2>&1 )
@@ -130,15 +143,15 @@ rec_has "shell --workdir" && fail "claude ran anyway" || pass "and claude does n
 # With no env left on the host, the guest copy must go too, not keep old secrets.
 rm -f "$HOME/.agent-vm/env" "$PROJ/.agent-vm.env"
 rec run true >/dev/null
-rec_has 'cat > "$HOME/.agent-vm.env"' && pass "an empty env still replaces the guest file" \
+rec_has '> "$HOME/.agent-vm.env")' && pass "an empty env still replaces the guest file" \
   || fail "an empty env left the guest file as it was"
 
 # Each `limactl shell` is a round trip: the env push and the write probe share one.
 out="$(rec run true)"
-# The script is multi-line, so one call spans lines of the record: the push's
-# line is followed by the probe's, which is not a new `shell …` call of its own.
+# The script is multi-line, so one call spans lines of the record: from the
+# push's line to the probe's, no new `shell …` call starts.
 check "one round trip for the env push and the probe" \
-  "$(grep -c 'agent-vm.env' "$REC") $(grep -c 'agent-vm-write-probe' "$REC") $(grep -A1 'agent-vm.env' "$REC" | tail -1 | grep -v '^shell ' | grep -c 'agent-vm-write-probe')" "1 1 1"
+  "$(grep -c 'rm -f "$HOME/.agent-vm.env"' "$REC") $(grep -c 'agent-vm-write-probe' "$REC") $(sed -n '/rm -f "$HOME\/.agent-vm.env"/,/agent-vm-write-probe/p' "$REC" | grep -c '^shell ')" "1 1 0"
 check "a push that worked is not warned about" \
   "$(printf '%s\n' "$out" | grep -c 'failed to push the env')" "0"
 out="$(AGENT_VM_TEST_ENV_FAIL=1 rec run true)"

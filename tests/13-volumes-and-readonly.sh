@@ -45,13 +45,20 @@ out="$(vols "$SB/vol-f:/mnt/f:ro:relative/path")"
 check "filter: a relative one matches nothing" "$(has_vol "$out")" no
 grep -q "Project filter 'relative/path'.*not an absolute path" "$SB/vols-err" \
   && pass "filter: and says why" || fail "filter: relative filter not reported: $(cat "$SB/vols-err")"
-# A relative destination is inside the project, and made on the host.
+# A relative destination is inside the project, and made on the host, which
+# needs perl (_agent_vm_nofollow). Without it the entry is skipped, and said.
+if [[ -n "$AGENT_VM_HAS_PERL" ]]; then
 out="$(vols "$SB/vol-f:.claude:ro:$PROJ")"
 check "relative: inside the project" \
   "$(printf '%s' "$out" | grep -cF "$(mnt "$SB/vol-f" "$PROJ/.claude")")" 1
 [ -d "$PROJ/.claude" ] && pass "relative: the mount point is made on the host" || fail "relative: no $PROJ/.claude"
 vols "$SB/vol-f:./a/b:ro" >/dev/null
 [ -d "$PROJ/a/b" ] && pass "relative: ./ and subdirectories" || fail "relative: no $PROJ/a/b"
+else
+  out="$(vols "$SB/vol-f:.claude:ro:$PROJ")"
+  check "relative, no perl: skipped, and said" \
+    "$(has_vol "$out") $(grep -c 'perl is needed' "$SB/vols-err") $([ -e "$PROJ/.claude" ] && echo made || echo none)" "no 1 none"
+fi
 mkdir -p "$SB/outside"
 out="$(vols "$SB/vol-f:../outside/x:ro")"
 check "relative: .. is refused" "$(has_vol "$out")" no
@@ -63,16 +70,37 @@ out="$(vols "$SB/vol-f:planted/x:ro")"
 check "relative: a symlink in the project is refused" "$(has_vol "$out")" no
 grep -q "goes through a symlink in the project" "$SB/vols-err" && [ ! -e "$SB/outside/x" ] \
   && pass "relative: and mkdir does not follow it" || fail "relative symlink: $(cat "$SB/vols-err"); $(ls "$SB/outside")"
+rm -f "$PROJ/planted"
+if [[ -n "$AGENT_VM_HAS_PERL" ]]; then
+# The VM can plant the link after the check above: here, right before the
+# mount point is made, for a directory and for a file source.
+race_real="$(typeset -f _agent_vm_nofollow)"
+mkdir -p "$SB/race-out"
+for kind in dir file; do
+  src="$SB/vol-f"; [ "$kind" = file ] && { src="$SB/race-src.toml"; echo x > "$src"; }
+  out="$( eval "${race_real/_agent_vm_nofollow/_race_nofollow}"
+          _agent_vm_nofollow() { ln -s "$SB/race-out" "$PROJ/raced"; _race_nofollow "$@"; }
+          _agent_vm_project_mountpoint "$PROJ" raced/x "$src" 2>"$SB/race-err" )"
+  check "relative, a link planted after the check ($kind): refused, nothing made outside" \
+    "$out|$(ls -A "$SB/race-out")|$(grep -c 'goes through a symlink' "$SB/race-err")" "||1"
+  rm -f "$PROJ/raced" "$SB/race-src.toml"
+done
+rm -rf "$SB/race-out"
+else
+  printf '  skip relative: a link planted after the check (perl is not installed)\n'
+fi
 else
   printf '  skip relative: symlink in the project (ln -s plants copies on this machine)\n'
 fi
 out="$(vols "$SB/vol-f:.:ro")"
 check "relative: the project itself is refused" "$(has_vol "$out")" no
 echo x > "$SB/vol-file.toml"
+if [[ -n "$AGENT_VM_HAS_PERL" ]]; then
 vols "$SB/vol-file.toml:conf/app.toml" >/dev/null
 [ -f "$PROJ/conf/app.toml" ] && pass "relative, a file: an empty file is its mount point" || fail "relative file: no placeholder"
 grep -q "|$PROJ/conf/app.toml\$" "$HOME/.agent-vm/.agent-vm-file-mounts-$PV" \
   && pass "relative, a file: bound at that path" || fail "relative file: $(cat "$HOME/.agent-vm/.agent-vm-file-mounts-$PV")"
+fi
 rm -rf "$PROJ/.claude" "$PROJ/a" "$PROJ/planted" "$PROJ/conf" "$SB/outside" "$SB/vol-file.toml"
 check "no filter: every project, as before" "$(has_vol "$(vols "$SB/vol-f:/mnt/f:ro")")" yes
 check "no filter, no mode: as before" \
@@ -144,3 +172,59 @@ rec_has "agent-vm true" && fail "the command ran on a writable VM" || pass "and 
 rec_has "edit $PV --disk" && fail "the declined resize was applied" || pass "and the resize is not applied"
 _agent_vm_cleanup_state "$PV"
 rm -f "$HOME/.agent-vm/volumes"
+
+section "--readonly on a stopped VM: read-only from its first boot"
+# A VM that last ran writable used to be started writable, then stopped and
+# made read-only: whatever starts with the VM had a writable window.
+printf '[{"location": "%s", "writable": true}]\n' "$PROJ" > "$REC_MOUNTS"
+AGENT_VM_TEST_STOPPED=1 AGENT_VM_TEST_RO=1 rec --readonly run true >/dev/null
+e="$(grep -n "^edit $PV --set" "$REC" | head -1 | cut -d: -f1)"
+s="$(grep -n "^start $PV" "$REC" | head -1 | cut -d: -f1)"
+if [ -n "$e" ] && [ -n "$s" ] && [ "$e" -lt "$s" ]; then
+  pass "the shares are made read-only before the VM starts"
+else
+  fail "read-only applied at '${e:-none}', start at '${s:-none}'"
+fi
+check "and it starts once" "$(grep -c "^start $PV" "$REC")" "1"
+rec_has "stop $PV" && fail "the VM was stopped to apply --readonly" || pass "and is not stopped again"
+# Back to writable: also before the start.
+AGENT_VM_TEST_STOPPED=1 rec run true >/dev/null
+check "the end of a --readonly session: changed first, then one start" \
+  "$(grep -c "^start $PV" "$REC") $(grep -E "^(edit $PV --set|start $PV)" "$REC" | head -1 | cut -d' ' -f1)" "1 edit"
+# Whether --readonly holds is decided on the host: the guest is not asked.
+rec_has "findmnt" && fail "the guest was asked for its mount type" || pass "the guest is not asked for its mount type"
+
+section "a stop that did not happen changes nothing"
+# The shares were edited and recorded read-only while the VM still ran with
+# its writable ones.
+printf '[{"location": "%s", "writable": true}]\n' "$PROJ" > "$REC_MOUNTS"
+out="$(AGENT_VM_TEST_STOP_FAIL=1 AGENT_VM_TEST_RO=1 rec run true)"
+case "$?:$out" in
+  1:*"could not stop VM '$PV'"*) pass "the repair stops only once the VM is down" ;;
+  *) fail "a failed stop went on: $out" ;;
+esac
+rec_has "edit $PV" && fail "the shares were edited on a running VM" || pass "and nothing is edited"
+check "and the record is unchanged" "$(cat "$REC_MOUNTS")" "[{\"location\": \"$PROJ\", \"writable\": true}]"
+_agent_vm_cleanup_state "$PV"
+
+section "directories that are never shared"
+# `cd ~ && agent-vm shell` handed the VM every dotfile and SSH key, read-write.
+refused() {  # <dir>
+  local out
+  out="$( cd "$1" && export AGENT_VM_TEST_REC="$REC" AGENT_VM_TEST_VM="$PV"; : > "$REC"; agent-vm run true </dev/null 2>&1 )"
+  case "$?:$out" in
+    1:*"refusing to share"*) grep -q '^clone\|^start\|^shell' "$REC" && echo "refused, but limactl ran" || echo refused ;;
+    *) echo "accepted: $out" ;;
+  esac
+}
+check "the home directory"          "$(refused "$HOME")" "refused"
+check "a parent of it"              "$(refused "$SB")" "refused"
+check "/"                           "$(refused /)" "refused"
+check "agent-vm's own directory"    "$(refused "$AGENT_VM_SCRIPT_DIR")" "refused"
+check "a parent of agent-vm's"      "$(refused "$(dirname "$AGENT_VM_SCRIPT_DIR")")" "refused"
+check "agent-vm's state"            "$(refused "$HOME/.agent-vm")" "refused"
+case "$(refused "$PROJ")" in accepted*) pass "a project directory is shared" ;; *) fail "a project directory was refused" ;; esac
+case "$(_agent_vm_unsafe_project "$HOME/proj-under-home" 2>/dev/null || echo none)" in
+  none) pass "a project inside the home directory is fine" ;;
+  *) fail "a project inside the home directory was refused" ;;
+esac

@@ -82,6 +82,13 @@ if grep -qE '^[^#]*sudo apt-get' "$SETUP_SH"; then
 else
   pass "every apt call goes through apt_get"
 fi
+# The script reaches bash on its stdin: a command that reads stdin swallows the
+# lines after it. Here sudo stands for a dpkg prompt, reading all it can.
+apt_fn="$(sed -n '/^apt_get() {/,/^}/p' "$SETUP_SH")"
+check "apt_get does not read the script's stdin" \
+  "$({ printf 'sudo() { cat >/dev/null; }\n%s\napt_get update\necho after\n' "$apt_fn"; } | bash 2>/dev/null)" "after"
+check "npm installs do not read it either" \
+  "$(grep -E '^[^#]*npm i ' "$SETUP_SH" | grep -vc '</dev/null$')" "0"
 if grep -q 'sudo env DEBIAN_FRONTEND=noninteractive apt-get' "$SETUP_SH"; then
   pass "apt_get hands the frontend to sudo"
 else
@@ -195,6 +202,7 @@ else
   run_pi_block "$PIH" 1
   check "pi: the maintained package, without install scripts" "$(cat "$PIH/sudo.log" 2>/dev/null)" \
     "sudo npm i -g --ignore-scripts @earendil-works/pi-coding-agent"
+  # (The </dev/null is a redirection, which the recording sudo does not see.)
   check "pi: project files trusted" \
     "$(jq -r .defaultProjectTrust "$PIH/.pi/agent/settings.json" 2>/dev/null)" "always"
   check "pi: telemetry off" \

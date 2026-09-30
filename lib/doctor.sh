@@ -67,6 +67,10 @@ _agent_vm_doctor() {
     $d fail "neither shasum nor sha256sum is installed" \
       "VM names hash the project path. Install perl (shasum) or coreutils (sha256sum)."
   fi
+  if ! command -v perl >/dev/null 2>&1; then
+    $d warn "perl is not installed: 'agent-vm project-env' and relative destinations in ~/.agent-vm/volumes need it" \
+      "They use files in the project without following symlinks, which the shell cannot do."
+  fi
 
   echo ""
   echo "Host"
@@ -196,10 +200,10 @@ _agent_vm_doctor() {
     # Git Bash emulates permission bits (chmod 600 reads back as 644): the
     # file's ACL is what protects it there, and it cannot be read from here.
     if _agent_vm_on_windows; then
-      $d info "env: $(_agent_vm_env env "$AGENT_VM_STATE_DIR/env" list | wc -l | tr -d ' ') key(s)"
+      $d info "env: $(_agent_vm_env env "$AGENT_VM_STATE_DIR/env" "" list | wc -l | tr -d ' ') key(s)"
     elif env_mode="$(_agent_vm_file_mode "$AGENT_VM_STATE_DIR/env")" \
        && _agent_vm_file_is_private "$AGENT_VM_STATE_DIR/env"; then
-      $d ok "env: $(_agent_vm_env env "$AGENT_VM_STATE_DIR/env" list | wc -l | tr -d ' ') key(s), private to you (mode $env_mode)"
+      $d ok "env: $(_agent_vm_env env "$AGENT_VM_STATE_DIR/env" "" list | wc -l | tr -d ' ') key(s), private to you (mode $env_mode)"
     elif [[ -n "$env_mode" ]]; then
       $d warn "env is readable by other users on this machine (mode $env_mode)" "chmod 600 '$AGENT_VM_STATE_DIR/env'"
     else
@@ -220,6 +224,11 @@ _agent_vm_doctor() {
     $d fail "the path contains whitespace, a quote, a backslash or a control character" \
       "agent-vm refuses to mount it. Rename the directory."
   fi
+  local unsafe
+  if unsafe="$(_agent_vm_unsafe_project "$host_dir")"; then
+    $d fail "this directory is, or contains, $unsafe" \
+      "agent-vm refuses to share it with a VM. Run it from a project directory."
+  fi
   if vm_name="$(_agent_vm_name "$host_dir" 2>/dev/null)"; then
     if [[ -z "$have_lima" ]]; then
       $d info "VM name: $vm_name"
@@ -235,7 +244,7 @@ _agent_vm_doctor() {
           fi
           if _agent_vm_running "$vm_name"; then
             local mst=0
-            _agent_vm_mount_is_host_enforced "$vm_name" "$host_dir" || mst=$?
+            _agent_vm_mount_is_host_enforced "$vm_name" || mst=$?
             case "$mst" in
               0) $d ok "running; the project share is enforced on the host (--readonly works)" ;;
               1) $d warn "running; the host does not enforce read-only on the project share, so --readonly is refused" \
@@ -260,9 +269,16 @@ _agent_vm_doctor() {
       esac
     fi
   fi
-  local runtime project_env
+  local runtime runtime_text project_env
   runtime="$(_agent_vm_project_runtime_path "$host_dir")"
-  [[ -f "$runtime" ]] && $d info "project runtime: $runtime ($(_agent_vm_runtime_interpreter "$runtime"))"
+  if _agent_vm_in_project "$host_dir" "$runtime"; then
+    # Not by its path: the VM can make it a symlink (see _agent_vm_in_project).
+    if runtime_text="$(_agent_vm_nofollow read "$host_dir" "${runtime#"${host_dir%/}"/}" 2>/dev/null && printf x)"; then
+      $d info "project runtime: $runtime ($(printf '%s' "${runtime_text%x}" | awk "$_AGENT_VM_SHEBANG_AWK"))"
+    fi
+  elif [[ -f "$runtime" ]]; then
+    $d info "project runtime: $runtime ($(_agent_vm_runtime_interpreter "$runtime"))"
+  fi
   project_env="$(_agent_vm_project_env_file "$host_dir")"
   if [[ -f "$project_env" ]]; then
     local unignored
