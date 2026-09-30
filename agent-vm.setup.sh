@@ -57,6 +57,18 @@ INSTALL_MCP_PLAYWRIGHT="${AGENT_VM_INSTALL_MCP_PLAYWRIGHT:-0}"
 # doesn't see those edits yet. Export it here so installers stay quiet.
 export PATH="$HOME/.local/bin:$PATH"
 
+# Behind a proxy: Lima copies the host's proxy settings into /etc/environment,
+# which ssh sessions (this script, `agent-vm shell`) load. sudo drops them
+# (env_reset), and Debian's sudo does not read that file, so every `sudo
+# apt-get` below went out without the proxy and failed (#25). Keeping them
+# through sudo covers this script and every VM cloned from this base. Checked
+# with visudo before it is installed: a broken sudoers file breaks sudo.
+printf 'Defaults env_keep += "http_proxy https_proxy ftp_proxy no_proxy HTTP_PROXY HTTPS_PROXY FTP_PROXY NO_PROXY"\n' \
+  > /tmp/agent-vm-proxy.sudoers
+sudo visudo -cqf /tmp/agent-vm-proxy.sudoers
+sudo install -m 0440 -o root -g root /tmp/agent-vm-proxy.sudoers /etc/sudoers.d/10-agent-vm-proxy
+rm -f /tmp/agent-vm-proxy.sudoers
+
 # Disable needrestart's interactive prompts
 sudo mkdir -p /etc/needrestart/conf.d
 echo '$nrconf{restart} = '"'"'a'"'"';' | sudo tee /etc/needrestart/conf.d/no-prompt.conf > /dev/null
@@ -130,6 +142,16 @@ sudo chsh -s /usr/bin/zsh "$(whoami)"
 # PATH additions go in ~/.zshenv only: every zsh reads it, and nothing in
 # Debian 13's /etc/zsh/{zprofile,zshrc} resets PATH afterwards.
 echo 'export PS1="vm:%1~%% "' >> ~/.zshrc
+
+# Shell history, kept across sessions and restarts: zsh saves none unless told
+# where (#20). It lives on the VM's disk, where the agent can read it, like
+# everything else there. A command started with a space is left out of it.
+cat >> ~/.zshrc <<'ZSHRC'
+HISTFILE=~/.zsh_history
+HISTSIZE=10000
+SAVEHIST=10000
+setopt INC_APPEND_HISTORY HIST_IGNORE_DUPS HIST_IGNORE_SPACE
+ZSHRC
 echo 'export PATH=$HOME/.local/bin:$PATH' >> ~/.zshenv
 
 # Auto-source ~/.agent-vm.env if present. The host pushes ~/.agent-vm/env into

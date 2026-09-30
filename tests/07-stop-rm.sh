@@ -10,10 +10,19 @@ CALLS="$SB/calls"
 out="$( export AGENT_VM_TEST_CALLS="$CALLS"; agent-vm stop agent-vm-proj-deadbeef 2>&1 )"
 check "stop <name> stops the named VM" "$(cat "$CALLS")" "stop agent-vm-proj-deadbeef"
 
-: > "$CALLS"
-out="$( export AGENT_VM_TEST_CALLS="$CALLS"; agent-vm rm agent-vm-proj-deadbeef 2>&1 )"
+: > "$CALLS"; : > "$SB/deleted"
+out="$( export AGENT_VM_TEST_CALLS="$CALLS" AGENT_VM_TEST_DELETED="$SB/deleted"; agent-vm rm agent-vm-proj-deadbeef 2>&1 )"
 check "rm <name> stops then deletes the named VM" \
   "$(cat "$CALLS")" "$(printf 'stop agent-vm-proj-deadbeef\ndelete agent-vm-proj-deadbeef --force')"
+case "$out" in *"VM destroyed."*) pass "rm: says it is done once Lima no longer lists it" ;; *) fail "rm: $out" ;; esac
+
+# A delete that did not take is said, not reported as done.
+out="$( export AGENT_VM_TEST_CALLS="$CALLS"; agent-vm rm agent-vm-proj-deadbeef 2>&1 )"
+case "$?:$out" in
+  1:*"could not delete VM 'agent-vm-proj-deadbeef'"*) pass "rm: a VM Lima still lists is an error" ;;
+  *) fail "rm, delete did not take: $out" ;;
+esac
+case "$out" in *"VM destroyed."*) fail "rm: a failed delete was reported as done" ;; *) pass "rm: and not reported as done" ;; esac
 
 # A name that is not ours must not reach limactl at all: `agent-vm rm` is not a
 # way to delete someone else's Lima instance by typo.

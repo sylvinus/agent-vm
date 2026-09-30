@@ -6,8 +6,8 @@ Usage: agent-vm [options] <command> [args]
 
 Commands:
   install            Put agent-vm on your PATH (a link in ~/.local/bin, or
-                     AGENT_VM_BIN_DIR) and offer to source it from your shell
-                     rc. Run it from the clone: ./agent-vm.sh install
+                     AGENT_VM_BIN_DIR). Run it from the clone:
+                     ./agent-vm.sh install
   uninstall          Remove that link. VMs and ~/.agent-vm are left alone.
   setup              Create the base VM template (run once)
   claude [args]      Run Claude Code in the VM for the current directory

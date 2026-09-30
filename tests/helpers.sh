@@ -42,9 +42,10 @@ case "$1" in
         echo "agent-vm-base Stopped"
         echo "agent-vm-proj-deadbeef Running" ;;
       *-q*)
-        echo "agent-vm-base"
-        echo "agent-vm-proj-deadbeef"
-        [ -n "${AGENT_VM_TEST_EXTRA_VM:-}" ] && echo "$AGENT_VM_TEST_EXTRA_VM" ;;
+        { echo "agent-vm-base"
+          echo "agent-vm-proj-deadbeef"
+          [ -n "${AGENT_VM_TEST_EXTRA_VM:-}" ] && echo "$AGENT_VM_TEST_EXTRA_VM"
+        } | if [ -s "${AGENT_VM_TEST_DELETED:-}" ]; then grep -vxF -f "$AGENT_VM_TEST_DELETED"; else cat; fi ;;
     esac ;;
   shell)
     cat > "${AGENT_VM_TEST_CAPTURE:-/dev/null}"
@@ -52,7 +53,11 @@ case "$1" in
   start)
     echo 'time="2026-01-01T00:00:00Z" level=info msg="Attempting to download the image" arch=aarch64' >&2
     if [ -n "${AGENT_VM_TEST_START_FAIL:-}" ]; then echo 'level=fatal msg="no start"' >&2; exit 1; fi ;;
-  stop|delete) echo "$*" >> "${AGENT_VM_TEST_CALLS:-/dev/null}" ;;
+  stop) echo "$*" >> "${AGENT_VM_TEST_CALLS:-/dev/null}" ;;
+  # With AGENT_VM_TEST_DELETED (a file), a deleted VM leaves the listing.
+  delete)
+    echo "$*" >> "${AGENT_VM_TEST_CALLS:-/dev/null}"
+    [ -z "${AGENT_VM_TEST_DELETED:-}" ] || echo "$2" >> "$AGENT_VM_TEST_DELETED" ;;
   *) : ;;
 esac
 exit 0

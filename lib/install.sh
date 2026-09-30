@@ -2,9 +2,9 @@
 # `install` puts agent-vm on the PATH as a symlink to agent-vm.sh in the clone:
 # the script dispatches when executed, so a link is all a command needs, and
 # `git pull` updates it (a launcher script where there are no symlinks, see
-# _agent_vm_launcher). It then offers to source agent-vm.sh from the shell
-# rc, which also defines agent-vm as a shell function. Safe to re-run.
-# AGENT_VM_BIN_DIR picks the directory (default ~/.local/bin).
+# _agent_vm_launcher). It works from every shell, and it is all that is
+# installed: sourcing agent-vm.sh from a shell rc is no longer offered. Safe
+# to re-run. AGENT_VM_BIN_DIR picks the directory (default ~/.local/bin).
 
 _agent_vm_bin_link() {
   printf '%s/agent-vm\n' "${AGENT_VM_BIN_DIR:-$HOME/.local/bin}"
@@ -30,22 +30,8 @@ _agent_vm_installed_ours() {
   fi
 }
 
-# The rc file where a shell function belongs: the interactive one.
-_agent_vm_rc_file() {
-  case "${SHELL##*/}" in
-    zsh)  printf '%s\n' "$HOME/.zshrc" ;;
-    bash)
-      case "$(uname -s 2>/dev/null)" in
-        # Git Bash login shells read .bash_profile (like Terminal.app),
-        # not .bashrc.
-        Darwin|MINGW*|MSYS*|CYGWIN*) printf '%s\n' "$HOME/.bash_profile" ;;
-        *)      printf '%s\n' "$HOME/.bashrc" ;;
-      esac ;;
-    *)    printf '%s\n' "$HOME/.profile" ;;
-  esac
-}
-
-# 0 when an uncommented line of a usual rc file names agent-vm.sh.
+# 0 when an uncommented line of a usual rc file names agent-vm.sh: an install
+# from before 0.2.0, which added one.
 _agent_vm_rc_sources_us() {
   local f
   for f in "$HOME/.zshrc" "$HOME/.bashrc" "$HOME/.bash_profile" "$HOME/.profile" "$HOME/.zshenv"; do
@@ -60,7 +46,7 @@ _agent_vm_install() {
     echo "Usage: agent-vm install" >&2
     return 2
   fi
-  local script="$AGENT_VM_SCRIPT_DIR/agent-vm.sh" link bin_dir rc
+  local script="$AGENT_VM_SCRIPT_DIR/agent-vm.sh" link bin_dir
   link="$(_agent_vm_bin_link)"
   bin_dir="$(dirname "$link")"
   if [[ ! -r "$script" ]]; then
@@ -93,14 +79,7 @@ _agent_vm_install() {
       printf '  export PATH="%s:$PATH"\n' "$bin_dir" ;;
   esac
   if _agent_vm_rc_sources_us; then
-    echo "agent-vm.sh is already sourced by your shell rc."
-  else
-    rc="$(_agent_vm_rc_file)"
-    if _agent_vm_have_tty \
-       && [[ "$(_agent_vm_ask_yn "Also define agent-vm as a shell function in $rc?" Y)" == "1" ]]; then
-      printf '\n# agent-vm\nsource "%s"\n' "$script" >> "$rc" || return 1
-      echo "Added the source line to $rc (in effect in new terminals)."
-    fi
+    echo "Your shell rc still sources agent-vm.sh: the command above replaces that line, which you can remove."
   fi
   echo ""
   echo "agent-vm $AGENT_VM_VERSION installed."

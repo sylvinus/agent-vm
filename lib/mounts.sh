@@ -22,8 +22,12 @@ _agent_vm_stage_file() {
 # 0 when the project directory <dir> matches <filter>, the 4th field of a
 # ~/.agent-vm/volumes entry: a path, `~` expanded, where `*` matches anything,
 # `/` included. A filter that is not absolute matches nothing, with a warning.
+# `~user/...` is not expanded: it counts as not absolute.
 _agent_vm_volume_matches() {
-  local filter="${1/#\~/$HOME}" dir="$2"
+  local filter="$1" dir="$2"
+  case "$filter" in
+    "~"|"~/"*) filter="$HOME${filter#\~}" ;;
+  esac
   [[ "$filter" == / ]] || filter="${filter%/}"
   if [[ "$filter" != /* ]]; then
     echo "Warning: Project filter '$1' (from ~/.agent-vm/volumes) is not an absolute path, skipping the entry." >&2
@@ -115,20 +119,33 @@ _agent_vm_build_mounts_json() {
   local file_mounts_cache="$AGENT_VM_STATE_DIR/.agent-vm-file-mounts-${vm_name}"
 
   if [[ -f "$mounts_file" ]]; then
-    local staging_idx=0
-    while IFS= read -r line || [[ -n "$line" ]]; do
-      line="${line%%#*}"                                          # strip comments
+    local staging_idx=0 raw line
+    while IFS= read -r raw || [[ -n "$raw" ]]; do
+      line="${raw%%#*}"                                           # strip comments
       line="${line#"${line%%[![:space:]]*}"}"                     # trim leading whitespace
       line="${line%"${line##*[![:space:]]}"}"                     # trim trailing whitespace
       [[ -z "$line" ]] && continue
+      # A control character (a tab, an ESC...) is invalid unescaped in the JSON
+      # handed to limactl. The CR of a CRLF file went with the trim above.
+      if [[ "$line" == *[[:cntrl:]]* ]]; then
+        echo "Warning: Mount entry '${raw}' (from ~/.agent-vm/volumes) contains a control character, skipping." >&2
+        continue
+      fi
       # An optional 4th field, after an explicit mode, limits the entry to the
-      # projects it matches: source:destination:mode:filter.
-      local filter="" before="${line%:*}"
+      # projects it matches: source:destination:mode:filter. An empty one
+      # (`src:dst:rw:`) is refused, not read as "no filter": that would mount
+      # an entry meant for one project in every project.
+      local filter="" has_filter="" before="${line%:*}"
       if [[ "$line" == *:* && ( "$before" == *:ro || "$before" == *:rw ) ]]; then
         filter="${line##*:}"
+        has_filter=1
         line="$before"
       fi
-      if [[ -n "$filter" ]]; then
+      if [[ -n "$has_filter" ]]; then
+        if [[ -z "$filter" ]]; then
+          echo "Warning: Mount entry '${raw}' (from ~/.agent-vm/volumes) has an empty project filter; refusing to mount it in every project. Skipping." >&2
+          continue
+        fi
         _agent_vm_volume_matches "$filter" "$host_dir" || continue
       fi
       # Parse source[:destination][:mode] syntax (like docker compose volumes).
@@ -145,11 +162,19 @@ _agent_vm_build_mounts_json() {
       else
         src="$line"
       fi
+      # A ':' left in the destination is a field out of place: a project
+      # without a mode before it (`src:dst:/p`), a mode after it
+      # (`src:dst:/p:rw`), a second mode, a fifth field. Read as a destination,
+      # the entry would be mounted in every project, the project filter lost.
+      if [[ "$dst" == *:* ]]; then
+        echo "Warning: Mount entry '${raw}' (from ~/.agent-vm/volumes) does not read as source:destination:mode:project (the mode goes before the project, and is needed with one). Skipping." >&2
+        continue
+      fi
       src="${src/#\~/$HOME}"                                      # expand ~
       # Reject characters that would break JSON interpolation below or the
       # pipe-separated cache format used for file mounts.
       if [[ "$src" == *[$'"\\\n|']* || "$dst" == *[$'"\\\n|']* ]]; then
-        echo "Warning: Mount entry '${line}' (from ~/.agent-vm/volumes) contains invalid characters (quote/backslash/newline/pipe), skipping." >&2
+        echo "Warning: Mount entry '${raw}' (from ~/.agent-vm/volumes) contains invalid characters (quote/backslash/newline/pipe), skipping." >&2
         continue
       fi
       if [[ ! -e "$src" ]]; then

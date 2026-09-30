@@ -110,7 +110,8 @@ _agent_vm_sha256_sums_check() {
   command -v sha256sum >/dev/null 2>&1 || command -v shasum >/dev/null 2>&1 \
     || { echo "Error: neither sha256sum nor shasum is installed." >&2; return 1; }
   for f in "$@"; do
-    expected="$(awk -v f="$f" '$2 == f { print $1; exit }' "$dir/SHA256SUMS")"
+    # A leading * marks binary mode (`sha256sum -b`, and Git Bash's default).
+    expected="$(awk -v f="$f" '{ n = $2; sub(/^\*/, "", n) } n == f { print $1; exit }' "$dir/SHA256SUMS")"
     if [[ -z "$expected" ]]; then
       echo "Error: SHA256SUMS lists no checksum for $f." >&2
       return 1
@@ -142,7 +143,7 @@ _agent_vm_sha256_sums_check() {
 # already, with the line making it permanent printed alongside: setup needs
 # limactl immediately, and the user needs it in the next terminal.
 _agent_vm_install_fork_windows() {
-  local base dir tmp f bin="" stage old
+  local base dir tmp f bin="" stage old=""
   base="$(_agent_vm_lima_fork_release)"
   dir="${AGENT_VM_LIMA_DIR:-$HOME/.local/share/lima-sylvinus}"
   if [[ -x "$dir/bin/limactl.exe" \

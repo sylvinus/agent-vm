@@ -161,6 +161,23 @@ _agent_vm_cleanup_state() {
   fi
 }
 
+# Stop and delete <vm_name>, then forget its state. Fails, saying so, when
+# Lima still lists it (or cannot be asked): --reset would otherwise go on with
+# the old VM and the shares it was given, which a changed ~/.agent-vm/volumes
+# may no longer allow. limactl gets /dev/null as stdin, for callers reading
+# names from theirs.
+_agent_vm_delete_vm() {
+  local vm_name="$1" st=0
+  limactl stop "$vm_name" </dev/null &>/dev/null
+  limactl delete "$vm_name" --force </dev/null &>/dev/null
+  _agent_vm_exists "$vm_name" || st=$?
+  if [[ "$st" -ne 1 ]]; then
+    echo "Error: could not delete VM '$vm_name'. See 'limactl list', then retry." >&2
+    return 1
+  fi
+  _agent_vm_cleanup_state "$vm_name"
+}
+
 # Current resources of <vm_name> as "cpus|memory_bytes|disk_bytes".
 # Prints nothing (and returns 1) when the VM is unknown to Lima or answers
 # non-numeric values. No pipe into grep/head: see _agent_vm_has_line for why

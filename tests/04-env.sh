@@ -180,6 +180,23 @@ if command -v git >/dev/null 2>&1; then
     *) fail "a tracked file must not be told to add a gitignore line" ;;
   esac
 
+  # The printed fixes work as printed, run from the project, which can be a
+  # directory below the top of the repository, whose path can hold a space.
+  GS="$SB/git space"; mkdir -p "$GS/sub"
+  ( cd "$GS" && git init -q && git config user.email t@t && git config user.name t )
+  gspe() { ( cd "$GS/sub" && AGENT_VM_STATE_DIR="$PENV/state" bash "$AGENT_VM_SH" project-env "$@" ); }
+  fix_of() { printf '%s\n' "$1" | sed -n 's/^ *\(git -C .*\)$/\1/p; s/^ *\(echo .*\)$/\1/p'; }
+  out="$(gspe set K v 2>&1 >/dev/null)"
+  ( cd "$GS/sub" && eval "$(fix_of "$out")" )
+  check "untracked, from a subdirectory, a path with a space: the printed line fixes it" \
+    "$(gspe set K v2 2>&1 >/dev/null)" ""
+  rm -f "$GS/.gitignore"
+  ( cd "$GS" && git add -f sub/.agent-vm.env && git commit -qm t ) >/dev/null 2>&1
+  out="$(gspe set K v3 2>&1 >/dev/null)"
+  ( cd "$GS/sub" && eval "$(fix_of "$out")" ) >/dev/null 2>&1
+  check "tracked, from a subdirectory: the printed command untracks and ignores it" \
+    "$( cd "$GS" && git ls-files sub/.agent-vm.env; git check-ignore -q sub/.agent-vm.env && echo ignored )" "ignored"
+
   # Outside a repository there is nothing to warn about.
   OUTSIDE="$SB/outside"; mkdir -p "$OUTSIDE"
   if [ -n "$( ( cd "$OUTSIDE" && AGENT_VM_STATE_DIR="$PENV/state" bash "$AGENT_VM_SH" project-env set K v ) 2>&1 >/dev/null )" ]; then
@@ -214,6 +231,6 @@ case "$drive_err" in
   *) fail "drive-letter mismatch silenced the warning: $drive_err" ;;
 esac
 case "$drive_err" in
-  *"echo '/.agent-vm.env' >> C:/proj/.gitignore"*) pass "the suggested line names the relative file" ;;
+  *"echo '/.agent-vm.env' >> 'C:/proj/.gitignore'"*) pass "the suggested line names the relative file" ;;
   *) fail "the suggested line is not applicable: $drive_err" ;;
 esac

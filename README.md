@@ -57,9 +57,9 @@ command and there is nothing to reinstall. `agent-vm uninstall` removes the
 link; your VMs and `~/.agent-vm` stay. `./install.sh` still works, as a wrapper
 for `./agent-vm.sh install`, and will go in a later release.
 
-It also offers to define `agent-vm` as a shell function. Prefer the symlink: a
-shell function is not inherited by child processes, so anything that calls
-agent-vm from a script needs the `PATH` entry anyway.
+The command works from any shell, fish included. Earlier versions had you add
+`source .../agent-vm.sh` to your shell rc: that line is no longer needed, and
+`install` says so when it finds one.
 
 When the base VM is not built yet and there is a terminal to ask on, it then
 offers to run [`agent-vm setup`](#one-time-setup) right away.
@@ -427,7 +427,7 @@ line to your runtime script if you want it:
 gh auth setup-git    # points git at gh for github.com credentials
 ```
 
-For subscription-based auth (where you've already run `claude login` / `gh auth login` on the host), share the host's credentials directory via [`~/.agent-vm/volumes`](#extra-host-mounts-agent-vmvolumes) instead.
+For subscription-based auth, log in inside the VM (`claude login`, `gh auth login`): the login stays with that VM across restarts. Mounting the host's own credentials directory instead would hand everything running in the VM your main login, not a token you can revoke on its own.
 
 **What the sandbox does and does not protect here.** Anything in this file is
 readable by *everything* running in the VM — the agent, its dependencies, any
@@ -454,7 +454,10 @@ List host files or directories to mount inside every VM. One path per line, `~` 
 # youruser with your actual username. The VM home is /home/youruser.guest
 # (Lima 2.1+; /home/youruser.linux before). Only the source (left) side
 # expands a leading ~.
-~/.claude:/home/youruser.guest/.claude
+# Your personal Claude Code instructions and skills, not the whole ~/.claude:
+# that also holds your login (on Linux) and must stay writable for Claude.
+~/.claude/CLAUDE.md:/home/youruser.guest/.claude/CLAUDE.md
+~/.claude/skills:/home/youruser.guest/.claude/skills
 
 # Writable directory
 ~/.cache/shared:/home/youruser.guest/.cache/shared:rw
@@ -476,6 +479,8 @@ An entry can be limited to some projects with a fourth field, after an explicit 
 # Same path in the VM, only for one project
 ~/datasets::ro:~/work/ml
 ```
+
+An entry that does not read that way is skipped with a warning, never guessed: an empty project (`src:dst:rw:`), a project without a mode before it (`src:dst:~/work/ml`), a mode after it, more fields. Read another way, the project would be lost and the entry mounted in every project. A destination therefore cannot contain a `:`.
 
 The filter lives here and not in the project on purpose: the agent can write the project, so a mount list kept there would let it mount any host directory into its own VM.
 
@@ -696,7 +701,7 @@ host and a few minutes.
 
 ## What's in the VM
 
-The wizard's "default install" and `--preinstall=default` produce the same set: everything in the table below except the opt-in languages (Ruby, Rust, Go). Pass a different `--preinstall=` to install a different subset.
+The wizard's "default install" and `--preinstall=default` produce the same set: everything in the table below except the opt-in components (Ruby, Rust, Go, Pi and Playwright MCP). Pass a different `--preinstall=` to install a different subset.
 
 | Category | Packages | Name | Installed by default? |
 |----------|----------|------|----------------------|

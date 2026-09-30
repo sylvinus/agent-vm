@@ -99,6 +99,36 @@ else
   pass "no remote script runs as root"
 fi
 
+# Behind a proxy, sudo must keep the proxy settings Lima puts in the guest's
+# environment (#25): installed before the first apt call, and checked by
+# visudo first, since a broken sudoers file breaks sudo.
+proxy_line="$(grep -n '/etc/sudoers.d/10-agent-vm-proxy' "$SETUP_SH" | head -1 | cut -d: -f1)"
+visudo_line="$(grep -n 'sudo visudo -cqf /tmp/agent-vm-proxy.sudoers' "$SETUP_SH" | head -1 | cut -d: -f1)"
+apt_line="$(grep -nE '^[^#]*apt_get (update|install)' "$SETUP_SH" | head -1 | cut -d: -f1)"
+if [ -n "$proxy_line" ] && [ -n "$visudo_line" ] && [ "$visudo_line" -lt "$proxy_line" ] && [ "$proxy_line" -lt "$apt_line" ]; then
+  pass "sudo keeps the proxy settings from before the first apt call, checked by visudo"
+else
+  fail "proxy sudoers drop-in: visudo at ${visudo_line:-none}, install at ${proxy_line:-none}, first apt at ${apt_line:-none}"
+fi
+kept=" $(grep -o 'env_keep += "[^"]*"' "$SETUP_SH" | cut -d'"' -f2) "
+dropped=""
+for v in http_proxy https_proxy ftp_proxy no_proxy HTTP_PROXY HTTPS_PROXY FTP_PROXY NO_PROXY; do
+  case "$kept" in *" $v "*) ;; *) dropped="$dropped $v" ;; esac
+done
+check "sudo keeps every proxy variable, both cases" "$dropped" ""
+
+# Shell history in the VM (#20): the block setup appends to ~/.zshrc, run by
+# zsh itself.
+sed -n "/^cat >> ~\/.zshrc <<'ZSHRC'/,/^ZSHRC\$/p" "$SETUP_SH" | sed '1d;$d' > "$SB/zshrc-history"
+if command -v zsh >/dev/null 2>&1; then
+  check "zsh history: saved to a file, space-prefixed commands left out" \
+    "$(HOME="$SB" zsh -fc '. "$1"; print -r -- "$HISTFILE $SAVEHIST"; [[ -o histignorespace && -o incappendhistory ]] && print opts' _ "$SB/zshrc-history")" \
+    "$SB/.zsh_history 10000
+opts"
+else
+  printf '  skip zsh history (zsh not installed)\n'
+fi
+
 # The sshfs wrapper, run against a stub that stands for /usr/bin/sshfs:
 # no_contain_symlinks is added only when that sshfs knows it (#22).
 sed -n '/^sudo tee \/usr\/local\/bin\/sshfs/,/^EOF$/p' "$SETUP_SH" | sed '1d;$d' \

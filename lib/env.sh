@@ -169,16 +169,21 @@ _agent_vm_warn_unignored() {
   # something to lecture about.
   [[ "$rel" == "$file" ]] && return 0
 
+  # The printed lines work from any directory, the project one being possibly
+  # below the top of the repository: paths are relative to the top, and quoted.
+  local q_top q_rel
+  q_top="$(_agent_vm_sq_escape "$top")"
+  q_rel="$(_agent_vm_sq_escape "$rel")"
   if git -C "$top" ls-files --error-unmatch "$file" >/dev/null 2>&1; then
     echo "Warning: $rel is tracked by git — its contents are in the repository." >&2
-    echo "         git rm --cached '$rel' && echo '/$rel' >> .gitignore" >&2
+    echo "         git -C '$q_top' rm --cached '$q_rel' && echo '/$q_rel' >> '$q_top/.gitignore'" >&2
     return 0
   fi
 
   git -C "$top" check-ignore -q "$file" 2>/dev/null || rc=$?
   [ "$rc" -eq 1 ] || return 0
   echo "Warning: $rel is not ignored by git — it can be committed by accident." >&2
-  echo "         echo '/$rel' >> $top/.gitignore" >&2
+  echo "         echo '/$q_rel' >> '$q_top/.gitignore'" >&2
 }
 
 # What gets pushed into a VM: the shared file first, this project's next.

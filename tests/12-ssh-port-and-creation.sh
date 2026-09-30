@@ -57,3 +57,18 @@ case "$?:$out" in
   *) fail "a failed clone: $out" ;;
 esac
 rec_has "edit $PV" && fail "a failed clone was edited anyway" || pass "and nothing is done after it"
+
+section "--reset stops when the old VM cannot be deleted"
+# Carrying on would reuse the old VM, with the shares it was given: a volumes
+# entry since limited to another project would stay mounted in it.
+out="$(rec --reset run true)"
+case "$?:$out" in
+  1:*"could not delete VM '$PV'"*) pass "a VM Lima still lists after the delete: --reset fails" ;;
+  *) fail "--reset over an undeleted VM: $out" ;;
+esac
+rec_has "agent-vm true" && fail "the command ran on the old VM" || pass "and the command does not run"
+CLONED="$SB/cloned-reset"; touch "$CLONED"
+AGENT_VM_TEST_CLONED="$CLONED" rec --reset run true >/dev/null
+rec_has "delete $PV --force" && rec_has "clone agent-vm-base $PV" && rec_has "agent-vm true" \
+  && pass "a delete that takes: re-cloned, then the command runs" || fail "--reset: $(grep -E '^(delete|clone)' "$REC")"
+rm -f "$CLONED"

@@ -43,9 +43,8 @@ make_release() {  # <version> [corrupt]
   echo "v$1" > "$WF/latest"
 }
 mkdir -p "$WF/src"; cp -R "$AGENT_VM_SH" "$(dirname "$AGENT_VM_SH")/lib" "$WF/src/"
-# The rc already names agent-vm.sh and the base is built (the stub limactl
-# lists it), so `install` has nothing to ask on a terminal.
-echo ': agent-vm.sh' > "$WH/.zshrc"
+# The base is built (the stub limactl lists it), so `install` has nothing to
+# ask on a terminal.
 mkdir -p "$WH/state"; echo 1 > "$WH/state/.agent-vm-base-version"
 winst() {
   ( export HOME="$WH" WF XDG_DATA_HOME= AGENT_VM_BIN_DIR="$WH/bin" SHELL=/bin/zsh PATH="$WBIN:$PATH" \

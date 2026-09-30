@@ -138,7 +138,11 @@ has passwordless sudo, so anything enforced there is advisory at best.
 - An entry of `~/.agent-vm/volumes` can be limited to some projects with a
   fourth field, after an explicit mode: `source:destination:mode:project`,
   where `project` is a path, `~` expanded, and `*` matches anything
-  (`~/.cache/pip:/home/you.guest/.cache/pip:rw:~/work/*`).
+  (`~/.cache/pip:/home/you.guest/.cache/pip:rw:~/work/*`). An entry that
+  does not read that way (an empty project, a project without a mode before
+  it, a mode after it, more fields, a control character) is skipped with a
+  warning rather than mounted in every project. Based on #30 by Manuel
+  Raynaud.
 - A relative destination in `~/.agent-vm/volumes` is inside the project
   (`~/.claude-vm/webapp:.claude:ro:~/work/webapp`). The mount point is created in
   the project on the host when missing. One that leaves the project with `..`
@@ -160,7 +164,10 @@ has passwordless sudo, so anything enforced there is advisory at best.
   stays for now as a wrapper (`--uninstall` included). `uninstall` works from
   anywhere, not only from the clone, and `install` refuses a dangling link in
   the way instead of failing on it. When the base VM is not built yet,
-  `install` offers to run `setup` right away.
+  `install` offers to run `setup` right away. It no longer adds
+  `source agent-vm.sh` to a shell rc: the command on `PATH` works from every
+  shell, fish included, and an rc line left by an earlier install is named
+  as no longer needed.
 - `agent-vm doctor`: read-only checks of the host, Lima, the base template and
   the current directory, with what to run about each problem. It also says
   whether Lima and the current directory's VM keep `.git` read-only, and
@@ -215,6 +222,17 @@ has passwordless sudo, so anything enforced there is advisory at best.
   broke the file in the VM for every key after it. `unset` also removes an
   `export KEY=` line, and `list` no longer shows a line inside a value as a
   key.
+- `--reset`, `rm` and `destroy-all` fail, naming the VM, when Lima still
+  lists it after the delete. `--reset` used to carry on with the old VM and
+  the shares it was given, and `rm` to report it destroyed.
+- Behind a proxy, `sudo` in the VM keeps the proxy settings Lima copies from
+  the host (`env_keep` in `/etc/sudoers.d/10-agent-vm-proxy`). Debian's sudo
+  dropped them, so `setup` failed at its first `apt-get` (#25), and so did
+  `sudo apt install` in the VMs. Rebuild the base with `setup`, then
+  `--reset` the project VMs.
+- The VM's zsh keeps its history in `~/.zsh_history`, across sessions and
+  restarts (#20); a command typed with a leading space is left out. New
+  bases only: `setup`, then `--reset`.
 - `LIMA_HOME` is honoured when cleaning up an interrupted VM creation and in
   the log paths printed on a failed start.
 - A runtime script with an option in its shebang (`#!/bin/bash -e`,

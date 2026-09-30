@@ -100,6 +100,16 @@ STUB
   case "$out" in *'$ git tag'*|*'$ git push'*) fail "release.sh resume: tags or pushes again" ;; *) pass "release.sh resume: neither tags nor pushes again" ;; esac
   touch "$SB/rel-released"
   case "$(relrun)" in *"tag v$AGENT_VM_VERSION already exists"*) pass "release.sh: a released tag is still refused" ;; *) fail "release.sh: a released tag was not refused" ;; esac
+  # The tag made here but never pushed: resumed too, and pushed before the
+  # release, which `gh release create --verify-tag` needs on origin.
+  rm -f "$SB/rel-released"
+  git -C "$RR" push -q origin ":refs/tags/v$AGENT_VM_VERSION" >/dev/null 2>&1
+  out="$(relrun)"
+  case "$out" in
+    *"resuming"*"\$ git push origin refs/tags/v$AGENT_VM_VERSION"*"\$ gh release create"*) pass "release.sh resume: a tag only made here is pushed first" ;;
+    *) fail "release.sh resume, local tag: $out" ;;
+  esac
+  case "$out" in *'$ git tag'*) fail "release.sh resume: tags again" ;; *) pass "release.sh resume: and not tagged again" ;; esac
 else
   printf '  skip release.sh resume (no git)\n'
 fi
@@ -181,7 +191,10 @@ chmod +x "$SB/fakebrew/brew"
 # ANSWER is the reply to the prompt (1 yes, 0 no).
 offer() {
   rm -f "$SB/brew.log"
+  # The Homebrew path, on any host: on Windows the offer is the download,
+  # which 18-windows.sh covers with a stub.
   ( export AGENT_VM_TEST_REC="$REC" AGENT_VM_TEST_PROTECTS="$PROTECTS" PATH="$SB/fakebrew:$PATH"
+    _agent_vm_on_windows() { return 1; }
     _agent_vm_have_tty() { return 0; }
     _agent_vm_ask_yn() { echo "${ANSWER:-1}"; }
     _agent_vm_offer_git_protection ) 2>&1

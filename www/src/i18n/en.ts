@@ -112,7 +112,7 @@ export const en = {
         id: 'curl',
         label: 'curl',
         code: 'curl -fsSL https://www.agent-vm.org/install.sh | sh',
-        note: 'Downloads the latest release from GitHub, checks it against the release’s `SHA256SUMS`, unpacks it in `~/.local/share/agent-vm` and links `agent-vm` into `~/.local/bin`. It also offers to source it from your shell rc, then to run step 2 right away. Run it again to update. `sh -s -- --version X.Y.Z` installs a given release, `sh -s -- --git` a clone of `main`.',
+        note: 'Downloads the latest release from GitHub, checks it against the release’s `SHA256SUMS`, unpacks it in `~/.local/share/agent-vm` and links `agent-vm` into `~/.local/bin`. It then offers to run step 2 right away. Run it again to update. `sh -s -- --version X.Y.Z` installs a given release, `sh -s -- --git` a clone of `main`.',
       },
       {
         id: 'brew',
@@ -124,7 +124,7 @@ export const en = {
         id: 'git',
         label: 'git',
         code: 'git clone https://github.com/sylvinus/agent-vm.git\ncd agent-vm && ./agent-vm.sh install',
-        note: '`install` symlinks `agent-vm` onto your `PATH`, so `git pull` in the clone is the update. It also offers to source it from your shell rc, then to run step 2 right away.',
+        note: '`install` symlinks `agent-vm` onto your `PATH`, so `git pull` in the clone is the update. It then offers to run step 2 right away.',
       },
       {
         id: 'windows',
@@ -233,7 +233,7 @@ export const en = {
     },
     volumesTitle: 'Extra mounts: ~/.agent-vm/volumes',
     volumesBody:
-      'One `source[:destination][:mode][:project]` per line, `~` expanded on the left, `#` for comments. The mode is `ro` (default) or `rw`, and `rw` only works for directories. Without a destination, the path is mounted at the same place in the VM. A relative destination is inside the project, over whatever the project has there. The fourth field, after an explicit mode, limits the entry to the projects it matches, `*` matching anything.',
+      'One `source[:destination][:mode][:project]` per line, `~` expanded on the left, `#` for comments. The mode is `ro` (default) or `rw`, and `rw` only works for directories. Without a destination, the path is mounted at the same place in the VM. A relative destination is inside the project, over whatever the project has there. The fourth field, after an explicit mode, limits the entry to the projects it matches, `*` matching anything. An entry that does not read that way is skipped with a warning, never mounted everywhere.',
     volumesCode:
       '# ~/.agent-vm/volumes\n~/.gitconfig    # same path, read-only\n~/.cache/shared:/home/you.guest/.cache/shared:rw\n\n# only in ~/work/webapp, as its .claude, read-only\n~/.claude-vm/webapp:.claude:ro:~/work/webapp\n\n# every project under ~/work\n~/.cache/pip:/home/you.guest/.cache/pip:rw:~/work/*',
     volumesNote:

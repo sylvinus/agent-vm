@@ -20,16 +20,39 @@ esac
 
 section "destroy-all"
 # The names are read on stdin; each limactl call must not eat the next ones.
-echo 1 > "$HOME/.agent-vm/.agent-vm-base-version"
-: > "$REC"
-( export AGENT_VM_TEST_REC="$REC"
-  _agent_vm_destroy_vms "$(printf 'agent-vm-a\nagent-vm-b\nagent-vm-base\n')" >/dev/null )
-check "every listed VM is deleted" "$(grep -c '^delete' "$REC")" "3"
+# This limactl reads its stdin, and a VM it deleted leaves its listing, except
+# the one named by STUCK.
+mkdir -p "$SB/destroylima"
+cat > "$SB/destroylima/limactl" <<STUB
+#!/bin/sh
+case "\$1" in
+  list) printf 'agent-vm-a\nagent-vm-b\nagent-vm-base\n' \
+          | if [ -s "$SB/destroyed" ]; then grep -vxF -f "$SB/destroyed"; else cat; fi ;;
+  delete) cat >/dev/null; echo "delete \$2" >> "$SB/destroy.log"
+          [ "\$2" = "\${STUCK:-}" ] || echo "\$2" >> "$SB/destroyed" ;;
+  stop) cat >/dev/null ;;
+esac
+exit 0
+STUB
+chmod +x "$SB/destroylima/limactl"
+destroy_three() {
+  : > "$SB/destroyed"; : > "$SB/destroy.log"
+  echo 1 > "$HOME/.agent-vm/.agent-vm-base-version"
+  ( PATH="$SB/destroylima:$PATH"; _agent_vm_destroy_vms "$(printf 'agent-vm-a\nagent-vm-b\nagent-vm-base\n')" ) 2>&1
+}
+out="$(destroy_three)"; rc=$?
+check "every listed VM is deleted" "$rc $(grep -c '^delete' "$SB/destroy.log")" "0 3"
 if [ -e "$HOME/.agent-vm/.agent-vm-base-version" ]; then
   fail "deleting the base template left its ready marker"
 else
   pass "deleting the base template retires its ready marker"
 fi
+out="$(STUCK=agent-vm-a destroy_three)"; rc=$?
+case "$rc:$out" in
+  1:*"could not delete VM 'agent-vm-a'"*) pass "a VM that stays is said, and fails destroy-all" ;;
+  *) fail "a VM that stays: $rc $out" ;;
+esac
+check "the others are still deleted" "$(grep -c '^delete' "$SB/destroy.log")" "3"
 echo 1 > "$HOME/.agent-vm/.agent-vm-base-version"
 
 section "doctor"

@@ -13,6 +13,10 @@ case "$1" in
 esac
 STUB
 chmod +x "$SB/fakewin/uname"
+# And one reporting Linux, for the "not on Windows" cases on a Windows runner.
+mkdir -p "$SB/fakelinux"
+printf '#!/bin/sh\necho Linux\n' > "$SB/fakelinux/uname"
+chmod +x "$SB/fakelinux/uname"
 printf '#!/bin/sh\nexit 0\n' > "$SB/fakeqemu/qemu-system-x86_64"
 chmod +x "$SB/fakeqemu/qemu-system-x86_64"
 
@@ -45,12 +49,6 @@ case "$win_out" in
   *winget*"Windows Hypervisor Platform"*) pass "the failure names the winget install and the hypervisor feature" ;;
   *) fail "the failure does not say how to install QEMU: $win_out" ;;
 esac
-# The mapping stays SHELL-first: bash on Windows reads .bash_profile (Git
-# Bash login shells, like Terminal.app), anything else is unchanged.
-check "Git Bash login shells read .bash_profile" \
-  "$(SHELL=/bin/bash PATH="$SB/fakewin:$PATH" _agent_vm_rc_file)" "$HOME/.bash_profile"
-check "the SHELL contract holds on Windows too" \
-  "$(SHELL=/bin/zsh PATH="$SB/fakewin:$PATH" _agent_vm_rc_file)" "$HOME/.zshrc"
 # winget's QEMU does not put itself on PATH: found in its directory, it goes
 # on PATH for this shell, with the line to keep it.
 mkdir -p "$SB/qemu-dir"
@@ -71,7 +69,7 @@ case "$(PATH="$SB/fakewin:$PATH" _agent_vm_windows_start_hint "$SB/other.log" "$
   *) fail "WHPX failure: no hint" ;;
 esac
 check "another failure: no hint" "$(PATH="$SB/fakewin:$PATH" _agent_vm_windows_start_hint "$SB/other.log" 2>&1)" ""
-check "not on Windows: no hint" "$(_agent_vm_windows_start_hint "$SB/whpx.log" 2>&1)" ""
+check "not on Windows: no hint" "$(PATH="$SB/fakelinux:$PATH" _agent_vm_windows_start_hint "$SB/whpx.log" 2>&1)" ""
 
 # =============================================================================
 section "Windows: paths, as Lima reads them and as the guest sees them"
@@ -91,7 +89,7 @@ esac
 STUB
 chmod +x "$SB/fakewin/cygpath"
 check "a host path in Lima's spelling" "$(PATH="$SB/fakewin:$PATH" _agent_vm_host_path /c/Users/me/proj)" "C:/Users/me/proj"
-check "elsewhere, unchanged" "$(_agent_vm_host_path /c/Users/me/proj)" "/c/Users/me/proj"
+check "elsewhere, unchanged" "$(PATH="$SB/fakelinux:$PATH" _agent_vm_host_path /c/Users/me/proj)" "/c/Users/me/proj"
 win_json="$( PATH="$SB/fakewin:$PATH"; AGENT_VM_STATE_DIR="$SB/winstate"
              _agent_vm_build_mounts_json agent-vm-w /c/Users/me/proj true )"
 check "the project share: a Windows location, mounted at the shell's path" \
@@ -108,8 +106,10 @@ check "on Windows, limactl runs without path rewriting" "$conv" "1|*|shell --wor
 $SB/convlima/limactl"
 check "and a missing limactl is still missing" \
   "$( PATH="$SB/fakewin:$SB/emptybin"; . "$SELF_DIR/lib/host.sh"; _agent_vm_limactl_path; echo "rc=$?" )" "rc=1"
+# unset -f: on a Windows runner the suite's own sourcing defined the wrapper.
 check "elsewhere, limactl is not wrapped" \
-  "$( PATH="$SB/convlima:$PATH"; . "$SELF_DIR/lib/host.sh"; limactl x )" "||x"
+  "$( PATH="$SB/fakelinux:$SB/convlima:$PATH"; unset -f limactl; . "$SELF_DIR/lib/host.sh"
+      limactl x )" "||x"
 
 # The .git probe hands limactl a file and a location Lima can read.
 mkdir -p "$SB/validlima"
@@ -120,7 +120,7 @@ STUB
 chmod +x "$SB/validlima/limactl"
 ( PATH="$SB/fakewin:$SB/validlima:$PATH"; export TMPDIR="$SB/probe-tmp"; _agent_vm_lima_protects_git ) >/dev/null 2>&1
 case "$(cat "$SB/validate.args" 2>/dev/null)" in
-  "validate C:/msys64$SB/probe-tmp/"*"/probe.yaml") pass "the .git probe passes limactl a Windows path" ;;
+  "validate $(PATH="$SB/fakewin:$PATH" _agent_vm_host_path "$SB/probe-tmp")/"*"/probe.yaml") pass "the .git probe passes limactl a Windows path" ;;
   *) fail "the .git probe: $(cat "$SB/validate.args" 2>/dev/null)" ;;
 esac
 
@@ -172,16 +172,18 @@ case "$z" in */lima-additional*) exit 0 ;; esac
 mkdir -p "$d/bin" && cp "$z" "$d/bin/limactl.exe" && chmod +x "$d/bin/limactl.exe"
 STUB
 chmod +x "$SB/forkbin/curl" "$SB/forkbin/unzip"
+# Under set -u, as a script sourcing agent-vm may run.
 fork() {  # <tag> [function]
-  ( PATH="$SB/fakewin:$SB/forkbin:$PATH"; AGENT_VM_LIMA_DIR="$SB/lima-fork"; AGENT_VM_LIMA_FORK_TAG="$1"
+  ( set -u; PATH="$SB/fakewin:$SB/forkbin:$PATH"; AGENT_VM_LIMA_DIR="$SB/lima-fork"; AGENT_VM_LIMA_FORK_TAG="$1"
     _agent_vm_have_tty() { return 0; }; _agent_vm_ask_yn() { echo 1; }
     "${2:-_agent_vm_install_fork_windows}" ) 2>&1
 }
 make_fork_release v9.0.0-sylvinus.1
 make_fork_release v9.0.0-sylvinus.2
 : > "$SB/fork.log"
-fork v9.0.0-sylvinus.1 >/dev/null
-check "install: the build of the tag" "$(cat "$SB/lima-fork/bin/limactl.exe" 2>/dev/null)" "v9.0.0-sylvinus.1"
+out="$(fork v9.0.0-sylvinus.1)"
+check "install: the build of the tag, and a clean exit" \
+  "$? $(cat "$SB/lima-fork/bin/limactl.exe" 2>/dev/null)" "0 v9.0.0-sylvinus.1"
 : > "$SB/fork.log"
 case "$(fork v9.0.0-sylvinus.1)" in *"already installed"*) pass "same tag: reused" ;; *) fail "same tag: not reused" ;; esac
 check "same tag: nothing downloaded" "$(cat "$SB/fork.log")" ""
@@ -318,6 +320,12 @@ if _agent_vm_sha256_sums_check "$SB/sums" a.zip b.zip >/dev/null 2>&1; then
 else
   pass "a tampered download is refused"
 fi
+# Binary mode marks the name with a *: `sha256sum -b`, and Git Bash's default.
+printf 'hello\n' > "$SB/sums/c.zip"
+printf '%s *c.zip\n' "$(_agent_vm_sha256 < "$SB/sums/c.zip" | cut -d' ' -f1)" >> "$SB/sums/SHA256SUMS"
+_agent_vm_sha256_sums_check "$SB/sums" c.zip \
+  && pass "a binary-mode (*) checksum line verifies" \
+  || fail "a binary-mode (*) checksum line does not verify"
 if _agent_vm_sha256_sums_check "$SB/sums" missing.zip >/dev/null 2>&1; then
   fail "an unlisted file verified"
 else

@@ -3,8 +3,8 @@
 # agent-vm: Run AI coding agents inside sandboxed Lima VMs
 # Part of https://www.agent-vm.org/
 #
-# Source this file in your shell config:
-#   source /path/to/agent-vm/agent-vm.sh
+# Put it on your PATH with `./agent-vm.sh install`. It can also be sourced
+# from bash or zsh, which defines agent-vm as a shell function.
 #
 # Usage:
 #   agent-vm setup    - Create the base VM template (run once)
@@ -174,9 +174,7 @@ _agent_vm_ensure_running() {
   # Destroy existing VM if --reset was requested
   if [[ -n "$reset" ]] && _agent_vm_exists "$vm_name"; then
     echo "Resetting VM '$vm_name'..."
-    limactl stop "$vm_name" &>/dev/null
-    limactl delete "$vm_name" --force &>/dev/null
-    _agent_vm_cleanup_state "$vm_name"
+    _agent_vm_delete_vm "$vm_name" || return 1
   fi
 
   local is_new_vm="" apply_resize=""
@@ -209,8 +207,7 @@ _agent_vm_ensure_running() {
     if ! create_out=$(cd /tmp && limactl edit "$vm_name" ${edit_args[@]+"${edit_args[@]}"} 2>&1); then
       echo "Error: could not configure the new VM '$vm_name' (shares, memory, CPUs):" >&2
       echo "$create_out" >&2
-      limactl delete "$vm_name" --force &>/dev/null
-      _agent_vm_cleanup_state "$vm_name"
+      _agent_vm_delete_vm "$vm_name"
       return 1
     fi
     _agent_vm_record_mounts "$vm_name" "$mounts_json"
@@ -844,9 +841,7 @@ _agent_vm_destroy() {
   vm_name="$(_agent_vm_resolve_target rm "$@")" || return 1
 
   echo "Stopping and deleting VM '$vm_name'..."
-  limactl stop "$vm_name" &>/dev/null
-  limactl delete "$vm_name" --force &>/dev/null
-  _agent_vm_cleanup_state "$vm_name"
+  _agent_vm_delete_vm "$vm_name" || return 1
   echo "VM destroyed."
 }
 
@@ -875,22 +870,23 @@ _agent_vm_destroy_all() {
     echo "Aborted."
     return 0
   fi
-  _agent_vm_destroy_vms "$vms"
+  _agent_vm_destroy_vms "$vms" || return 1
   echo "All VMs destroyed."
 }
 
-# Stop, delete and forget each VM named on its own line in $1.
-# limactl gets /dev/null as stdin: the names are read from stdin, and a limactl
-# that reads it would swallow the ones still to come.
+# Stop, delete and forget each VM named on its own line in $1. Goes through
+# all of them, and fails if one could not be deleted.
+# limactl gets /dev/null as stdin (see _agent_vm_delete_vm): the names are
+# read from stdin, and a limactl that reads it would swallow the ones still to
+# come.
 _agent_vm_destroy_vms() {
-  local vm
+  local vm st=0
   while IFS= read -r vm; do
     [[ -n "$vm" ]] || continue
     echo "Destroying $vm..."
-    limactl stop "$vm" </dev/null &>/dev/null
-    limactl delete "$vm" --force </dev/null &>/dev/null
-    _agent_vm_cleanup_state "$vm"
+    _agent_vm_delete_vm "$vm" || st=1
   done <<< "$1"
+  return "$st"
 }
 
 _agent_vm_list() {
@@ -930,11 +926,9 @@ _agent_vm_status() {
   [[ -n "$found" ]] || echo "  (no VMs)"
 }
 
-# When the file is executed directly (`./agent-vm.sh setup`) rather than
-# sourced, dispatch to the agent-vm function so it doesn't silently no-op.
-# Sourcing remains the canonical install path because it makes `agent-vm`
-# available as a shell function across all future commands. Detection is
-# shell-specific:
+# When the file is executed (the command `install` puts on PATH, or
+# `./agent-vm.sh setup`) rather than sourced, dispatch to the agent-vm
+# function so it doesn't silently no-op. Detection is shell-specific:
 #   bash: BASH_SOURCE[0] differs from $0 when sourced
 #   zsh:  ZSH_EVAL_CONTEXT contains ':file' when sourced
 _agent_vm_is_sourced() {

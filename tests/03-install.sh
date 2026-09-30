@@ -65,20 +65,27 @@ else
   rm -f "$IBIN/agent-vm"
 fi
 case "$out" in *"not on your PATH"*) fail "install: PATH hint while the directory is on PATH" ;; *) pass "install: no PATH hint when the directory is on PATH" ;; esac
-[ -e "$IH/.zshrc" ] && fail "install: rc written without a terminal to ask on" || pass "install: no terminal, the rc is left alone"
 if [[ -n "$AGENT_VM_HAS_SYMLINKS" ]]; then
 out="$( ( export HOME="$IH" AGENT_VM_BIN_DIR="$IBIN"; _agent_vm_have_tty() { return 1; }; agent-vm install ) 2>&1)"
 case "$out" in *"already linked"*"$IBIN is not on your PATH"*'export PATH="'"$IBIN"':$PATH"'*) pass "install again: already linked, and the PATH line to add" ;; *) fail "install again: $out" ;; esac
 else
   printf '  skip install again (ln -s plants copies on this machine)\n'
 fi
-out="$(TTY=1 inst install)"
-check "yes: the rc sources agent-vm.sh" "$(grep -c "source \"$REALDIR/agent-vm.sh\"" "$IH/.zshrc" 2>/dev/null)" "1"
-TTY=1 inst install >/dev/null
-check "yes, twice: one source line" "$(grep -c 'agent-vm.sh' "$IH/.zshrc")" "1"
-rm -f "$IH/.zshrc"
-TTY=1 ANSWER=0 inst install >/dev/null
-[ -e "$IH/.zshrc" ] && fail "no: the rc was written" || pass "no: the rc is left alone"
+# The link is all install puts in place: no shell rc is written, whatever the
+# shell. A `source agent-vm.sh` line in ~/.profile broke every sh login (dash
+# has no `source`, and the file is bash).
+for sh in /bin/zsh /bin/bash /usr/bin/fish; do
+  rm -f "$IBIN/agent-vm"
+  ( export SHELL="$sh"; TTY=1 BASE=1 inst install ) >/dev/null
+done
+check "install writes no shell rc, for zsh, bash or fish" "$(ls -A "$IH")" ""
+rm -f "$IBIN/agent-vm"
+# An rc line from before 0.2.0 is named, not edited.
+printf 'source "%s"\n' "$REALDIR/agent-vm.sh" > "$IH/.zshrc"
+out="$(BASE=1 inst install)"
+case "$out" in *"still sources agent-vm.sh"*"can remove"*) pass "an old rc line is named as no longer needed" ;; *) fail "old rc line: $out" ;; esac
+check "and left as it was" "$(cat "$IH/.zshrc")" "source \"$REALDIR/agent-vm.sh\""
+rm -f "$IH/.zshrc" "$IBIN/agent-vm"
 check "install takes no argument (exit 2)" "$(inst install --force >/dev/null; echo $?)" "2"
 
 # Then setup, when there is no base yet and a terminal to ask on.

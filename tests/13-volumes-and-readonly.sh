@@ -17,6 +17,30 @@ check "filter: no destination mounts at the same path" \
   "$(vols "$SB/vol-f::ro:$PROJ" | grep -cF "{$(mnt "$SB/vol-f"), \"writable\": false}")" 1
 check "filter: no destination, short form" \
   "$(vols "$SB/vol-f:ro:$PROJ" | grep -cF "{$(mnt "$SB/vol-f"), \"writable\": false}")" 1
+# Entries that do not read as source:destination:mode:project are refused, not
+# guessed: read as a destination, the project filter is lost and the entry
+# mounted in every project (cases from #30).
+for e in "$SB/vol-f:/mnt/f:rw:" \
+         "$SB/vol-f:/mnt/f:$SB/other" \
+         "$SB/vol-f:/mnt/f:$SB/other:rw" \
+         "$SB/vol-f:/mnt/f:rw:$SB/other:ro" \
+         "$SB/vol-f:/mnt/f:ro:$SB/other:x"; do
+  out="$(vols "$e")"
+  if [ "$(has_vol "$out")" = no ] && grep -q "Warning: Mount entry '$e'" "$SB/vols-err"; then
+    pass "refused, with a warning: ${e#"$SB"/}"
+  else
+    fail "not refused: ${e#"$SB"/} -> $out $(cat "$SB/vols-err")"
+  fi
+done
+out="$(vols "$SB/vol-f:/mnt/f:rw:")"
+grep -q "empty project filter" "$SB/vols-err" && pass "an empty filter is named as such" || fail "empty filter: $(cat "$SB/vols-err")"
+out="$(vols "$(printf '%s:/mnt/a\tb:ro' "$SB/vol-f")")"
+check "a control character in an entry: refused" "$(has_vol "$out") $(grep -c 'control character' "$SB/vols-err")" "no 1"
+out="$(vols "$SB/vol-f:/mnt/f:ro:~nobody/proj")"
+check "a ~user filter is not an absolute path: refused" "$(has_vol "$out") $(grep -c 'not an absolute path' "$SB/vols-err")" "no 1"
+check "the filter's ~/ still expands" \
+  "$( HOME="$SB"; _agent_vm_volume_matches '~/proj' "$PROJ" && echo yes || echo no )" yes
+
 out="$(vols "$SB/vol-f:/mnt/f:ro:relative/path")"
 check "filter: a relative one matches nothing" "$(has_vol "$out")" no
 grep -q "Project filter 'relative/path'.*not an absolute path" "$SB/vols-err" \

@@ -183,6 +183,10 @@ TARBALL="agent-vm-$VERSION.tar.gz"
 if [ -z "$RESUME" ]; then
   run git tag -a "$TAG" -m "agent-vm $VERSION"
   run git push origin "refs/tags/$TAG"
+elif [ -z "$(git ls-remote --tags origin "refs/tags/$TAG")" ]; then
+  # Resumed from a tag that only exists here: `gh release create --verify-tag`
+  # needs it on origin.
+  run git push origin "refs/tags/$TAG"
 fi
 # Built from the tag, not the working tree, so the asset is what was tagged.
 # It only writes into $WORK, so a dry run builds it too (from HEAD, which is

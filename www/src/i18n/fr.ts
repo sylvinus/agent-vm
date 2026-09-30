@@ -114,7 +114,7 @@ export const fr: Dictionary = {
         id: 'curl',
         label: 'curl',
         code: 'curl -fsSL https://www.agent-vm.org/install.sh | sh',
-        note: 'Télécharge la dernière version publiée sur GitHub, la vérifie avec le `SHA256SUMS` de la version, la décompresse dans `~/.local/share/agent-vm` et place un lien `agent-vm` dans `~/.local/bin`. Propose aussi de le sourcer depuis le fichier rc de ton shell, puis de lancer l\'étape 2 dans la foulée. Relance-le pour mettre à jour. `sh -s -- --version X.Y.Z` installe une version donnée, `sh -s -- --git` un clone de `main`.',
+        note: 'Télécharge la dernière version publiée sur GitHub, la vérifie avec le `SHA256SUMS` de la version, la décompresse dans `~/.local/share/agent-vm` et place un lien `agent-vm` dans `~/.local/bin`. Propose ensuite de lancer l\'étape 2 dans la foulée. Relance-le pour mettre à jour. `sh -s -- --version X.Y.Z` installe une version donnée, `sh -s -- --git` un clone de `main`.',
       },
       {
         id: 'brew',
@@ -126,7 +126,7 @@ export const fr: Dictionary = {
         id: 'git',
         label: 'git',
         code: 'git clone https://github.com/sylvinus/agent-vm.git\ncd agent-vm && ./agent-vm.sh install',
-        note: '`install` place un lien symbolique `agent-vm` dans ton `PATH` : un `git pull` dans le clone suffit ensuite pour mettre à jour. Il propose aussi de le sourcer depuis le fichier rc de ton shell, puis de lancer l\'étape 2 dans la foulée.',
+        note: '`install` place un lien symbolique `agent-vm` dans ton `PATH` : un `git pull` dans le clone suffit ensuite pour mettre à jour. Il propose aussi de lancer l\'étape 2 dans la foulée.',
       },
       {
         id: 'windows',
@@ -235,7 +235,7 @@ export const fr: Dictionary = {
     },
     volumesTitle: 'Montages en plus : ~/.agent-vm/volumes',
     volumesBody:
-      'Une ligne `source[:destination][:mode][:projet]` par montage, `~` développé à gauche, `#` pour les commentaires. Le mode est `ro` (par défaut) ou `rw`, et `rw` ne marche que pour les dossiers. Sans destination, le chemin est monté au même endroit dans la VM. Une destination relative est dans le projet, par-dessus ce que le projet a à cet endroit. Le quatrième champ, après un mode explicite, limite l\'entrée aux projets qu\'il désigne, `*` couvrant n\'importe quoi.',
+      'Une ligne `source[:destination][:mode][:projet]` par montage, `~` développé à gauche, `#` pour les commentaires. Le mode est `ro` (par défaut) ou `rw`, et `rw` ne marche que pour les dossiers. Sans destination, le chemin est monté au même endroit dans la VM. Une destination relative est dans le projet, par-dessus ce que le projet a à cet endroit. Le quatrième champ, après un mode explicite, limite l\'entrée aux projets qu\'il désigne, `*` couvrant n\'importe quoi. Une entrée qui ne se lit pas ainsi est ignorée avec un avertissement, jamais montée partout.',
     volumesCode:
       '# ~/.agent-vm/volumes\n~/.gitconfig    # même chemin, lecture seule\n~/.cache/shared:/home/you.guest/.cache/shared:rw\n\n# seulement dans ~/work/webapp, comme son .claude, en lecture seule\n~/.claude-vm/webapp:.claude:ro:~/work/webapp\n\n# tous les projets sous ~/work\n~/.cache/pip:/home/you.guest/.cache/pip:rw:~/work/*',
     volumesNote:
