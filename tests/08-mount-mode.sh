@@ -9,10 +9,10 @@ mounts_rw="$(_agent_vm_build_mounts_json agent-vm-t "$PROJ" true)"
 mounts_ro="$(_agent_vm_build_mounts_json agent-vm-t "$PROJ" false)"
 
 check "default is a writable project mount" \
-  "$mounts_default" "[{\"location\": \"$PROJ\", \"writable\": true}]"
+  "$mounts_default" "[{$(mnt "$PROJ"), \"writable\": true}]"
 check "an explicit true agrees with the default" "$mounts_rw" "$mounts_default"
 check "false marks the project mount read-only" \
-  "$mounts_ro" "[{\"location\": \"$PROJ\", \"writable\": false}]"
+  "$mounts_ro" "[{$(mnt "$PROJ"), \"writable\": false}]"
 
 # The mode must ride on the project entry, not on whatever happens to be first
 # once ~/.agent-vm/volumes contributes extra mounts.
@@ -21,7 +21,7 @@ printf '%s:ro\n' "$SB/extra-vol" > "$HOME/.agent-vm/volumes"
 mounts_ro_vols="$(_agent_vm_build_mounts_json agent-vm-t "$PROJ" false)"
 rm -f "$HOME/.agent-vm/volumes"
 case "$mounts_ro_vols" in
-  "[{\"location\": \"$PROJ\", \"writable\": false},"*"extra-vol"*)
+  "[{$(mnt "$PROJ"), \"writable\": false},"*"extra-vol"*)
     pass "read-only project mount keeps the ~/.agent-vm/volumes entries" ;;
   *) fail "volumes entries lost or reordered: $mounts_ro_vols" ;;
 esac
@@ -33,7 +33,7 @@ printf '%s:/mnt/v:rw\n' "$SB/extra-vol" > "$HOME/.agent-vm/volumes"
 mounts_prot="$(_agent_vm_build_mounts_json agent-vm-t "$PROJ" true 1)"
 rm -f "$HOME/.agent-vm/volumes"
 case "$mounts_prot" in
-  "[{\"location\": \"$PROJ\", \"writable\": true, $SSHFS_RO}, "*) pass "protected: the project entry carries readonlyNames" ;;
+  "[{$(mnt "$PROJ"), \"writable\": true, $SSHFS_RO}, "*) pass "protected: the project entry carries readonlyNames" ;;
   *) fail "protected project entry: $mounts_prot" ;;
 esac
 check "protected: every entry has the builtin driver" \
@@ -108,10 +108,10 @@ section "unenforceable flags are gone, not just hidden"
 # enforcement moving to the host, so fail here if one reappears — including as
 # a silently-ignored argument, which reads to a caller like it worked.
 for flag in --offline --git-read-only --git-ro; do
-  if grep -q -- "$flag" "$AGENT_VM_SH"; then
-    fail "$flag still referenced in agent-vm.sh"
+  if grep -q -- "$flag" "$AGENT_VM_SH" "$SELF_DIR"/lib/*.sh; then
+    fail "$flag still referenced in agent-vm.sh or lib/"
   else
-    pass "no $flag left in agent-vm.sh"
+    pass "no $flag left in agent-vm.sh or lib/"
   fi
   if agent-vm "$flag" shell >/dev/null 2>&1; then
     fail "$flag was silently accepted"

@@ -34,8 +34,9 @@ Commands:
                      directory, and say how to fix what is wrong. Read-only.
   name [dir]         Print the VM name for a directory (default: cwd)
   info [dir]         Print machine-readable state as key=value lines
-                     (version, template, state_dir, dir, vm_name,
-                     base_exists, vm_exists, vm_running, vm_stale).
+                     (version, template, state_dir, project_env, dir,
+                     vm_name, base_exists, vm_exists, vm_running, vm_stale,
+                     ssh_host, ssh_config).
                      Use this from scripts instead of parsing the output
                      of the human-facing commands.
   env <sub> [args]   Read/write ~/.agent-vm/env, the secrets pushed into every
@@ -113,15 +114,16 @@ A folder with HEAD, objects/ and refs/ is a repository to git under any name:
 
 Customization:
   ~/.agent-vm/env                   Shared env vars / tokens (dotenv-style;
-                                     auto-loaded into every VM shell)
+                                    pushed into every VM, loaded in its shells)
   ~/.agent-vm/volumes               Extra host paths to mount in VMs (one per
-                                     line, supports both directories and files)
+                                    line, supports both directories and files)
   ~/.agent-vm/setup.sh              Per-user setup (runs during "agent-vm setup")
-  ~/.agent-vm/env                   Shared env pushed into every VM
   <project>/.agent-vm.env           Per-project env (agent-vm project-env)
                                     Override the path with AGENT_VM_PROJECT_ENV
-  ~/.agent-vm/runtime.sh            Per-user runtime (runs on each VM start)
-  <project>/.agent-vm.runtime.sh    Per-project runtime (runs on each VM start)
+  ~/.agent-vm/runtime.sh            Per-user runtime (runs on every command
+                                    that enters a VM)
+  <project>/.agent-vm.runtime.sh    Per-project runtime (same, after the
+                                    per-user one)
                                     Override the path with AGENT_VM_PROJECT_RUNTIME
                                     (relative to the project, or absolute).
                                     Runtimes run under the shell their shebang

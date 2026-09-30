@@ -8,15 +8,28 @@
 # zsh was already broken; it stays broken, loudly, rather than being executed
 # by the wrong thing in a new way.
 _agent_vm_runtime_interpreter() {
-  local first
+  local first rest w
   IFS= read -r first < "$1" || true
+  # A file saved with CRLF (Windows editors) ends its shebang with a CR.
+  first="${first%$'\r'}"
   case "$first" in
     '#!'*) ;;
     *) printf 'zsh\n'; return 0 ;;
   esac
-  # Last word of the shebang covers both "#!/bin/bash" and "#!/usr/bin/env bash".
-  local last="${first##* }"
-  case "${last##*/}" in
+  # The program is the first word: "#!/bin/bash -e". Through env, the first
+  # word after env's own options and VAR=value assignments:
+  # "#!/usr/bin/env -S bash -e".
+  rest="${first#??}"
+  while :; do
+    rest="${rest#"${rest%%[![:space:]]*}"}"
+    w="${rest%%[[:space:]]*}"
+    rest="${rest#"$w"}"
+    case "$w" in
+      */env|env|-*|*=*) [[ -n "$rest" ]] && continue ;;
+    esac
+    break
+  done
+  case "${w##*/}" in
     bash) printf 'bash\n' ;;
     sh)   printf 'sh\n' ;;
     *)    printf 'zsh\n' ;;
@@ -49,8 +62,18 @@ _agent_vm_project_runtime_path() {
 # The script is still piped rather than executed by path: the per-user runtime
 # lives in ~/.agent-vm on the host and is not mounted inside the VM, so its
 # path means nothing there. One transport for both runtimes beats two.
+#
+# Line-ending CRs are dropped on the way: Git for Windows checks files out
+# with CRLF by default, and the shells in the VM read the CR as part of each
+# command.
 _agent_vm_run_runtime() {
   local vm_name="$1" host_dir="$2" file="$3" interp
   interp="$(_agent_vm_runtime_interpreter "$file")"
-  limactl shell --workdir "$host_dir" "$vm_name" zsh -lc "exec $interp -s" < "$file"
+  _agent_vm_strip_cr < "$file" \
+    | limactl shell --workdir "$host_dir" "$vm_name" zsh -lc "exec $interp -s"
+}
+
+# stdin to stdout without a CR at the end of each line.
+_agent_vm_strip_cr() {
+  awk '{ sub(/\r$/, ""); print }'
 }

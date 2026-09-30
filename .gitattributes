@@ -1,3 +1,10 @@
 # Shell scripts must keep LF endings everywhere: a CRLF checkout on
 # Windows breaks bash, including the test suite on the windows-latest runner.
 *.sh text eol=lf
+
+# Left out of the release tarball (release.sh builds it with git archive):
+# the site and the tests are not what an install runs.
+/www export-ignore
+/tests export-ignore
+/test.sh export-ignore
+/test-e2e.sh export-ignore

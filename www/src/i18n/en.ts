@@ -39,7 +39,7 @@ export const en = {
     installLabel: 'Get started',
     ctaPrimary: 'Install it',
     ctaSecondary: 'How it works',
-    meta: 'MIT licensed · macOS and Linux · built on Lima',
+    meta: 'MIT licensed · macOS, Linux, Windows (experimental) · built on Lima',
     terminalCaption:
       'Only the project directory is mounted. One VM per directory, created on first use and reused afterwards.',
     points: [
@@ -95,7 +95,7 @@ export const en = {
       { name: 'macOS, Linux or Windows', note: 'Windows is experimental: Git Bash, QEMU and Lima for Windows required.', href: '' },
       {
         name: 'Lima',
-        note: 'agent-vm setup offers to install it with Homebrew, as a build that keeps `.git` read-only until that is merged upstream. On Linux, QEMU and KVM too. On Windows, QEMU (winget) and the Virtual Machine Platform; setup offers the Lima download.',
+        note: 'agent-vm setup offers to install it with Homebrew, as a build that keeps `.git` read-only until that is merged upstream. On Linux, QEMU and KVM too. On Windows, QEMU (winget) and the Windows Hypervisor Platform feature; setup offers the Lima download.',
         href: 'https://lima-vm.io/docs/installation/',
       },
       {
@@ -125,6 +125,12 @@ export const en = {
         label: 'git',
         code: 'git clone https://github.com/sylvinus/agent-vm.git\ncd agent-vm && ./agent-vm.sh install',
         note: '`install` symlinks `agent-vm` onto your `PATH`, so `git pull` in the clone is the update. It also offers to source it from your shell rc, then to run step 2 right away.',
+      },
+      {
+        id: 'windows',
+        label: 'Windows',
+        code: '# in Git Bash (experimental)\nwinget install SoftwareFreedom.QEMU\ncurl -fsSL https://www.agent-vm.org/install.sh | sh',
+        note: 'Experimental. Run it in Git Bash: it is the curl installer, and `agent-vm setup` then offers a Lima build for Windows. VMs also need Windows’ own hypervisor, the Windows Hypervisor Platform feature. It is off by default and only an administrator can turn it on, once (Windows Features, or `DISM /Online /Enable-Feature /FeatureName:HypervisorPlatform /All`, then a reboot). On a managed laptop, that is a request to IT. Without it, VMs do not start.',
       },
     ],
     steps: [

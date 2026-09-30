@@ -93,7 +93,7 @@ _agent_vm_doctor() {
   echo ""
   echo "Lima"
   local have_lima=""
-  if command -v limactl >/dev/null 2>&1; then
+  if [[ -n "$(_agent_vm_limactl_path)" ]]; then
     have_lima=1
     local lima_ver
     lima_ver="$(limactl --version 2>/dev/null)"
@@ -136,6 +136,9 @@ _agent_vm_doctor() {
       $d fail "QEMU is not usable"
       printf '%s\n' "$win_prereq_out" | sed 's/^/        /'
     fi
+    $d info "QEMU also needs the 'Windows Hypervisor Platform' feature, which only an administrator can check or turn on" \
+      "Without it, VMs fail to start with a WHPX error. An administrator runs, once, then reboots:" \
+      "DISM /Online /Enable-Feature /FeatureName:HypervisorPlatform /All"
   fi
 
   # A bare repository is not named .git, so readonlyNames does not cover one
@@ -190,7 +193,11 @@ _agent_vm_doctor() {
   local f
   if [[ -f "$AGENT_VM_STATE_DIR/env" ]]; then
     local env_mode
-    if env_mode="$(_agent_vm_file_mode "$AGENT_VM_STATE_DIR/env")" \
+    # Git Bash emulates permission bits (chmod 600 reads back as 644): the
+    # file's ACL is what protects it there, and it cannot be read from here.
+    if _agent_vm_on_windows; then
+      $d info "env: $(_agent_vm_env env "$AGENT_VM_STATE_DIR/env" list | wc -l | tr -d ' ') key(s)"
+    elif env_mode="$(_agent_vm_file_mode "$AGENT_VM_STATE_DIR/env")" \
        && _agent_vm_file_is_private "$AGENT_VM_STATE_DIR/env"; then
       $d ok "env: $(_agent_vm_env env "$AGENT_VM_STATE_DIR/env" list | wc -l | tr -d ' ') key(s), private to you (mode $env_mode)"
     elif [[ -n "$env_mode" ]]; then

@@ -44,3 +44,16 @@ if command -v sha256sum >/dev/null 2>&1; then
 else
   printf '  skip sha256sum fallback (not installed here)\n'
 fi
+
+# =============================================================================
+section "Lima's state directory follows LIMA_HOME"
+# =============================================================================
+# A leftover without lima.yaml is cleaned where Lima keeps its VMs, and only
+# there: with LIMA_HOME set, ~/.lima is someone else's.
+mkdir -p "$SB/limahome/agent-vm-partial" "$HOME/.lima/agent-vm-partial"
+( LIMA_HOME="$SB/limahome"; _agent_vm_clean_partial_state agent-vm-partial ) 2>/dev/null
+check "LIMA_HOME: the leftover there goes, ~/.lima is not touched" \
+  "$([ -d "$SB/limahome/agent-vm-partial" ] && echo kept || echo cleaned) $([ -d "$HOME/.lima/agent-vm-partial" ] && echo kept || echo cleaned)" \
+  "cleaned kept"
+_agent_vm_clean_partial_state agent-vm-partial 2>/dev/null
+check "without LIMA_HOME: ~/.lima" "$([ -d "$HOME/.lima/agent-vm-partial" ] && echo kept || echo cleaned)" "cleaned"

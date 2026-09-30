@@ -14,7 +14,7 @@ Feedback welcome!
 
 - macOS, Linux, or Windows (Git Bash; experimental)
 - [Lima](https://lima-vm.io/docs/installation/) (`agent-vm setup` offers to install it with Homebrew if available). To keep `.git` read-only for the VMs, a Lima build with `sshfs.readonlyNames`, until it is merged upstream: see [Protecting `.git`](#protecting-git)
-- On Linux: QEMU and `/dev/kvm` (in WSL2, the Windows host must pass KVM through: nested virtualization, yours to enable); on Windows: QEMU (e.g. `winget install SoftwareFreedom.QEMU`) and the "Virtual Machine Platform" feature
+- On Linux: QEMU and `/dev/kvm` (in WSL2, the Windows host must pass KVM through: nested virtualization, yours to enable); on Windows: QEMU (e.g. `winget install SoftwareFreedom.QEMU`) and the "Windows Hypervisor Platform" feature, which an administrator turns on once (`DISM /Online /Enable-Feature /FeatureName:HypervisorPlatform /All`, then reboot). Lima uses it on Windows with no slower fallback, so without it VMs do not start
 - A subscription or API key for your agent of choice
 
 ## Install
@@ -63,6 +63,20 @@ agent-vm from a script needs the `PATH` entry anyway.
 
 When the base VM is not built yet and there is a terminal to ask on, it then
 offers to run [`agent-vm setup`](#one-time-setup) right away.
+
+On Windows (experimental), in Git Bash:
+
+```bash
+winget install SoftwareFreedom.QEMU
+curl -fsSL https://www.agent-vm.org/install.sh | sh
+```
+
+`agent-vm setup` then offers to download a Lima build for Windows. Git Bash
+makes no symlinks unless Windows grants them, so `install` puts a two-line
+launcher in `~/.local/bin` instead. QEMU needs the "Windows Hypervisor
+Platform" feature: it is off by default, only an administrator can turn it on
+(once, then a reboot), and Lima has no slower fallback on Windows, so without
+it VMs do not start. `agent-vm doctor` gives the command.
 
 ## Usage
 
@@ -481,7 +495,7 @@ pip install pandas numpy
 
 ### Per-user runtime: `~/.agent-vm/runtime.sh`
 
-Create this file to run commands inside every VM on each start. It runs **before** the per-project `.agent-vm.runtime.sh` script.
+Create this file to run commands inside the VM on every `agent-vm` command that enters one (agent, `shell`, `run`). It runs **before** the per-project `.agent-vm.runtime.sh` script.
 
 Use it for anything that should be available in all your VMs: git config, `gh auth setup-git`, Claude Code skills, MCP servers, etc. Keep private keys out of it: whatever it sets up, the agent can read. For GitHub, a fine-grained `GH_TOKEN` in `~/.agent-vm/env` can be revoked in one click.
 
@@ -503,8 +517,8 @@ See [`runtime.example.sh`](runtime.example.sh) for a fully commented template co
 
 | File | Scope | Runs when |
 |------|-------|-----------|
-| `~/.agent-vm/runtime.sh` | All VMs | Every VM start, first |
-| `.agent-vm.runtime.sh` | Current project only | Every VM start, after global |
+| `~/.agent-vm/runtime.sh` | All VMs | Every command that enters a VM, first |
+| `.agent-vm.runtime.sh` | Current project only | Every command that enters its VM, after global |
 
 The per-project path is overridable with `AGENT_VM_PROJECT_RUNTIME` (see below).
 

@@ -3,9 +3,10 @@
 # runtime.example.sh — Template for ~/.agent-vm/runtime.sh
 # =============================================================================
 #
-# This file runs inside every agent-vm on each start, before the per-project
-# .agent-vm.runtime.sh script. Copy it to ~/.agent-vm/runtime.sh and uncomment
-# the sections you need.
+# This file runs inside the VM on every agent-vm command that enters one,
+# before the per-project .agent-vm.runtime.sh script, so keep it safe to run
+# again. Copy it to ~/.agent-vm/runtime.sh and uncomment the sections you
+# need.
 #
 # To get started:
 #   cp runtime.example.sh ~/.agent-vm/runtime.sh

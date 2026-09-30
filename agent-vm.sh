@@ -179,7 +179,7 @@ _agent_vm_ensure_running() {
     _agent_vm_cleanup_state "$vm_name"
   fi
 
-  local is_new_vm=""
+  local is_new_vm="" apply_resize=""
   local file_mount_entries=()
   local file_mounts_cache="$AGENT_VM_STATE_DIR/.agent-vm-file-mounts-${vm_name}"
 
@@ -233,22 +233,29 @@ _agent_vm_ensure_running() {
     # what the VM already has. Prompting on the mere *presence* of a resource
     # flag means every caller that passes its defaults on each invocation gets
     # "Stop the VM and apply changes?" forever, for a no-op.
+    #
+    # Declining keeps the current settings and goes on: everything below
+    # (--readonly, the .git shares, env, runtime scripts) still applies.
+    apply_resize=1
     if _agent_vm_running "$vm_name"; then
       echo "VM '$vm_name' is currently running. It must be stopped to apply new settings."
       printf "Stop the VM and apply changes? [y/N] " >&2
       local reply=""
       IFS= read -r reply 2>/dev/null </dev/tty || reply=""
-      if [[ ! "$reply" =~ ^[Yy]$ ]]; then
-        echo "Aborted. Starting with current settings."
-        return 0
+      if [[ "$reply" =~ ^[Yy]$ ]]; then
+        echo "Stopping VM..."
+        limactl stop "$vm_name" &>/dev/null
+      else
+        echo "Not applied: the VM keeps its current settings."
+        apply_resize=""
       fi
-      echo "Stopping VM..."
-      limactl stop "$vm_name" &>/dev/null
     fi
+  fi
+  if [[ -n "$apply_resize" ]]; then
     echo "Updating VM settings..."
     # Don't touch .mounts here — those are baked in at creation (including any
     # entries from ~/.agent-vm/volumes). Re-setting them would clobber extras.
-    local edit_args=()
+    local edit_args=() edit_output=""
     [[ -n "$memory" ]] && edit_args+=(--memory "$memory")
     [[ -n "$cpus" ]]   && edit_args+=(--cpus "$cpus")
     [[ -n "$ssh_port" ]] && edit_args+=(--set ".ssh.localPort = $ssh_port")
@@ -256,7 +263,6 @@ _agent_vm_ensure_running() {
     # no flags drops into $EDITOR, which would hang a non-interactive caller
     # that passed --disk on its own.
     if [[ ${#edit_args[@]} -gt 0 ]]; then
-      local edit_output
       if ! edit_output=$(cd /tmp && limactl edit "$vm_name" "${edit_args[@]}" 2>&1); then
         echo "Error: Failed to update VM settings:" >&2
         echo "$edit_output" >&2
@@ -324,10 +330,13 @@ _agent_vm_ensure_running() {
     echo "Starting VM '$vm_name'..."
     local start_log
     if ! start_log=$(limactl start "$vm_name" 2>&1); then
+      local ha_log
+      ha_log="$(_agent_vm_lima_home)/$vm_name/ha.stderr.log"
       echo "Error: Failed to start VM '$vm_name'." >&2
       echo "--- limactl start output ---" >&2
       echo "$start_log" >&2
-      echo "Full log: ~/.lima/$vm_name/ha.stderr.log" >&2
+      echo "Full log: $ha_log" >&2
+      _agent_vm_windows_start_hint "$ha_log"
       return 1
     fi
   fi
@@ -546,13 +555,23 @@ agent-vm() {
   local cmd="${1:-help}"
   shift 2>/dev/null || true
 
+  # VM options mean nothing to the other commands: `agent-vm --readonly stop`
+  # must not read as if something had been made read-only.
+  if [[ ${#lead[@]} -gt 0 ]]; then
+    case "$cmd" in
+      stop|rm|destroy|destroy-all|list|status|name|info|env|project-env|version|--version|-V|doctor|install|uninstall|help|--help|-h)
+        echo "Error: ${lead[*]:0:1} is an option for the commands that start a VM (claude, opencode, codex, vibe, pi, shell, run), not for '$cmd'." >&2
+        return 1 ;;
+    esac
+  fi
+
   # Every command except help/setup needs limactl present. (setup installs it
   # itself; help needs nothing.) Without this, stop/list/status/etc. would fail
   # with confusing empty output instead of a clear, actionable message.
   case "$cmd" in
     help|--help|-h|setup|version|--version|-V|name|info|env|project-env|doctor|install|uninstall) ;;
     *)
-      if ! command -v limactl &>/dev/null; then
+      if [[ -z "$(_agent_vm_limactl_path)" ]]; then
         echo "Error: limactl (Lima) not found. Run 'agent-vm setup' first, or install" >&2
         echo "it from https://lima-vm.io/docs/installation/" >&2
         return 1

@@ -19,35 +19,6 @@ _agent_vm_stage_file() {
   return 1
 }
 
-# Build the .mounts JSON array for a VM. The first entry is always the project
-# dir; $3 ("true"/"false", default "true") decides whether it is writable.
-# Additional entries come from ~/.agent-vm/volumes, parsed as Docker-Compose-ish
-# `source[:destination][:mode]` (mode ∈ {ro,rw}, default ro).
-#
-# $3 = false is --readonly, and it makes EVERY share read-only, `rw` volumes
-# included. The hypervisor enforces read-only per share, not per host file: a
-# writable volume containing the project (`~/work:/mnt/work:rw`) would let the
-# agent write the project through /mnt/work. With no writable share at all,
-# there is no such path to find.
-#
-# `writable: false` is not a guest-side mount option: Lima turns it into a
-# read-only flag on the host side of the share, so root inside the VM cannot
-# undo it. That holds for the two mount types Lima defaults to since v1.0 —
-# virtiofs on vz (readOnly passed to Virtualization.framework) and 9p on QEMU
-# (`readonly=on` on -virtfs) — and for reverse-sshfs with the builtin SFTP
-# server of a Lima that has readonlyNames, which is what $4 selects. It does
-# NOT hold for reverse-sshfs otherwise, which only passes `-o ro` to the
-# guest's sshfs; _agent_vm_mount_is_host_enforced checks for that case.
-#
-# $4 = 1 keeps every .git read-only for the guest (see _agent_vm_lima_protects_git):
-# each entry gets the builtin SFTP driver and readonlyNames. The caller also
-# has to set the mount type, see _agent_vm_mounts_expr.
-#
-# Side effects: stages any file mounts as hardlinks under
-# ~/.agent-vm/file-mounts/<vm>/ and persists the file mount metadata to
-# ~/.agent-vm/.agent-vm-file-mounts-<vm> so subsequent starts can re-apply the
-# inside-VM bind mounts without re-parsing the volumes file. Stdout: the
-# mounts JSON array (consumed by `limactl edit --set ".mounts = ..."`).
 # 0 when the project directory <dir> matches <filter>, the 4th field of a
 # ~/.agent-vm/volumes entry: a path, `~` expanded, where `*` matches anything,
 # `/` included. A filter that is not absolute matches nothing, with a warning.
@@ -103,10 +74,42 @@ _agent_vm_project_mountpoint() {
   printf '%s\n' "$p"
 }
 
+# Build the .mounts JSON array for a VM. The first entry is always the project
+# dir; $3 ("true"/"false", default "true") decides whether it is writable.
+# Additional entries come from ~/.agent-vm/volumes, parsed as Docker-Compose-ish
+# `source[:destination][:mode][:project]` (mode ∈ {ro,rw}, default ro).
+#
+# $3 = false is --readonly, and it makes EVERY share read-only, `rw` volumes
+# included. The hypervisor enforces read-only per share, not per host file: a
+# writable volume containing the project (`~/work:/mnt/work:rw`) would let the
+# agent write the project through /mnt/work. With no writable share at all,
+# there is no such path to find.
+#
+# `writable: false` is not a guest-side mount option: Lima turns it into a
+# read-only flag on the host side of the share, so root inside the VM cannot
+# undo it. That holds for the two mount types Lima defaults to since v1.0 —
+# virtiofs on vz (readOnly passed to Virtualization.framework) and 9p on QEMU
+# (`readonly=on` on -virtfs) — and for reverse-sshfs with the builtin SFTP
+# server of a Lima that has readonlyNames, which is what $4 selects. It does
+# NOT hold for reverse-sshfs otherwise, which only passes `-o ro` to the
+# guest's sshfs; _agent_vm_mount_is_host_enforced checks for that case.
+#
+# $4 = 1 keeps every .git read-only for the guest (see _agent_vm_lima_protects_git):
+# each entry gets the builtin SFTP driver and readonlyNames. The caller also
+# has to set the mount type, see _agent_vm_mounts_expr.
+#
+# Side effects: stages any file mounts as hardlinks under
+# ~/.agent-vm/file-mounts/<vm>/ and persists the file mount metadata to
+# ~/.agent-vm/.agent-vm-file-mounts-<vm> so subsequent starts can re-apply the
+# inside-VM bind mounts without re-parsing the volumes file. Stdout: the
+# mounts JSON array (consumed by `limactl edit --set ".mounts = ..."`).
 _agent_vm_build_mounts_json() {
   local vm_name="$1" host_dir="$2" project_writable="${3:-true}" sshfs=""
   [[ "${4:-}" == 1 ]] && sshfs=", \"sshfs\": {\"sftpDriver\": \"builtin\", \"readonlyNames\": [\".git\"]}"
-  local mounts_json="[{\"location\": \"${host_dir}\", \"writable\": ${project_writable}${sshfs}}"
+  # Every entry names its mount point: agent-vm addresses the guest side by the
+  # shell's spelling of the path (--workdir, the write probe), which on Windows
+  # is not the C:/... form Lima reads the location in.
+  local mounts_json="[{\"location\": \"$(_agent_vm_host_path "$host_dir")\", \"mountPoint\": \"${host_dir}\", \"writable\": ${project_writable}${sshfs}}"
   local mounts_file="$AGENT_VM_STATE_DIR/volumes"
   local file_mount_entries=()
   local file_mounts_cache="$AGENT_VM_STATE_DIR/.agent-vm-file-mounts-${vm_name}"
@@ -177,7 +180,7 @@ _agent_vm_build_mounts_json() {
         local staging_mount="/tmp/.agent-vm-file-mounts/${staging_idx}"
         local bind_dst="${dst:-${src}}"
         file_mount_entries+=("${src}|${host_staging}|${staging_mount}/${filename}|${bind_dst}")
-        mounts_json+=", {\"location\": \"${file_staging_dir}\", \"mountPoint\": \"${staging_mount}\", \"writable\": false${sshfs}}"
+        mounts_json+=", {\"location\": \"$(_agent_vm_host_path "$file_staging_dir")\", \"mountPoint\": \"${staging_mount}\", \"writable\": false${sshfs}}"
         staging_idx=$((staging_idx + 1))
         continue
       fi
@@ -193,11 +196,7 @@ _agent_vm_build_mounts_json() {
           echo "Note: --readonly: '${src}' (rw in ~/.agent-vm/volumes) is mounted read-only too." >&2
         fi
       fi
-      if [[ -n "$dst" ]]; then
-        mounts_json+=", {\"location\": \"${src}\", \"mountPoint\": \"${dst}\", \"writable\": ${writable}${sshfs}}"
-      else
-        mounts_json+=", {\"location\": \"${src}\", \"writable\": ${writable}${sshfs}}"
-      fi
+      mounts_json+=", {\"location\": \"$(_agent_vm_host_path "$src")\", \"mountPoint\": \"${dst:-$src}\", \"writable\": ${writable}${sshfs}}"
     done < "$mounts_file"
   fi
   mounts_json+="]"

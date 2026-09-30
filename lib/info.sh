@@ -100,7 +100,7 @@ _agent_vm_info() {
   echo "dir=$dir"
   echo "vm_name=$vm_name"
 
-  if ! command -v limactl &>/dev/null; then
+  if [[ -z "$(_agent_vm_limactl_path)" ]]; then
     # Still useful without Lima: the static keys above answer "what would this
     # VM be called", which is all a caller needs before setup has ever run.
     echo "base_exists=unknown"

@@ -28,8 +28,8 @@ _agent_vm_lima_protects_git() {
   local dir out accepted=""
   dir="$(mktemp -d 2>/dev/null)" || return 1
   printf 'images: [{location: "/"}]\nmountType: virtiofs\nmounts: [{location: "%s", sshfs: {sftpDriver: builtin, readonlyNames: [.git]}}]\n' \
-    "$dir" > "$dir/probe.yaml"
-  out="$(limactl validate "$dir/probe.yaml" 2>&1)" && accepted=1
+    "$(_agent_vm_host_path "$dir")" > "$dir/probe.yaml"
+  out="$(limactl validate "$(_agent_vm_host_path "$dir/probe.yaml")" 2>&1)" && accepted=1
   rm -rf "$dir"
   [[ -z "$accepted" && "$out" == *readonlyNames* && "$out" != *"unknown field"* ]]
 }
@@ -128,31 +128,37 @@ _agent_vm_sha256_sums_check() {
 }
 
 # Download and install the fork's Windows build: both zips plus SHA256SUMS,
-# verified before anything is unpacked, extracted to AGENT_VM_LIMA_DIR
-# (default ~/.local/share/lima-sylvinus). An install already there is reused,
-# never replaced. New files stay in a temp dir until they verify, so a failed
-# run leaves no half-installed Lima behind.
+# verified, then unpacked into a staging dir next to AGENT_VM_LIMA_DIR
+# (default ~/.local/share/lima-sylvinus), which takes its place only once
+# complete. A failed run leaves the previous install, or none, as it was.
+#
+# An install of AGENT_VM_LIMA_FORK_TAG is reused. One of another tag (or
+# unmarked) is replaced, in the same directory, so the PATH line the user
+# already has keeps working. Windows cannot move a directory whose limactl.exe
+# is running, which is the case while a VM runs: that is said, and the old
+# install stays.
 #
 # The bin dir goes on PATH for the rest of this shell when it is not there
 # already, with the line making it permanent printed alongside: setup needs
 # limactl immediately, and the user needs it in the next terminal.
 _agent_vm_install_fork_windows() {
-  local base dir tmp f bin=""
+  local base dir tmp f bin="" stage old
   base="$(_agent_vm_lima_fork_release)"
   dir="${AGENT_VM_LIMA_DIR:-$HOME/.local/share/lima-sylvinus}"
-  command -v curl >/dev/null 2>&1 \
-    || { echo "Error: curl is required to download Lima." >&2; return 1; }
-  for candidate in "$dir/bin/limactl.exe" "$dir/limactl.exe"; do
-    if [[ -x "$candidate" ]]; then
-      bin="$(dirname "$candidate")"
-      echo "Lima is already installed at $bin."
-      break
+  if [[ -x "$dir/bin/limactl.exe" \
+        && "$(cat "$dir/.agent-vm-lima-tag" 2>/dev/null)" == "$AGENT_VM_LIMA_FORK_TAG" ]]; then
+    bin="$dir/bin"
+    echo "Lima $AGENT_VM_LIMA_FORK_TAG is already installed at $bin."
+  else
+    if [[ -e "$dir" && ! -x "$dir/bin/limactl.exe" ]]; then
+      echo "Error: $dir exists and is not a Lima install: move it, or set AGENT_VM_LIMA_DIR." >&2
+      return 1
     fi
-  done
-  if [[ -z "$bin" ]]; then
+    command -v curl >/dev/null 2>&1 \
+      || { echo "Error: curl is required to download Lima." >&2; return 1; }
     local files
     files="$(_agent_vm_lima_fork_files)" || return 1
-    mkdir -p "$dir" || return 1
+    mkdir -p "$(dirname "$dir")" || return 1
     tmp="$(mktemp -d 2>/dev/null)" || return 1
     # The || keeps the last line: command substitution strips its newline.
     while IFS= read -r f || [[ -n "$f" ]]; do
@@ -171,31 +177,47 @@ _agent_vm_install_fork_windows() {
       rm -rf "$tmp"
       return 1
     fi
+    stage="$dir.new.$$"
+    rm -rf "$stage"
+    mkdir -p "$stage" || { rm -rf "$tmp"; return 1; }
     # The || keeps the last line: command substitution strips its newline.
     while IFS= read -r f || [[ -n "$f" ]]; do
       case "$f" in lima-*.zip) ;;
         *) continue ;;
       esac
       if command -v unzip >/dev/null 2>&1; then
-        unzip -q -o "$tmp/$f" -d "$dir" || { echo "Error: could not unpack $f." >&2; rm -rf "$tmp"; return 1; }
+        unzip -q -o "$tmp/$f" -d "$stage" || { echo "Error: could not unpack $f." >&2; rm -rf "$tmp" "$stage"; return 1; }
       elif tar -tf "$tmp/$f" >/dev/null 2>&1; then
-        tar -xf "$tmp/$f" -C "$dir" || { echo "Error: could not unpack $f." >&2; rm -rf "$tmp"; return 1; }
+        tar -xf "$tmp/$f" -C "$stage" || { echo "Error: could not unpack $f." >&2; rm -rf "$tmp" "$stage"; return 1; }
       else
         echo "Error: neither unzip nor tar can unpack $f." >&2
-        rm -rf "$tmp"
+        rm -rf "$tmp" "$stage"
         return 1
       fi
     done <<< "$files"
     rm -rf "$tmp"
-    if [[ -x "$dir/bin/limactl.exe" ]]; then
-      bin="$dir/bin"
-    elif [[ -x "$dir/limactl.exe" ]]; then
-      bin="$dir"
-    else
-      echo "Error: the download unpacked without limactl.exe; nothing was put on PATH." >&2
+    if [[ ! -x "$stage/bin/limactl.exe" ]]; then
+      echo "Error: the download unpacked without bin/limactl.exe; nothing was installed." >&2
+      rm -rf "$stage"
       return 1
     fi
-    echo "Lima is installed at $bin."
+    printf '%s\n' "$AGENT_VM_LIMA_FORK_TAG" > "$stage/.agent-vm-lima-tag"
+    if [[ -e "$dir" ]]; then
+      old="$dir.old.$$"
+      if ! mv "$dir" "$old" 2>/dev/null; then
+        echo "Error: could not replace the Lima install in $dir: stop the running VMs ('agent-vm status'), then retry." >&2
+        rm -rf "$stage"
+        return 1
+      fi
+    fi
+    if ! mv "$stage" "$dir"; then
+      [[ -n "$old" ]] && mv "$old" "$dir"
+      rm -rf "$stage"
+      return 1
+    fi
+    [[ -n "$old" ]] && rm -rf "$old"
+    bin="$dir/bin"
+    echo "Lima $AGENT_VM_LIMA_FORK_TAG is installed at $bin."
   fi
   case ":$PATH:" in
     *":$bin:"*) ;;
@@ -204,6 +226,22 @@ _agent_vm_install_fork_windows() {
       echo "Added $bin to PATH for this shell. To keep it, add this line to ~/.bash_profile:"
       printf '  export PATH="%s:$PATH"\n' "$bin" ;;
   esac
+}
+
+# On Windows, when the Lima that _agent_vm_install_fork_windows put in place
+# is of another tag than AGENT_VM_LIMA_FORK_TAG, offer to replace it. Never
+# fails setup: the installed one keeps working.
+_agent_vm_offer_fork_windows_update() {
+  _agent_vm_on_windows || return 0
+  local dir="${AGENT_VM_LIMA_DIR:-$HOME/.local/share/lima-sylvinus}" have
+  [[ -x "$dir/bin/limactl.exe" ]] || return 0
+  have="$(cat "$dir/.agent-vm-lima-tag" 2>/dev/null)"
+  [[ "$have" != "$AGENT_VM_LIMA_FORK_TAG" ]] || return 0
+  _agent_vm_have_tty || { echo "Note: Lima ${have:-(unknown version)} in $dir; 'agent-vm setup' in a terminal offers $AGENT_VM_LIMA_FORK_TAG." >&2; return 0; }
+  [[ "$(_agent_vm_ask_yn "Update the Lima in $dir from ${have:-an unknown version} to $AGENT_VM_LIMA_FORK_TAG?" Y)" == "1" ]] || return 0
+  _agent_vm_install_fork_windows || echo "Warning: the update failed; the installed Lima stays." >&2
+  hash -r 2>/dev/null
+  return 0
 }
 
 # AGENT_VM_UNSAFE_WRITABLE_GIT=1, or --unsafe-writable-git for one command,
@@ -248,6 +286,7 @@ EOF
 # `brew uninstall lima-sylvinus && brew link lima` goes back. VMs are not
 # touched either way. This never fails setup: the VMs work without it.
 _agent_vm_offer_git_protection() {
+  _agent_vm_offer_fork_windows_update
   _agent_vm_lima_protects_git && return 0
   _agent_vm_git_protection_hint | _agent_vm_box "Lima cannot keep .git read-only"
   if _agent_vm_on_windows; then
@@ -264,7 +303,7 @@ _agent_vm_offer_git_protection() {
     if _agent_vm_lima_protects_git; then
       echo "Lima now keeps every .git read-only for the VMs."
     else
-      echo "Warning: the limactl on PATH ($(command -v limactl)) still cannot keep .git read-only." >&2
+      echo "Warning: the limactl on PATH ($(_agent_vm_limactl_path)) still cannot keep .git read-only." >&2
       echo "  Another Lima install comes first on PATH. Continuing without .git protection." >&2
     fi
     return 0
@@ -288,7 +327,7 @@ _agent_vm_offer_git_protection() {
   if _agent_vm_lima_protects_git; then
     echo "Lima now keeps every .git read-only for the VMs."
   else
-    echo "Warning: the limactl on PATH ($(command -v limactl)) still cannot keep .git read-only." >&2
+    echo "Warning: the limactl on PATH ($(_agent_vm_limactl_path)) still cannot keep .git read-only." >&2
     echo "  Another Lima install comes first on PATH. Continuing without .git protection." >&2
   fi
 }

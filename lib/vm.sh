@@ -6,7 +6,8 @@
 # directory` — pre-emptively clean the dir so the next setup/start works.
 _agent_vm_clean_partial_state() {
   local vm_name="$1"
-  local lima_dir="$HOME/.lima/$vm_name"
+  local lima_dir
+  lima_dir="$(_agent_vm_lima_home)/$vm_name"
   if [[ -d "$lima_dir" ]] && [[ ! -f "$lima_dir/lima.yaml" ]]; then
     echo "Detected partial VM state at $lima_dir (no lima.yaml) — cleaning up." >&2
     rm -rf "$lima_dir"

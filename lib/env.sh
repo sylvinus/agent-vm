@@ -68,22 +68,55 @@ _agent_vm_env_read() {
   ' "$1"
 }
 
-# Read, write and delete entries in ~/.agent-vm/env — the dotenv file pushed
-# into every VM on each start and auto-sourced there.
-#
-# Exists so integrators don't hand-roll the quoting: the file is *sourced* by a
-# shell, so one bad escape costs every secret in it (see _agent_vm_sq_escape).
-#
-#   agent-vm env set KEY VALUE   replace or add KEY (value never echoed)
-#   agent-vm env get KEY         print KEY's value
-#   agent-vm env has KEY         exit 0 if KEY is set, 1 otherwise (no output)
-#   agent-vm env unset KEY       remove KEY
-#   agent-vm env list            print the key NAMES only, never the values
-#
-# Writes are atomic (temp file then mv) and the file is kept mode 600. Lines
-# this command does not manage are preserved untouched.
-# Where this project's env file lives. Same shape as the runtime script above,
-# same override rule: AGENT_VM_PROJECT_ENV holds it somewhere else (typically
+# _agent_vm_env_lines <list|drop> <file> [key]: walk the file's assignments,
+# following a quoted value onto the lines it spans.
+#   list  prints each assigned name, once per assignment
+#   drop  prints the file without <key>'s assignments, whole
+# A line inside a quoted value is never read as an assignment: `set` writes a
+# value with a newline across lines, and a line of it that looks like
+# `NAME=...` is data. Dropping only the first line of such a value would leave
+# its tail behind, an unterminated quote that breaks the file for the shell
+# that sources it.
+_agent_vm_env_lines() {
+  awk -v mode="$1" -v k="${3:-}" '
+    function scan(s,    i, c, n) {
+      n = length(s)
+      for (i = 1; i <= n; i++) {
+        c = substr(s, i, 1)
+        if (q == "\047") { if (c == "\047") q = ""; continue }
+        if (q == "\"") {
+          if (c == "\\") i++
+          else if (c == "\"") q = ""
+          continue
+        }
+        if (c == "\\") i++
+        else if (c == "\047" || c == "\"") q = c
+        else if (c == "#" && i > 1 && substr(s, i - 1, 1) ~ /[ \t]/) return
+      }
+    }
+    {
+      if (q != "") {
+        scan($0)
+        if (mode == "drop" && !skip) print
+        next
+      }
+      skip = 0
+      line = $0
+      sub(/^[ \t]+/, "", line)
+      sub(/^export[ \t]+/, "", line)
+      if (match(line, /^[A-Za-z_][A-Za-z0-9_]*=/)) {
+        name = substr(line, 1, RLENGTH - 1)
+        if (mode == "list") print name
+        if (name == k) skip = 1
+        scan(substr(line, RLENGTH + 1))
+      }
+      if (mode == "drop" && !skip) print
+    }
+  ' "$2"
+}
+
+# Where this project's env file lives. Same shape as the runtime script
+# (_agent_vm_project_runtime_path), same override rule: AGENT_VM_PROJECT_ENV holds it somewhere else (typically
 # an integrator's own directory, ".mytool/env"), relative paths resolve against
 # the project, absolute ones are used as-is.
 #
@@ -156,13 +189,29 @@ _agent_vm_env_payload() {
   local host_dir="${1:-$(pwd)}" project_env
   project_env="$(_agent_vm_project_env_file "$host_dir")"
   # The echo keeps a shared file with no trailing newline from gluing its last
-  # line to the project's first one.
-  [ -f "$AGENT_VM_STATE_DIR/env" ] && { cat "$AGENT_VM_STATE_DIR/env"; echo; }
-  [ -f "$project_env" ] && cat "$project_env"
+  # line to the project's first one. CRs go: a CRLF file (Windows) would put
+  # one at the end of every value in the guest.
+  [ -f "$AGENT_VM_STATE_DIR/env" ] && { _agent_vm_strip_cr < "$AGENT_VM_STATE_DIR/env"; echo; }
+  [ -f "$project_env" ] && _agent_vm_strip_cr < "$project_env"
   return 0
 }
 
-# The env verbs, shared by `env` (one file for every VM) and `project-env`
+# Read, write and delete entries in ~/.agent-vm/env, the dotenv file pushed
+# into the VM on every agent-vm command and auto-sourced there.
+#
+# Exists so integrators don't hand-roll the quoting: the file is *sourced* by a
+# shell, so one bad escape costs every secret in it (see _agent_vm_sq_escape).
+#
+#   agent-vm env set KEY VALUE   replace or add KEY (value never echoed)
+#   agent-vm env get KEY         print KEY's value
+#   agent-vm env has KEY         exit 0 if KEY is set, 1 otherwise (no output)
+#   agent-vm env unset KEY       remove KEY
+#   agent-vm env list            print the key NAMES only, never the values
+#
+# Writes are atomic (temp file then mv) and the file is kept mode 600. Lines
+# that do not assign KEY are preserved untouched.
+#
+# The same verbs serve `env` (one file for every VM) and `project-env`
 # (one file per project). Same code for both on purpose: this file is SOURCED
 # by the VM's shell, so the quoting and the atomic replace below are the whole
 # point of the engine owning it. A second copy would be a second set of bugs.
@@ -191,17 +240,14 @@ _agent_vm_env() {
         echo "Error: 'agent-vm $verb set' needs a VALUE." >&2
         return 1
       fi
-      local value="$3" tmp line
+      local value="$3" tmp
       mkdir -p "$(dirname "$file")"
       tmp="$(mktemp "${file}.XXXXXX")"
       chmod 600 "$tmp"
-      if [[ -f "$file" ]]; then
-        while IFS= read -r line || [[ -n "$line" ]]; do
-          case "$line" in
-            "${key}="*) : ;;
-            *) printf '%s\n' "$line" >> "$tmp" ;;
-          esac
-        done < "$file"
+      if [[ -f "$file" ]] && ! _agent_vm_env_lines drop "$file" "$key" > "$tmp"; then
+        rm -f "$tmp"
+        echo "Error: could not read $file" >&2
+        return 1
       fi
       printf "%s='%s'\n" "$key" "$(_agent_vm_sq_escape "$value")" >> "$tmp"
       # A silently-dropped write here means the caller is told the secret was
@@ -215,15 +261,14 @@ _agent_vm_env() {
       ;;
     unset)
       [[ -f "$file" ]] || return 0
-      local tmp line
+      local tmp
       tmp="$(mktemp "${file}.XXXXXX")"
       chmod 600 "$tmp"
-      while IFS= read -r line || [[ -n "$line" ]]; do
-        case "$line" in
-          "${key}="*) : ;;
-          *) printf '%s\n' "$line" >> "$tmp" ;;
-        esac
-      done < "$file"
+      if ! _agent_vm_env_lines drop "$file" "$key" > "$tmp"; then
+        rm -f "$tmp"
+        echo "Error: could not read $file" >&2
+        return 1
+      fi
       if ! mv "$tmp" "$file"; then
         rm -f "$tmp"
         echo "Error: could not write $file" >&2
@@ -253,7 +298,7 @@ _agent_vm_env() {
     list)
       [[ -f "$file" ]] || return 0
       # Names only — never values, so this stays safe to paste into an issue.
-      sed -n 's/^\([A-Za-z_][A-Za-z0-9_]*\)=.*/\1/p' "$file"
+      _agent_vm_env_lines list "$file" | awk '!seen[$0]++'
       ;;
     *)
       echo "Usage: agent-vm $verb {set KEY VALUE|get KEY|has KEY|unset KEY|list}" >&2

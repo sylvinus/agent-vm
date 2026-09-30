@@ -33,7 +33,7 @@ check "no limactl: no protection" "$(PATH="$SB/nolimactl" probe)" "no"
 # A new VM gets reverse-sshfs and readonlyNames on every share.
 CLONED="$SB/cloned-prot"; rm -f "$CLONED" "$REC_MOUNTS"
 AGENT_VM_TEST_CLONED="$CLONED" rec run true >/dev/null
-rec_has "edit $PV --set .mountType = \"reverse-sshfs\" | .mounts = [{\"location\": \"$PROJ\", \"writable\": true, $SSHFS_RO}]" \
+rec_has "edit $PV --set .mountType = \"reverse-sshfs\" | .mounts = [{$(mnt "$PROJ"), \"writable\": true, $SSHFS_RO}]" \
   && pass "new VM: reverse-sshfs, every .git read-only" || fail "new VM not protected: $(grep '^edit' "$REC")"
 _agent_vm_mounts_protect_git "$PV" && pass "new VM: recorded as protected" || fail "new VM: record not protected"
 
@@ -63,7 +63,7 @@ case "$out" in *"can still write .git"*"'agent-vm stop'"*) pass "running VM from
 rm -f "$PROTECTS"
 protected_rec
 AGENT_VM_TEST_STOPPED=1 rec run true >/dev/null
-rec_has "edit $PV --set del(.mountType) | .mounts = [{\"location\": \"$PROJ\", \"writable\": true}]" \
+rec_has "edit $PV --set del(.mountType) | .mounts = [{$(mnt "$PROJ"), \"writable\": true}]" \
   && pass "Lima without readonlyNames: the VM goes back to the default mount type" \
   || fail "reverse-sshfs kept without readonlyNames: $(grep '^edit' "$REC")"
 _agent_vm_mounts_protect_git "$PV" && fail "the record still says protected" || pass "and the record says so"
@@ -87,7 +87,7 @@ out="$(AGENT_VM_UNSAFE_WRITABLE_GIT=1 rec run true)"
 rec_has "edit $PV" && fail "opt-out: a running VM was changed" || pass "opt-out: a running VM is left running"
 case "$out" in *"keeps .git read-only until it stops"*) pass "and it says .git stays read-only until then" ;; *) fail "opt-out, running VM: $out" ;; esac
 out="$(AGENT_VM_UNSAFE_WRITABLE_GIT=1 AGENT_VM_TEST_STOPPED=1 rec run true)"
-rec_has "edit $PV --set del(.mountType) | .mounts = [{\"location\": \"$PROJ\", \"writable\": true}]" \
+rec_has "edit $PV --set del(.mountType) | .mounts = [{$(mnt "$PROJ"), \"writable\": true}]" \
   && pass "opt-out: a stopped protected VM gets .git writable, on the default mount type" \
   || fail "opt-out: shares kept protected: $(grep '^edit' "$REC")"
 case "$out" in *"WARNING: AGENT_VM_UNSAFE_WRITABLE_GIT=1"*) pass "opt-out: the warning is printed" ;; *) fail "opt-out: no warning: $out" ;; esac
@@ -100,7 +100,7 @@ rec_has "edit $PV --set .mountType = \"reverse-sshfs\"" && pass "only 1 is the o
 
 # The same as a VM option, before the command or right after its name.
 out="$(AGENT_VM_TEST_STOPPED=1 rec --unsafe-writable-git run true)"
-rec_has "edit $PV --set del(.mountType) | .mounts = [{\"location\": \"$PROJ\", \"writable\": true}]" \
+rec_has "edit $PV --set del(.mountType) | .mounts = [{$(mnt "$PROJ"), \"writable\": true}]" \
   && pass "--unsafe-writable-git: .git writable" || fail "--unsafe-writable-git ignored: $(grep '^edit' "$REC")"
 case "$out" in *"WARNING: --unsafe-writable-git."*) pass "--unsafe-writable-git: the warning names the flag" ;; *) fail "--unsafe-writable-git: $out" ;; esac
 protected_rec

@@ -39,10 +39,10 @@ if ( PATH="$SB/fakewin:$SB/fakeqemu:$PATH"; _agent_vm_check_windows_prereqs ); t
 else
   fail "QEMU present but Windows prereqs fail"
 fi
-win_out="$(PATH="$SB/fakewin:$SB/emptybin" _agent_vm_check_windows_prereqs 2>&1)"
+win_out="$(AGENT_VM_QEMU_DIR="$SB/no-qemu" PATH="$SB/fakewin:$SB/emptybin" _agent_vm_check_windows_prereqs 2>&1)"
 check "QEMU absent -> Windows prereqs fail (exit 1)" "$?" "1"
 case "$win_out" in
-  *winget*) pass "the failure names the winget install" ;;
+  *winget*"Windows Hypervisor Platform"*) pass "the failure names the winget install and the hypervisor feature" ;;
   *) fail "the failure does not say how to install QEMU: $win_out" ;;
 esac
 # The mapping stays SHELL-first: bash on Windows reads .bash_profile (Git
@@ -51,6 +51,210 @@ check "Git Bash login shells read .bash_profile" \
   "$(SHELL=/bin/bash PATH="$SB/fakewin:$PATH" _agent_vm_rc_file)" "$HOME/.bash_profile"
 check "the SHELL contract holds on Windows too" \
   "$(SHELL=/bin/zsh PATH="$SB/fakewin:$PATH" _agent_vm_rc_file)" "$HOME/.zshrc"
+# winget's QEMU does not put itself on PATH: found in its directory, it goes
+# on PATH for this shell, with the line to keep it.
+mkdir -p "$SB/qemu-dir"
+printf '#!/bin/sh\nexit 0\n' > "$SB/qemu-dir/qemu-system-x86_64.exe"
+chmod +x "$SB/qemu-dir/qemu-system-x86_64.exe"
+win_out="$( AGENT_VM_QEMU_DIR="$SB/qemu-dir"; PATH="$SB/fakewin:$SB/emptybin"
+            _agent_vm_check_windows_prereqs && printf 'PATH=%s' "$PATH" )"
+case "$win_out" in
+  *"export PATH=\"$SB/qemu-dir:\$PATH\""*"PATH=$SB/qemu-dir:"*) pass "QEMU in its install directory: put on PATH, and the line to keep it printed" ;;
+  *) fail "QEMU in its install directory: $win_out" ;;
+esac
+
+# A start that failed on WHPX says what it needs, and who can turn it on.
+printf 'qemu-system-x86_64.exe: WHPX: No accelerator found, hr=00000000\n' > "$SB/whpx.log"
+printf 'something else\n' > "$SB/other.log"
+case "$(PATH="$SB/fakewin:$PATH" _agent_vm_windows_start_hint "$SB/other.log" "$SB/whpx.log" 2>&1)" in
+  *"Windows Hypervisor"*"FeatureName:HypervisorPlatform"*"IT department"*) pass "WHPX failure: the hint names the feature and the administrator" ;;
+  *) fail "WHPX failure: no hint" ;;
+esac
+check "another failure: no hint" "$(PATH="$SB/fakewin:$PATH" _agent_vm_windows_start_hint "$SB/other.log" 2>&1)" ""
+check "not on Windows: no hint" "$(_agent_vm_windows_start_hint "$SB/whpx.log" 2>&1)" ""
+
+# =============================================================================
+section "Windows: paths, as Lima reads them and as the guest sees them"
+# =============================================================================
+# Git Bash spells C:\Users as /c/Users. Lima on Windows requires an absolute
+# Windows path as a mount location, and Git Bash rewrites /c/... arguments to
+# C:/... when it starts limactl.exe, guest paths included. A fake cygpath
+# stands for Git Bash's.
+cat > "$SB/fakewin/cygpath" <<'STUB'
+#!/bin/sh
+[ "$1" = -m ] && shift
+[ "$1" = -- ] && shift
+case "$1" in
+  /[a-z]/*) d="$(printf '%s' "$1" | cut -c2 | tr a-z A-Z)"; printf '%s:%s\n' "$d" "$(printf '%s' "$1" | cut -c3-)" ;;
+  *) printf 'C:/msys64%s\n' "$1" ;;
+esac
+STUB
+chmod +x "$SB/fakewin/cygpath"
+check "a host path in Lima's spelling" "$(PATH="$SB/fakewin:$PATH" _agent_vm_host_path /c/Users/me/proj)" "C:/Users/me/proj"
+check "elsewhere, unchanged" "$(_agent_vm_host_path /c/Users/me/proj)" "/c/Users/me/proj"
+win_json="$( PATH="$SB/fakewin:$PATH"; AGENT_VM_STATE_DIR="$SB/winstate"
+             _agent_vm_build_mounts_json agent-vm-w /c/Users/me/proj true )"
+check "the project share: a Windows location, mounted at the shell's path" \
+  "$win_json" '[{"location": "C:/Users/me/proj", "mountPoint": "/c/Users/me/proj", "writable": true}]'
+
+# limactl gets every argument as written: Git Bash's rewriting is off for it.
+mkdir -p "$SB/convlima"
+printf '#!/bin/sh\necho "${MSYS_NO_PATHCONV:-}|${MSYS2_ARG_CONV_EXCL:-}|$*"\n' > "$SB/convlima/limactl"
+chmod +x "$SB/convlima/limactl"
+conv="$( PATH="$SB/fakewin:$SB/convlima:$PATH"; . "$SELF_DIR/lib/host.sh"
+         limactl shell --workdir /c/proj vm true
+         printf '%s\n' "$(_agent_vm_limactl_path)" )"
+check "on Windows, limactl runs without path rewriting" "$conv" "1|*|shell --workdir /c/proj vm true
+$SB/convlima/limactl"
+check "and a missing limactl is still missing" \
+  "$( PATH="$SB/fakewin:$SB/emptybin"; . "$SELF_DIR/lib/host.sh"; _agent_vm_limactl_path; echo "rc=$?" )" "rc=1"
+check "elsewhere, limactl is not wrapped" \
+  "$( PATH="$SB/convlima:$PATH"; . "$SELF_DIR/lib/host.sh"; limactl x )" "||x"
+
+# The .git probe hands limactl a file and a location Lima can read.
+mkdir -p "$SB/validlima"
+cat > "$SB/validlima/limactl" <<STUB
+#!/bin/sh
+echo "\$*" > "$SB/validate.args"
+STUB
+chmod +x "$SB/validlima/limactl"
+( PATH="$SB/fakewin:$SB/validlima:$PATH"; export TMPDIR="$SB/probe-tmp"; _agent_vm_lima_protects_git ) >/dev/null 2>&1
+case "$(cat "$SB/validate.args" 2>/dev/null)" in
+  "validate C:/msys64$SB/probe-tmp/"*"/probe.yaml") pass "the .git probe passes limactl a Windows path" ;;
+  *) fail "the .git probe: $(cat "$SB/validate.args" 2>/dev/null)" ;;
+esac
+
+# =============================================================================
+section "Windows: setup without Lima offers the download"
+# =============================================================================
+nolima_win() {
+  ( PATH="$SB/fakewin:$(nolima_path)"
+    _agent_vm_have_tty() { [ -n "${TTY:-}" ]; }
+    _agent_vm_ask_yn() { echo 1; }
+    _agent_vm_install_fork_windows() { echo "FORK DOWNLOAD"; return 1; }
+    _agent_vm_setup --preinstall=none ) 2>&1
+}
+case "$(TTY=1 nolima_win)" in
+  *"FORK DOWNLOAD"*) pass "with a terminal: the Lima build for Windows is offered" ;;
+  *) fail "with a terminal: no download offered" ;;
+esac
+case "$(nolima_win)" in
+  *"FORK DOWNLOAD"*) fail "no terminal: downloaded without asking" ;;
+  *"Run 'agent-vm setup' in a terminal"*) pass "no terminal: says where the offer is" ;;
+  *) fail "no terminal: $(nolima_win)" ;;
+esac
+
+# =============================================================================
+section "Windows: the Lima build is replaced when its tag changes"
+# =============================================================================
+# A stub curl serves the release from $FORKSRV/<tag>/, a stub unzip unpacks a
+# "zip" that names its limactl.exe, so which build is installed can be read.
+FORKSRV="$SB/forksrv"; mkdir -p "$SB/forkbin"
+make_fork_release() {  # <tag>
+  local d="$FORKSRV/$1" t="${1#v}" f
+  mkdir -p "$d"
+  for f in "lima-$t-Windows-AMD64.zip" "lima-additional-guestagents-$t-Windows-AMD64.zip"; do
+    echo "$1" > "$d/$f"
+  done
+  ( cd "$d" && if command -v sha256sum >/dev/null 2>&1; then sha256sum lima-*.zip; else shasum -a 256 lima-*.zip; fi > SHA256SUMS )
+}
+cat > "$SB/forkbin/curl" <<STUB
+#!/bin/sh
+out=""; url=""
+while [ \$# -gt 0 ]; do case "\$1" in -o) out="\$2"; shift ;; https://*) url="\$1" ;; esac; shift; done
+echo "\$url" >> "$SB/fork.log"
+t="\${url%/*}"; cp "$FORKSRV/\${t##*/}/\${url##*/}" "\$out"
+STUB
+cat > "$SB/forkbin/unzip" <<'STUB'
+#!/bin/sh
+while [ $# -gt 0 ]; do case "$1" in -d) d="$2"; shift ;; -q|-o) ;; *) z="$1" ;; esac; shift; done
+case "$z" in */lima-additional*) exit 0 ;; esac
+mkdir -p "$d/bin" && cp "$z" "$d/bin/limactl.exe" && chmod +x "$d/bin/limactl.exe"
+STUB
+chmod +x "$SB/forkbin/curl" "$SB/forkbin/unzip"
+fork() {  # <tag> [function]
+  ( PATH="$SB/fakewin:$SB/forkbin:$PATH"; AGENT_VM_LIMA_DIR="$SB/lima-fork"; AGENT_VM_LIMA_FORK_TAG="$1"
+    _agent_vm_have_tty() { return 0; }; _agent_vm_ask_yn() { echo 1; }
+    "${2:-_agent_vm_install_fork_windows}" ) 2>&1
+}
+make_fork_release v9.0.0-sylvinus.1
+make_fork_release v9.0.0-sylvinus.2
+: > "$SB/fork.log"
+fork v9.0.0-sylvinus.1 >/dev/null
+check "install: the build of the tag" "$(cat "$SB/lima-fork/bin/limactl.exe" 2>/dev/null)" "v9.0.0-sylvinus.1"
+: > "$SB/fork.log"
+case "$(fork v9.0.0-sylvinus.1)" in *"already installed"*) pass "same tag: reused" ;; *) fail "same tag: not reused" ;; esac
+check "same tag: nothing downloaded" "$(cat "$SB/fork.log")" ""
+fork v9.0.0-sylvinus.2 _agent_vm_offer_fork_windows_update >/dev/null
+check "another tag: setup's update replaces it" "$(cat "$SB/lima-fork/bin/limactl.exe" 2>/dev/null)" "v9.0.0-sylvinus.2"
+check "and leaves no staging or old copy" "$(ls -A "$SB" | grep -c '^lima-fork\.')" "0"
+: > "$SB/fork.log"
+check "up to date: no update offered" "$(fork v9.0.0-sylvinus.2 _agent_vm_offer_fork_windows_update)$(cat "$SB/fork.log")" ""
+mkdir -p "$SB/not-lima"; echo mine > "$SB/not-lima/notes"
+out="$( ( PATH="$SB/fakewin:$SB/forkbin:$PATH"; AGENT_VM_LIMA_DIR="$SB/not-lima"; _agent_vm_install_fork_windows ) 2>&1 )"
+case "$?:$out" in
+  1:*"is not a Lima install"*) pass "a directory of the user's: refused" ;;
+  *) fail "a directory of the user's: $out" ;;
+esac
+check "and left as it was" "$(ls "$SB/not-lima")" "notes"
+
+# =============================================================================
+section "Windows: install makes a launcher where there are no symlinks"
+# =============================================================================
+# Git Bash's ln -s copies the file unless Windows grants symlinks, and a copy
+# of agent-vm.sh cannot find lib/. `ln` stands for that here.
+WIB="$SB/winbin"
+winst_ln() {
+  ( export HOME="$SB/winhome" AGENT_VM_BIN_DIR="$WIB" PATH="$WIB:$PATH"
+    ln() { [ "$1" = -s ] && shift; cp "$1" "$2"; }
+    _agent_vm_have_tty() { return 1; }
+    _agent_vm_base_exists() { return 0; }
+    agent-vm "$@" ) 2>&1
+}
+mkdir -p "$SB/winhome"
+out="$(winst_ln install)"
+case "$out" in *"a launcher for"*) pass "install: says it wrote a launcher" ;; *) fail "install: $out" ;; esac
+check "the launcher runs this agent-vm" "$(bash "$WIB/agent-vm" version 2>&1)" "$AGENT_VM_VERSION"
+case "$(winst_ln install)" in *"already linked"*) pass "install again: the launcher is recognised" ;; *) fail "install again: $(winst_ln install)" ;; esac
+winst_ln uninstall >/dev/null
+[ ! -e "$WIB/agent-vm" ] && pass "uninstall removes the launcher" || fail "uninstall left the launcher"
+echo "mine" > "$WIB/agent-vm"
+winst_ln uninstall >/dev/null
+check "uninstall leaves a file of the user's" "$(cat "$WIB/agent-vm")" "mine"
+rm -f "$WIB/agent-vm"
+
+# =============================================================================
+section "Windows: doctor and CRLF files"
+# =============================================================================
+mkdir -p "$SB/winstate2"
+printf "K='v'\n" > "$SB/winstate2/env"; chmod 644 "$SB/winstate2/env"
+out="$( cd "$PROJ" && PATH="$SB/fakewin:$SB/fakeqemu:$PATH" AGENT_VM_STATE_DIR="$SB/winstate2" _agent_vm_doctor 2>&1 )"
+case "$out" in
+  *"readable by other users"*) fail "doctor on Windows: warns about emulated permission bits" ;;
+  *"-     env: 1 key(s)"*) pass "doctor on Windows: the env file without a permission verdict" ;;
+  *) fail "doctor on Windows, env: $out" ;;
+esac
+case "$out" in
+  *"'Windows Hypervisor Platform' feature"*"FeatureName:HypervisorPlatform"*) pass "doctor on Windows: names the hypervisor feature" ;;
+  *) fail "doctor on Windows, hypervisor: $out" ;;
+esac
+
+# Git for Windows checks files out with CRLF by default: the CRs must not
+# reach the shells in the VM.
+printf '#!/bin/bash -e\r\necho hi\r\n' > "$SB/crlf-runtime.sh"
+check "a CRLF shebang with an option: bash" "$(_agent_vm_runtime_interpreter "$SB/crlf-runtime.sh")" "bash"
+mkdir -p "$SB/catlima"
+printf '#!/bin/sh\ncat > "%s"\n' "$SB/crlf-captured" > "$SB/catlima/limactl"
+chmod +x "$SB/catlima/limactl"
+( PATH="$SB/catlima:$PATH"; _agent_vm_run_runtime vm "$PROJ" "$SB/crlf-runtime.sh" )
+check "a CRLF runtime reaches the VM without CRs" \
+  "$(grep -c 'echo hi' "$SB/crlf-captured") $(od -c < "$SB/crlf-captured" | grep -c '\\r')" "1 0"
+( AGENT_VM_STATE_DIR="$SB/crlf-state"; mkdir -p "$AGENT_VM_STATE_DIR"
+  printf 'A=1\r\n' > "$AGENT_VM_STATE_DIR/env"
+  printf 'B=2\r\n' > "$SB/crlf-proj.env"
+  AGENT_VM_PROJECT_ENV="$SB/crlf-proj.env" _agent_vm_env_payload "$PROJ" ) > "$SB/crlf-payload"
+check "CRLF env files reach the VM without CRs" \
+  "$(grep -c '^[AB]=' "$SB/crlf-payload") $(od -c < "$SB/crlf-payload" | grep -c '\\r')" "2 0"
 
 # =============================================================================
 section "the fork release: asset names and checksums"

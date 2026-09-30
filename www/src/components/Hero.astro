@@ -9,8 +9,9 @@ interface Props {
 const { locale } = Astro.props;
 const d = t(locale);
 
-// Illustrative session, with no real path or host. The output lines are the
-// ones agent-vm prints for a VM that exists but is stopped: keep them in sync.
+// Illustrative session, with no real path or host. The output lines follow
+// what agent-vm prints for a VM that exists but is stopped, trimmed to what
+// makes the point: not every line has to be there.
 const session: Array<{ kind: 'cmd' | 'out' | 'ok' | 'dim' | 'gap'; text: string }> = [
   { kind: 'cmd', text: 'cd ~/work/acme-api' },
   { kind: 'cmd', text: 'agent-vm run cat ~/.ssh/id_ed25519' },

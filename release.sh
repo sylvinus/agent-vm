@@ -11,12 +11,13 @@
 # AGENT_VM_VERSION in agent-vm.sh and add a "## X.Y.Z" section to CHANGELOG.md.
 # Push it and let CI pass. This script then checks that commit and publishes it:
 #
-#   1. clean tree, on main, level with origin/main, tag vX.Y.Z not taken
+#   1. clean tree, on main, level with origin/main, tag vX.Y.Z not taken (or
+#      already on this commit with no release: a failed run, resumed at 5)
 #   2. agent-vm.sh reports X.Y.Z, CHANGELOG.md has a non-empty X.Y.Z section
 #   3. the test workflow passed on this commit, and ./test.sh passes here
 #   4. annotated tag vX.Y.Z, pushed
 #   5. GitHub release: the CHANGELOG section as notes, plus a tarball made by
-#      `git archive` and its SHA256SUMS. The tarball is built here, so its
+#      `git archive` (without www/ and the tests) and its SHA256SUMS. The tarball is built here, so its
 #      checksum does not depend on how GitHub generates archives.
 #   6. the url and sha256 lines for the Homebrew formula. With
 #      AGENT_VM_TAP=<path to a homebrew-tap clone>, Formula/agent-vm.rb there
@@ -116,11 +117,22 @@ head="$(git rev-parse HEAD)"
   || die "HEAD is not origin/$BRANCH: push or pull first"
 ok "level with origin/$BRANCH (${head:0:12})"
 
+# A tag already at HEAD with no release behind it is a previous run that
+# pushed the tag and then failed: pick up from the release.
+RESUME=""
 if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null \
    || [ -n "$(git ls-remote --tags origin "refs/tags/$TAG")" ]; then
-  die "tag $TAG already exists"
+  git fetch --quiet origin "refs/tags/$TAG:refs/tags/$TAG" 2>/dev/null || true
+  if [ "$(git rev-parse -q --verify "refs/tags/$TAG^{commit}")" = "$head" ] \
+     && ! gh release view "$TAG" >/dev/null 2>&1; then
+    RESUME=1
+    warn "tag $TAG is already at ${head:0:12}, with no release: resuming from the release"
+  else
+    die "tag $TAG already exists"
+  fi
+else
+  ok "tag $TAG is free"
 fi
-ok "tag $TAG is free"
 
 # --- 2. version and changelog --------------------------------------------------
 echo "Checking the version"
@@ -168,13 +180,16 @@ trap 'rm -rf "$WORK"' EXIT
 printf '%s\n' "$NOTES" > "$WORK/notes.md"
 TARBALL="agent-vm-$VERSION.tar.gz"
 
-run git tag -a "$TAG" -m "agent-vm $VERSION"
-run git push origin "refs/tags/$TAG"
+if [ -z "$RESUME" ]; then
+  run git tag -a "$TAG" -m "agent-vm $VERSION"
+  run git push origin "refs/tags/$TAG"
+fi
 # Built from the tag, not the working tree, so the asset is what was tagged.
 # It only writes into $WORK, so a dry run builds it too (from HEAD, which is
-# what the tag would point at) to show the checksum.
+# what the tag would point at) to show the checksum. www/ and the tests are
+# left out by export-ignore in .gitattributes.
 ref="$TAG"
-[ -z "$DRY_RUN" ] || ref="HEAD"
+[ -z "$DRY_RUN" ] || [ -n "$RESUME" ] || ref="HEAD"
 git archive --format=tar.gz --prefix="agent-vm-$VERSION/" -o "$WORK/$TARBALL" "$ref"
 SHA="$(sha256_of "$WORK/$TARBALL")"
 printf '%s  %s\n' "$SHA" "$TARBALL" > "$WORK/SHA256SUMS"

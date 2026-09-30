@@ -41,7 +41,7 @@ export const fr: Dictionary = {
     installLabel: 'Pour commencer',
     ctaPrimary: 'Installer',
     ctaSecondary: 'Comment ça marche',
-    meta: 'Licence MIT · macOS et Linux · basé sur Lima',
+    meta: 'Licence MIT · macOS, Linux, Windows (expérimental) · basé sur Lima',
     terminalCaption:
       'Seul le dossier du projet est monté. Une VM par dossier, créée au premier lancement puis réutilisée.',
     points: [
@@ -97,7 +97,7 @@ export const fr: Dictionary = {
       { name: 'macOS, Linux ou Windows', note: 'Windows est expérimental : Git Bash, QEMU et Lima pour Windows requis.', href: '' },
       {
         name: 'Lima',
-        note: 'agent-vm setup propose de l\'installer avec Homebrew, dans une version qui garde les `.git` en lecture seule, en attendant son intégration en amont. Sous Linux, il faut aussi QEMU et KVM. Sous Windows, QEMU (winget) et la plateforme de machine virtuelle ; setup propose le téléchargement de Lima.',
+        note: 'agent-vm setup propose de l\'installer avec Homebrew, dans une version qui garde les `.git` en lecture seule, en attendant son intégration en amont. Sous Linux, il faut aussi QEMU et KVM. Sous Windows, QEMU (winget) et la fonctionnalité Windows Hypervisor Platform ; setup propose le téléchargement de Lima.',
         href: 'https://lima-vm.io/docs/installation/',
       },
       {
@@ -127,6 +127,12 @@ export const fr: Dictionary = {
         label: 'git',
         code: 'git clone https://github.com/sylvinus/agent-vm.git\ncd agent-vm && ./agent-vm.sh install',
         note: '`install` place un lien symbolique `agent-vm` dans ton `PATH` : un `git pull` dans le clone suffit ensuite pour mettre à jour. Il propose aussi de le sourcer depuis le fichier rc de ton shell, puis de lancer l\'étape 2 dans la foulée.',
+      },
+      {
+        id: 'windows',
+        label: 'Windows',
+        code: '# dans Git Bash (expérimental)\nwinget install SoftwareFreedom.QEMU\ncurl -fsSL https://www.agent-vm.org/install.sh | sh',
+        note: 'Expérimental. À lancer dans Git Bash : c\'est l\'installeur curl, et `agent-vm setup` propose ensuite une version de Lima pour Windows. Les VM ont aussi besoin de l\'hyperviseur de Windows, la fonctionnalité Windows Hypervisor Platform. Elle est désactivée par défaut et seul un administrateur peut l\'activer, une fois (Fonctionnalités de Windows, ou `DISM /Online /Enable-Feature /FeatureName:HypervisorPlatform /All`, puis un redémarrage). Sur un portable géré, c\'est une demande à faire au service informatique. Sans elle, les VM ne démarrent pas.',
       },
     ],
     steps: [

@@ -1,7 +1,7 @@
 section "~/.agent-vm/volumes: entries limited to some projects"
 mkdir -p "$SB/vol-f"
 vols() { printf '%s\n' "$@" > "$HOME/.agent-vm/volumes"; _agent_vm_build_mounts_json "$PV" "$PROJ" true 2>"$SB/vols-err"; }
-has_vol() { case "$1" in *"\"location\": \"$SB/vol-f\""*) echo yes ;; *) echo no ;; esac; }
+has_vol() { case "$1" in *"\"location\": \"$(_agent_vm_host_path "$SB/vol-f")\""*) echo yes ;; *) echo no ;; esac; }
 check "filter: the project's own path" "$(has_vol "$(vols "$SB/vol-f:/mnt/f:ro:$PROJ")")" yes
 check "filter: a trailing slash is the same path" "$(has_vol "$(vols "$SB/vol-f:/mnt/f:ro:$PROJ/")")" yes
 check "filter: another project's path" "$(has_vol "$(vols "$SB/vol-f:/mnt/f:ro:$SB/other")")" no
@@ -11,12 +11,12 @@ check "filter: * does not match elsewhere" "$(has_vol "$(vols "$SB/vol-f:/mnt/f:
 check "filter: ~ is expanded" \
   "$( HOME="$SB"; _agent_vm_volume_matches '~/proj' "$PROJ" && echo yes || echo no )" yes
 check "filter: mode rw is kept" \
-  "$(vols "$SB/vol-f:/mnt/f:rw:$PROJ" | grep -o "\"location\": \"$SB/vol-f\", \"mountPoint\": \"/mnt/f\", \"writable\": true")" \
-  "\"location\": \"$SB/vol-f\", \"mountPoint\": \"/mnt/f\", \"writable\": true"
+  "$(vols "$SB/vol-f:/mnt/f:rw:$PROJ" | grep -oF "$(mnt "$SB/vol-f" /mnt/f), \"writable\": true")" \
+  "$(mnt "$SB/vol-f" /mnt/f), \"writable\": true"
 check "filter: no destination mounts at the same path" \
-  "$(vols "$SB/vol-f::ro:$PROJ" | grep -c "{\"location\": \"$SB/vol-f\", \"writable\": false}")" 1
+  "$(vols "$SB/vol-f::ro:$PROJ" | grep -cF "{$(mnt "$SB/vol-f"), \"writable\": false}")" 1
 check "filter: no destination, short form" \
-  "$(vols "$SB/vol-f:ro:$PROJ" | grep -c "{\"location\": \"$SB/vol-f\", \"writable\": false}")" 1
+  "$(vols "$SB/vol-f:ro:$PROJ" | grep -cF "{$(mnt "$SB/vol-f"), \"writable\": false}")" 1
 out="$(vols "$SB/vol-f:/mnt/f:ro:relative/path")"
 check "filter: a relative one matches nothing" "$(has_vol "$out")" no
 grep -q "Project filter 'relative/path'.*not an absolute path" "$SB/vols-err" \
@@ -24,7 +24,7 @@ grep -q "Project filter 'relative/path'.*not an absolute path" "$SB/vols-err" \
 # A relative destination is inside the project, and made on the host.
 out="$(vols "$SB/vol-f:.claude:ro:$PROJ")"
 check "relative: inside the project" \
-  "$(printf '%s' "$out" | grep -c "\"location\": \"$SB/vol-f\", \"mountPoint\": \"$PROJ/.claude\"")" 1
+  "$(printf '%s' "$out" | grep -cF "$(mnt "$SB/vol-f" "$PROJ/.claude")")" 1
 [ -d "$PROJ/.claude" ] && pass "relative: the mount point is made on the host" || fail "relative: no $PROJ/.claude"
 vols "$SB/vol-f:./a/b:ro" >/dev/null
 [ -d "$PROJ/a/b" ] && pass "relative: ./ and subdirectories" || fail "relative: no $PROJ/a/b"
@@ -68,7 +68,7 @@ case "$ro_json" in
   *) pass "no share is writable under --readonly" ;;
 esac
 case "$rw_json" in
-  *"\"location\": \"$SB/vol-rw\", \"mountPoint\": \"/mnt/rw\", \"writable\": true"*)
+  *"$(mnt "$SB/vol-rw" /mnt/rw), \"writable\": true"*)
     pass "without it, an rw volume is writable again" ;;
   *) fail "rw volume not restored: $rw_json" ;;
 esac
@@ -104,4 +104,19 @@ rec_has "edit $PV --set del(.mountType) | .mounts" && pass "no record (an older 
   || fail "an unrecorded VM was trusted"
 _agent_vm_cleanup_state "$PV"
 [ -e "$REC_MOUNTS" ] && fail "rm/--reset left the mounts record" || pass "rm/--reset drops the mounts record"
+
+# Declining a resize of a running VM (or having no terminal to accept it on)
+# used to return before anything else: --readonly was then never applied, and
+# the command ran on a writable VM.
+# --disk: unlike CPUs and memory, it is not clamped to this host's share.
+out="$(rec --readonly --disk 20 run true)"
+rc=$?
+case "$rc:$out" in
+  1:*"Not applied: the VM keeps its current settings"*"--readonly was requested but not applied"*)
+    pass "a declined resize does not skip --readonly" ;;
+  *) fail "a declined resize skipped --readonly ($rc): $out" ;;
+esac
+rec_has "agent-vm true" && fail "the command ran on a writable VM" || pass "and the command does not run"
+rec_has "edit $PV --disk" && fail "the declined resize was applied" || pass "and the resize is not applied"
+_agent_vm_cleanup_state "$PV"
 rm -f "$HOME/.agent-vm/volumes"

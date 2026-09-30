@@ -73,6 +73,11 @@ export PATH="$SB/bin:$PATH"
 # shellcheck source=./agent-vm.sh
 source "$AGENT_VM_SH"
 
+# The start of a mounts JSON entry for host path <path> mounted at <mount point>
+# (default: the same path), as _agent_vm_build_mounts_json writes it: the
+# location in the host's own spelling, C:/... on Windows.
+mnt() { printf '"location": "%s", "mountPoint": "%s"' "$(_agent_vm_host_path "$1")" "${2:-$1}"; }
+
 # The machine running the tests has no /dev/kvm and no QEMU; those checks are
 # not under test (lib/host.sh covers them, tests/18-windows.sh the branches).
 _agent_vm_check_linux_prereqs() { return 0; }

@@ -55,8 +55,8 @@ unset -f _agent_vm_host_cpus _agent_vm_host_mem_gib
 source "$AGENT_VM_SH"
 
 # The flags stay plain integers — no new value to learn, no new way to be wrong.
-check "a resource value still reaches the command" \
-  "$(agent-vm --cpus 4 --memory 8 version)" "$AGENT_VM_VERSION"
+check "a resource value is taken as a plain integer" \
+  "$( vm_opts=(); rm=""; taken=""; _agent_vm_take_opt --cpus 4 && echo "${vm_opts[*]}" )" "--cpus 4"
 
 # =============================================================================
 section "version --min: a floor an integrator can oppose"

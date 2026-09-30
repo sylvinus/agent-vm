@@ -158,6 +158,39 @@ _agent_vm_on_windows() {
   esac
 }
 
+# Git Bash and MSYS2 rewrite every argument that looks like a POSIX path when
+# they start a native Windows program: `--workdir /c/proj` reaches limactl.exe
+# as `C:/proj`, and so does a path meant for the guest. On Windows, limactl is
+# therefore called with that rewriting off, and the host paths Lima itself
+# reads are converted by _agent_vm_host_path.
+if _agent_vm_on_windows; then
+  limactl() { MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' command limactl "$@"; }
+fi
+
+# Path of the limactl binary, empty when there is none. `command -v` cannot
+# answer where the function above shadows it.
+_agent_vm_limactl_path() {
+  if [[ -n "${ZSH_VERSION:-}" ]]; then
+    whence -p limactl 2>/dev/null
+  else
+    type -P limactl 2>/dev/null
+  fi
+}
+
+# A host path as Lima reads it: C:/Users/... on Windows, unchanged elsewhere.
+_agent_vm_host_path() {
+  if _agent_vm_on_windows && command -v cygpath >/dev/null 2>&1; then
+    cygpath -m -- "$1"
+  else
+    printf '%s\n' "$1"
+  fi
+}
+
+# Lima's state directory: LIMA_HOME, or ~/.lima.
+_agent_vm_lima_home() {
+  printf '%s\n' "${LIMA_HOME:-$HOME/.lima}"
+}
+
 # WSL generation from the kernel release: prints 2 or 1, or nothing when not
 # on WSL. Only meaningful on Linux (WSL1 reports Microsoft without WSL2).
 _agent_vm_wsl_version() {
@@ -173,14 +206,17 @@ _agent_vm_wsl_version() {
 # Check Windows prerequisites Lima needs for its QEMU driver. A no-op
 # everywhere else, like the Linux check above.
 #
-# Only the QEMU binary is checked: whether the "Virtual Machine Platform"
-# Windows feature is enabled cannot be probed cheaply from bash, so a host
-# without it fails later with QEMU's own WHPX error instead. winget ships
-# with Windows 11, so it is the install path named here.
+# Only the QEMU binary is checked: whether the "Windows Hypervisor Platform"
+# feature is enabled cannot be read without administrator rights, so a host
+# without it fails at the first start instead, where
+# _agent_vm_windows_start_hint explains it. winget ships with Windows 11, so
+# it is the install path named here. Its QEMU installer does not add itself
+# to PATH: when QEMU is in its default directory, that goes on PATH for this
+# shell, with the line making it permanent.
 _agent_vm_check_windows_prereqs() {
   _agent_vm_on_windows || return 0
 
-  local arch_bin
+  local arch_bin qemu_dir
   # uname -m under Git Bash reports the Windows architecture.
   case "$(uname -m)" in
     x86_64)        arch_bin="qemu-system-x86_64" ;;
@@ -188,10 +224,31 @@ _agent_vm_check_windows_prereqs() {
     *)             arch_bin="qemu-system-$(uname -m)" ;;
   esac
 
-  if ! command -v "$arch_bin" &>/dev/null; then
-    echo "Error: Lima needs '$arch_bin' on PATH (not found)." >&2
-    echo "  Install QEMU with: winget install SoftwareFreedom.QEMU" >&2
-    echo "  Then enable the 'Virtual Machine Platform' Windows feature and reboot." >&2
-    return 1
+  command -v "$arch_bin" &>/dev/null && return 0
+  qemu_dir="${AGENT_VM_QEMU_DIR:-/c/Program Files/qemu}"
+  if [[ -x "$qemu_dir/$arch_bin.exe" ]]; then
+    export PATH="$qemu_dir:$PATH"
+    echo "Added $qemu_dir to PATH for this shell. To keep it, add this line to ~/.bash_profile:"
+    printf '  export PATH="%s:$PATH"\n' "$qemu_dir"
+    return 0
   fi
+  echo "Error: Lima needs '$arch_bin' on PATH (not found)." >&2
+  echo "  Install QEMU with: winget install SoftwareFreedom.QEMU" >&2
+  echo "  QEMU also needs the 'Windows Hypervisor Platform' Windows feature (see 'agent-vm doctor')." >&2
+  return 1
+}
+
+# Printed after a failed VM start on Windows when one of the <log>s shows QEMU
+# could not use WHPX, Windows' hypervisor API. Lima uses it unconditionally on
+# Windows, with no slower fallback, and turning it on takes an administrator.
+_agent_vm_windows_start_hint() {
+  _agent_vm_on_windows || return 0
+  grep -qi 'whpx' "$@" 2>/dev/null || return 0
+  cat >&2 <<'EOF'
+QEMU could not use the Windows hypervisor. It needs the "Windows Hypervisor
+Platform" Windows feature, which an administrator turns on once, followed by
+a reboot: in Windows Features, or from an administrator terminal:
+  DISM /Online /Enable-Feature /FeatureName:HypervisorPlatform /All
+On a managed laptop, that is a request to your IT department.
+EOF
 }

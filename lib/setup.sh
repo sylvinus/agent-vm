@@ -285,8 +285,13 @@ EOF
   # brew's lima installed now and replaced a minute later.
   echo "Starting agent-vm setup..."
   local declined_protection=""
-  if ! command -v limactl &>/dev/null; then
-    if command -v brew &>/dev/null && _agent_vm_have_tty; then
+  if [[ -z "$(_agent_vm_limactl_path)" ]]; then
+    if _agent_vm_on_windows && _agent_vm_have_tty; then
+      if [[ "$(_agent_vm_ask_yn "Lima is not installed. Download the Lima build for Windows that keeps .git read-only (both zips, about 60 MB)?" Y)" == "1" ]]; then
+        _agent_vm_install_fork_windows || return 1
+        hash -r 2>/dev/null
+      fi
+    elif command -v brew &>/dev/null && _agent_vm_have_tty; then
       if [[ "$(_agent_vm_ask_yn "Lima is not installed. Install it now with 'brew install $AGENT_VM_LIMA_FORMULA' (keeps .git read-only for the VMs, built from source)?" Y)" == "1" ]]; then
         brew install "$AGENT_VM_LIMA_FORMULA" || return 1
       else
@@ -296,15 +301,15 @@ EOF
         fi
       fi
     fi
-    if ! command -v limactl &>/dev/null; then
+    if [[ -z "$(_agent_vm_limactl_path)" ]]; then
       echo "Error: Lima is required." >&2
-      if command -v brew &>/dev/null; then
+      if _agent_vm_on_windows; then
+        echo "  Run 'agent-vm setup' in a terminal: it offers the Lima build for Windows." >&2
+        echo "  Or get it by hand at $(_agent_vm_lima_fork_release)" >&2
+        echo "  (both Windows zips, verified, unpacked on PATH)." >&2
+      elif command -v brew &>/dev/null; then
         echo "  Install it with: brew install $AGENT_VM_LIMA_FORMULA" >&2
         echo "  (or brew install lima, which lets the VMs write .git)" >&2
-      elif _agent_vm_on_windows; then
-        echo "  Get a Lima build for Windows at $(_agent_vm_lima_fork_release)" >&2
-        echo "  (both Windows zips, verified, unpacked on PATH), plus QEMU" >&2
-        echo "  (winget install SoftwareFreedom.QEMU). 'agent-vm setup' offers the download." >&2
       else
         echo "  Install it from https://lima-vm.io/docs/installation/" >&2
       fi
@@ -386,9 +391,10 @@ EOF
       else
         install_node=$(_agent_vm_ask_yn "Node.js 24" Y)
       fi
-      install_ruby=$(_agent_vm_ask_yn "Ruby" Y)
-      install_rust=$(_agent_vm_ask_yn "Rust" Y)
-      install_golang=$(_agent_vm_ask_yn "Go" Y)
+      # Opt-in, like Pi and Playwright MCP: N unless asked for.
+      install_ruby=$(_agent_vm_ask_yn "Ruby" N)
+      install_rust=$(_agent_vm_ask_yn "Rust" N)
+      install_golang=$(_agent_vm_ask_yn "Go" N)
     fi
 
     # Resources second — same pattern, accept-in-one-go shortcut. Current
@@ -484,7 +490,8 @@ EOF
   echo "Starting base VM (the first run downloads a Debian image)..."
   if ! _agent_vm_windowed "$setup_log" limactl start "$AGENT_VM_TEMPLATE" </dev/null; then
     echo "Error: Failed to start base VM. Full log: $setup_log" >&2
-    echo "Lima's own log: ~/.lima/$AGENT_VM_TEMPLATE/ha.stderr.log" >&2
+    echo "Lima's own log: $(_agent_vm_lima_home)/$AGENT_VM_TEMPLATE/ha.stderr.log" >&2
+    _agent_vm_windows_start_hint "$setup_log" "$(_agent_vm_lima_home)/$AGENT_VM_TEMPLATE/ha.stderr.log"
     return 1
   fi
 
@@ -524,7 +531,8 @@ EOF
   local user_setup="$AGENT_VM_STATE_DIR/setup.sh"
   if [ -f "$user_setup" ]; then
     echo "Running custom setup from $user_setup..."
-    limactl shell "$AGENT_VM_TEMPLATE" zsh -l < "$user_setup" || { _agent_vm_setup_aborted "Custom setup script failed."; return 1; }
+    _agent_vm_strip_cr < "$user_setup" | limactl shell "$AGENT_VM_TEMPLATE" zsh -l \
+      || { _agent_vm_setup_aborted "Custom setup script failed."; return 1; }
   fi
 
   limactl stop "$AGENT_VM_TEMPLATE" &>/dev/null

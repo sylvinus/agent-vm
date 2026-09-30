@@ -4,6 +4,35 @@ case "$(agent-vm setup --reset 2>&1 </dev/null)" in
   *) fail "setup accepted --reset" ;;
 esac
 
+section "setup wizard: the opt-in components default to no"
+# Pressing Enter at every per-component prompt must give the default set's
+# languages: Ruby, Rust and Go stay out, like Pi and Playwright MCP.
+mkdir -p "$SB/wizlima"
+cat > "$SB/wizlima/limactl" <<STUB
+#!/bin/sh
+case "\$1" in
+  shell) cat > "$SB/wizard.stdin" ;;
+  list) [ "\$2" = -q ] && echo agent-vm-base ;;
+esac
+exit 0
+STUB
+chmod +x "$SB/wizlima/limactl"
+( PATH="$SB/wizlima:$PATH"; AGENT_VM_STATE_DIR="$SB/wizstate"
+  _agent_vm_have_tty() { return 0; }
+  _agent_vm_ask_yn() {
+    case "$1" in
+      "Use this default") echo 0 ;;
+      "Use these defaults") echo 1 ;;
+      *) case "$2" in [Yy]) echo 1 ;; *) echo 0 ;; esac ;;
+    esac
+  }
+  _agent_vm_offer_git_protection() { :; }
+  _agent_vm_offer_bare_repo_setting() { :; }
+  _agent_vm_setup ) >/dev/null 2>&1
+check "wizard defaults: Ruby, Rust, Go, Pi and Playwright MCP off; Claude on" \
+  "$(grep -E '^export AGENT_VM_INSTALL_(RUBY|RUST|GOLANG|PI|MCP_PLAYWRIGHT|CLAUDE)=' "$SB/wizard.stdin" 2>/dev/null | cut -d_ -f4- | tr '\n' ' ')" \
+  "RUBY=0 RUST=0 GOLANG=0 CLAUDE=1 PI=0 MCP_PLAYWRIGHT=0 "
+
 section "release.sh"
 REL="$SELF_DIR/release.sh"
 notes="$("$REL" notes "$AGENT_VM_VERSION" 2>&1)"
@@ -24,6 +53,56 @@ check "notes: an absent version fails" "$?" "1"
 check "a malformed version is refused before anything else" "$?" "1"
 "$REL" >/dev/null 2>&1
 check "no argument prints the usage (exit 2)" "$?" "2"
+
+# The tarball is what an install runs: not the site, not the tests. Worktree
+# attributes, so this checks the .gitattributes being committed.
+if git -C "$SELF_DIR" rev-parse --verify -q HEAD >/dev/null 2>&1; then
+  listing="$(git -C "$SELF_DIR" archive --worktree-attributes --format=tar --prefix=x/ HEAD | tar -tf - 2>/dev/null)"
+  check "release tarball: no www/, tests/, test.sh or test-e2e.sh" \
+    "$(printf '%s\n' "$listing" | grep -cE '^x/(www/|tests/|test\.sh$|test-e2e\.sh$)')" "0"
+  check "release tarball: agent-vm.sh, lib/ and the setup script" \
+    "$(printf '%s\n' "$listing" | grep -cxE 'x/(agent-vm\.sh|lib/env\.sh|agent-vm\.setup\.sh)')" "3"
+else
+  printf '  skip release tarball contents (not a git checkout)\n'
+fi
+
+# A run that pushed the tag and then failed to publish is picked up again,
+# rather than stuck on "tag already exists". Against a throwaway repository,
+# its origin a bare one, and a stub gh.
+if command -v git >/dev/null 2>&1; then
+  RR="$SB/relrepo"; RO="$SB/relorigin.git"; RB="$SB/relbin"
+  mkdir -p "$RR/www/public" "$RR/tests" "$RB"
+  cp -R "$SELF_DIR/agent-vm.sh" "$SELF_DIR/lib" "$SELF_DIR/agent-vm.setup.sh" "$SELF_DIR/install.sh" \
+    "$SELF_DIR/runtime.example.sh" "$SELF_DIR/test-e2e.sh" "$SELF_DIR/release.sh" "$SELF_DIR/CHANGELOG.md" "$RR/"
+  cp "$SELF_DIR/www/public/install.sh" "$RR/www/public/"
+  printf '#!/bin/sh\nexit 0\n' > "$RR/test.sh"; chmod +x "$RR/test.sh"
+  : > "$RR/tests/helpers.sh"
+  cat > "$RB/gh" <<STUB
+#!/bin/sh
+case "\$1 \$2" in
+  "run list") echo "completed success" ;;
+  "release view") [ -e "$SB/rel-released" ] ;;
+  "repo view") echo "o/r" ;;
+esac
+STUB
+  chmod +x "$RB/gh"
+  ( cd "$RR" && git init -q && git checkout -q -b main && git add -A \
+      && git -c user.name=t -c user.email=t@t commit -qm r \
+      && git init -q --bare "$RO" && git remote add origin "$RO" && git push -q origin main \
+      && git -c user.name=t -c user.email=t@t tag -a "v$AGENT_VM_VERSION" -m t && git push -q origin "v$AGENT_VM_VERSION" ) >/dev/null 2>&1
+  relrun() { ( cd "$RR" && PATH="$RB:$PATH" bash ./release.sh "$AGENT_VM_VERSION" --dry-run ) 2>&1; }
+  rm -f "$SB/rel-released"
+  out="$(relrun)"
+  case "$out" in
+    *"with no release: resuming"*"dry run complete"*) pass "release.sh: a tag with no release is resumed" ;;
+    *) fail "release.sh resume: $out" ;;
+  esac
+  case "$out" in *'$ git tag'*|*'$ git push'*) fail "release.sh resume: tags or pushes again" ;; *) pass "release.sh resume: neither tags nor pushes again" ;; esac
+  touch "$SB/rel-released"
+  case "$(relrun)" in *"tag v$AGENT_VM_VERSION already exists"*) pass "release.sh: a released tag is still refused" ;; *) fail "release.sh: a released tag was not refused" ;; esac
+else
+  printf '  skip release.sh resume (no git)\n'
+fi
 
 section "no terminal: detected by opening it"
 # `-r /dev/tty` is true with no controlling terminal; only opening it fails.

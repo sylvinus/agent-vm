@@ -18,6 +18,14 @@ if [ -n "$missing" ]; then
 else
   pass "every dispatched command appears in help"
 fi
+check "help lists each customisation file once" \
+  "$(printf '%s\n' "$help_text" | grep -c '^  ~/.agent-vm/env ')" "1"
+# Every key info prints, named in help.
+missing=""
+for key in $(agent-vm info "$PROJ" | cut -d= -f1); do
+  case "$help_text" in *"$key"*) ;; *) missing="$missing $key" ;; esac
+done
+check "help names every info key" "$missing" ""
 check "the version in help output matches the constant" \
   "$(agent-vm version)" "$AGENT_VM_VERSION"
 
@@ -29,7 +37,20 @@ case "$bad" in
   *"value too great for base"*)   fail "raw bash arithmetic error leaked: $bad" ;;
   *) fail "unexpected output for --disk 10G: $bad" ;;
 esac
-check "a valid resource value still passes" "$(agent-vm --disk 32 --cpus 4 version)" "$AGENT_VM_VERSION"
+# A command that starts no VM refuses them instead of dropping them: `agent-vm
+# --readonly stop` must not read as if something had been made read-only.
+for c in version stop status help env; do
+  out="$( (agent-vm --readonly "$c") 2>&1 )"
+  case "$?:$out" in
+    1:*"--readonly is an option for the commands that start a VM"*"not for '$c'"*) pass "--readonly before '$c' is refused" ;;
+    *) fail "--readonly before '$c': $out" ;;
+  esac
+done
+out="$( (agent-vm --disk 32 --cpus 4 version) 2>&1 )"
+case "$out" in
+  *"--disk is an option for the commands that start a VM"*) pass "valid values too: the option is named" ;;
+  *) fail "--disk 32 --cpus 4 version: $out" ;;
+esac
 
 # A failed write of the secrets file must not be reported as success: a caller
 # told the secret was stored when it was not is the worst outcome for this file.

@@ -40,6 +40,11 @@
 - A project path containing a quote, a backslash or a control character is
   refused. It was spliced into the Lima mount config and could add mounts of
   its own (the home directory, read-write).
+- Declining to stop a running VM for a `--disk`, `--memory`, `--cpus` or
+  `--ssh-port` change, or having no terminal to accept it on, no longer skips
+  the rest of the start: `--readonly` was then never applied and the command
+  ran on a writable VM. The VM now keeps its settings and everything else
+  applies.
 
 ### Removed
 
@@ -85,7 +90,12 @@ has passwordless sudo, so anything enforced there is advisory at best.
 - Runtime scripts run under the shell their shebang names (bash, sh; zsh
   otherwise).
 - `agent-vm shell` rejects arguments it does not know instead of skipping them.
-- `setup` rejects `--reset` and `--readonly` instead of ignoring them.
+- `setup` rejects `--reset` and `--readonly` instead of ignoring them, and
+  the other commands that start no VM (`stop`, `status`, `env`…) reject
+  every VM option: `agent-vm --readonly stop` read as if something had been
+  made read-only.
+- The wizard's per-component prompts default Ruby, Rust and Go to no, like
+  the default set.
 - The base VM is about 300 MB smaller and runs fewer daemons: apt no longer
   installs Recommends. Those brought in, through Chromium, printer
   configuration, Samba libraries, `avahi-daemon`, `upower` and Vulkan
@@ -114,6 +124,17 @@ has passwordless sudo, so anything enforced there is advisory at best.
 
 ### Added
 
+- Windows, experimental, from Git Bash, with QEMU. `setup` offers to
+  download a Lima build for Windows that keeps `.git` read-only (checked
+  against its `SHA256SUMS`, and replaced when agent-vm moves to a newer one),
+  finds winget's QEMU where it installs it, and explains a start that fails
+  on WHPX: QEMU needs the "Windows Hypervisor Platform" feature, which only
+  an administrator can turn on. Paths go to Lima in Windows form, with Git
+  Bash's argument rewriting off for `limactl`. `install` writes a small
+  launcher where Git Bash makes no symlinks. Runtime scripts and env files
+  saved with CRLF reach the VM without the CRs.
+- Inside WSL, `setup` and `doctor` say when KVM is missing because of WSL1 or
+  of nested virtualization on the Windows side.
 - An entry of `~/.agent-vm/volumes` can be limited to some projects with a
   fourth field, after an explicit mode: `source:destination:mode:project`,
   where `project` is a path, `~` expanded, and `*` matches anything
@@ -189,6 +210,15 @@ has passwordless sudo, so anything enforced there is advisory at best.
   into the project env's first one.
 - Removing every env entry on the host now empties `~/.agent-vm.env` in the
   VM, instead of leaving the previous values there.
+- `env set` and `env unset` on a key holding a multi-line value remove all of
+  it. They removed the first line only, leaving an unterminated quote that
+  broke the file in the VM for every key after it. `unset` also removes an
+  `export KEY=` line, and `list` no longer shows a line inside a value as a
+  key.
+- `LIMA_HOME` is honoured when cleaning up an interrupted VM creation and in
+  the log paths printed on a failed start.
+- A runtime script with an option in its shebang (`#!/bin/bash -e`,
+  `#!/usr/bin/env -S bash -e`) runs under bash, not zsh.
 
 ## 0.1.0
 

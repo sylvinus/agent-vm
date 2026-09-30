@@ -67,3 +67,32 @@ rd get I >/dev/null 2>&1
 check "an expansion inside double quotes is refused" "$?" "2"
 rd get NOT_THERE >/dev/null 2>&1
 check "an absent key exits 1" "$?" "1"
+
+# =============================================================================
+section "env set/unset replace a multi-line value whole"
+# =============================================================================
+# Dropping only the first line of a value spanning lines left its tail, an
+# unterminated quote: the file then failed to source in the VM, losing every
+# key after it, while `get` still answered.
+: > "$RD/.agent-vm.env"
+rd set A 'a' >/dev/null 2>&1
+rd set K "line1
+PHANTOM=x" >/dev/null 2>&1
+rd set B 'b' >/dev/null 2>&1
+rd set K new >/dev/null 2>&1
+sourced="$(set -a; . "$RD/.agent-vm.env" 2>&1; set +a; printf '%s|%s|%s' "${A:-}" "${B:-}" "${K:-}")"
+check "set over a multi-line value: the file still sources, every key intact" "$sourced" "a|b|new"
+check "list: a line inside a value is not a key" "$(rd list | tr '\n' ' ')" "A B K "
+rd set K "line1
+line2" >/dev/null 2>&1
+rd unset K >/dev/null 2>&1
+check "unset of a multi-line value leaves nothing behind" "$(cat "$RD/.agent-vm.env")" "A='a'
+B='b'"
+printf 'export E=1\nE2="two\nlines"\n' >> "$RD/.agent-vm.env"
+rd unset E >/dev/null 2>&1
+rd has E && fail "unset left an 'export E=' line" || pass "unset removes an 'export KEY=' line too"
+rd unset E2 >/dev/null 2>&1
+check "a double-quoted value over two lines goes whole" "$(cat "$RD/.agent-vm.env")" "A='a'
+B='b'"
+check "list names each key once" \
+  "$(printf "X=1\nX=2\nexport Y=3\n" > "$SB/envlist"; _agent_vm_env env "$SB/envlist" list | tr '\n' ' ')" "X Y "

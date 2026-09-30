@@ -39,7 +39,7 @@ const d = t(locale);
                     item.name
                   )}
                 </span>
-                <span class="install__prereq-note">{item.note}</span>
+                <span class="install__prereq-note" set:html={inline(item.note)} />
               </li>
             ))
           }
