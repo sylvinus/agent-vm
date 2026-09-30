@@ -13,7 +13,7 @@
 # Upstream Lima does not have it yet (lima-vm/lima#5529). Until it does, a
 # Lima build that has it: the Homebrew formula, or the tag it is built from.
 AGENT_VM_LIMA_FORMULA="sylvinus/tap/lima-sylvinus"
-AGENT_VM_LIMA_FORK_TAG="v2.3.0-sylvinus.1"
+AGENT_VM_LIMA_FORK_TAG="v2.3.0-sylvinus.2"
 AGENT_VM_LIMA_ISSUE="https://github.com/lima-vm/lima/issues/5529"
 
 # 0 when this Lima enforces sshfs.readonlyNames. Stock Lima accepts the field
@@ -50,20 +50,160 @@ _agent_vm_mounts_expr() {
 
 # Why .git is not protected, and how to install a Lima that does it, on stdout.
 # With Homebrew (macOS, or Linux): the formula, which conflicts with brew's own
-# lima, hence the unlink. Without: a build from source, as the formula does it.
-# One paragraph per line: _agent_vm_wrap and _agent_vm_box fit it to the screen.
+# lima, hence the unlink. On Windows: the fork's release zips, which `setup`
+# offers to download. Without either: a build from source, as the formula
+# does it. One paragraph per line: _agent_vm_wrap and _agent_vm_box fit it to
+# the screen.
 _agent_vm_git_protection_hint() {
   cat <<EOF
 An agent could write .git/config or .git/hooks in your projects, and git on this machine would run them, even when your editor or shell prompt calls git.
 
 A Lima build with sshfs.readonlyNames prevents it, until upstream merges it ($AGENT_VM_LIMA_ISSUE):
 EOF
-  if command -v brew >/dev/null 2>&1; then
+  if _agent_vm_on_windows; then
+    echo "  agent-vm setup offers the download, or get it by hand:"
+    echo "  $(_agent_vm_lima_fork_release) (both Windows zips, verified, on PATH)"
+  elif command -v brew >/dev/null 2>&1; then
     echo "  brew unlink lima 2>/dev/null; brew install $AGENT_VM_LIMA_FORMULA"
   else
     echo "  git clone --depth 1 -b $AGENT_VM_LIMA_FORK_TAG https://github.com/sylvinus/lima"
     echo "  cd lima && make native && sudo make install   # needs Go and make"
   fi
+}
+
+# The fork release holding the Windows builds, and this machine's asset names
+# in it. Names follow upstream's `make artifacts-windows` convention:
+# lima-<version>-Windows-<ARCH>.zip, where <version> is the fork tag without
+# its leading v. Fails when the architecture is not one assets are built for.
+_agent_vm_lima_fork_release() {
+  printf 'https://github.com/sylvinus/lima/releases/download/%s\n' "$AGENT_VM_LIMA_FORK_TAG"
+}
+
+# Windows architecture as the asset names spell it (AMD64/ARM64), from uname.
+_agent_vm_lima_fork_arch() {
+  case "$(uname -m 2>/dev/null)" in
+    x86_64) printf 'AMD64\n' ;;
+    aarch64|arm64) printf 'ARM64\n' ;;
+    *)
+      echo "Error: no Lima fork build for this architecture: $(uname -m 2>/dev/null)" >&2
+      return 1 ;;
+  esac
+}
+
+# The fork release's files for this machine: both zips, then the checksums.
+# One per line, so the installer loops over it and the tests pin the names.
+_agent_vm_lima_fork_files() {
+  local arch tag
+  arch="$(_agent_vm_lima_fork_arch)" || return 1
+  tag="${AGENT_VM_LIMA_FORK_TAG#v}"
+  printf 'lima-%s-Windows-%s.zip\n' "$tag" "$arch"
+  printf 'lima-additional-guestagents-%s-Windows-%s.zip\n' "$tag" "$arch"
+  printf 'SHA256SUMS\n'
+}
+
+# Every file named in "$@" inside <dir> must match its SHA256SUMS entry
+# there. Fails closed (a missing tool, an unlisted file, a mismatch) naming
+# the culprit, so a half-downloaded Lima never lands on PATH.
+_agent_vm_sha256_sums_check() {
+  local dir="$1" f expected actual
+  shift
+  command -v sha256sum >/dev/null 2>&1 || command -v shasum >/dev/null 2>&1 \
+    || { echo "Error: neither sha256sum nor shasum is installed." >&2; return 1; }
+  for f in "$@"; do
+    expected="$(awk -v f="$f" '$2 == f { print $1; exit }' "$dir/SHA256SUMS")"
+    if [[ -z "$expected" ]]; then
+      echo "Error: SHA256SUMS lists no checksum for $f." >&2
+      return 1
+    fi
+    if command -v sha256sum >/dev/null 2>&1; then
+      actual="$(sha256sum "$dir/$f" 2>/dev/null | cut -d' ' -f1)"
+    else
+      actual="$(shasum -a 256 "$dir/$f" 2>/dev/null | cut -d' ' -f1)"
+    fi
+    if [[ -z "$actual" || "$actual" != "$expected" ]]; then
+      echo "Error: checksum mismatch for $f (expected $expected, got ${actual:-unreadable})." >&2
+      return 1
+    fi
+  done
+}
+
+# Download and install the fork's Windows build: both zips plus SHA256SUMS,
+# verified before anything is unpacked, extracted to AGENT_VM_LIMA_DIR
+# (default ~/.local/share/lima-sylvinus). An install already there is reused,
+# never replaced. New files stay in a temp dir until they verify, so a failed
+# run leaves no half-installed Lima behind.
+#
+# The bin dir goes on PATH for the rest of this shell when it is not there
+# already, with the line making it permanent printed alongside: setup needs
+# limactl immediately, and the user needs it in the next terminal.
+_agent_vm_install_fork_windows() {
+  local base dir tmp f bin=""
+  base="$(_agent_vm_lima_fork_release)"
+  dir="${AGENT_VM_LIMA_DIR:-$HOME/.local/share/lima-sylvinus}"
+  command -v curl >/dev/null 2>&1 \
+    || { echo "Error: curl is required to download Lima." >&2; return 1; }
+  for candidate in "$dir/bin/limactl.exe" "$dir/limactl.exe"; do
+    if [[ -x "$candidate" ]]; then
+      bin="$(dirname "$candidate")"
+      echo "Lima is already installed at $bin."
+      break
+    fi
+  done
+  if [[ -z "$bin" ]]; then
+    local files
+    files="$(_agent_vm_lima_fork_files)" || return 1
+    mkdir -p "$dir" || return 1
+    tmp="$(mktemp -d 2>/dev/null)" || return 1
+    # The || keeps the last line: command substitution strips its newline.
+    while IFS= read -r f || [[ -n "$f" ]]; do
+      [[ -n "$f" ]] || continue
+      echo "Downloading $f..."
+      if ! curl --proto '=https' --proto-redir '=https' --tlsv1.2 -fsSL --retry 3 \
+           -o "$tmp/$f" "$base/$f"; then
+        echo "Error: could not download $base/$f." >&2
+        rm -rf "$tmp"
+        return 1
+      fi
+    done <<< "$files"
+    # In a subshell under $tmp, so the glob below names the downloads and not
+    # whatever lima-*.zip the caller's directory happens to hold.
+    if ! ( cd "$tmp" && _agent_vm_sha256_sums_check "$tmp" lima-*.zip ); then
+      rm -rf "$tmp"
+      return 1
+    fi
+    # The || keeps the last line: command substitution strips its newline.
+    while IFS= read -r f || [[ -n "$f" ]]; do
+      case "$f" in lima-*.zip) ;;
+        *) continue ;;
+      esac
+      if command -v unzip >/dev/null 2>&1; then
+        unzip -q -o "$tmp/$f" -d "$dir" || { echo "Error: could not unpack $f." >&2; rm -rf "$tmp"; return 1; }
+      elif tar -tf "$tmp/$f" >/dev/null 2>&1; then
+        tar -xf "$tmp/$f" -C "$dir" || { echo "Error: could not unpack $f." >&2; rm -rf "$tmp"; return 1; }
+      else
+        echo "Error: neither unzip nor tar can unpack $f." >&2
+        rm -rf "$tmp"
+        return 1
+      fi
+    done <<< "$files"
+    rm -rf "$tmp"
+    if [[ -x "$dir/bin/limactl.exe" ]]; then
+      bin="$dir/bin"
+    elif [[ -x "$dir/limactl.exe" ]]; then
+      bin="$dir"
+    else
+      echo "Error: the download unpacked without limactl.exe; nothing was put on PATH." >&2
+      return 1
+    fi
+    echo "Lima is installed at $bin."
+  fi
+  case ":$PATH:" in
+    *":$bin:"*) ;;
+    *)
+      export PATH="$bin:$PATH"
+      echo "Added $bin to PATH for this shell. To keep it, add this line to ~/.bash_profile:"
+      printf '  export PATH="%s:$PATH"\n' "$bin" ;;
+  esac
 }
 
 # AGENT_VM_UNSAFE_WRITABLE_GIT=1, or --unsafe-writable-git for one command,
@@ -99,8 +239,9 @@ EOF
 
 # --- setup: a Lima that keeps .git read-only ------------------------------------
 # Run by `setup` once Lima is there, and by nothing else: nothing to do when it
-# already protects .git. Otherwise it says why that matters and, with Homebrew
-# and a terminal to ask on, offers to install the formula.
+# already protects .git. Otherwise it says why that matters and, with a
+# terminal to ask on, offers to install the build that has it: the formula
+# with Homebrew, the release zips on Windows.
 #
 # brew refuses the formula next to its own lima (both install limactl) and asks
 # for that one to be unlinked. Unlinking keeps it installed, so
@@ -109,6 +250,25 @@ EOF
 _agent_vm_offer_git_protection() {
   _agent_vm_lima_protects_git && return 0
   _agent_vm_git_protection_hint | _agent_vm_box "Lima cannot keep .git read-only"
+  if _agent_vm_on_windows; then
+    if ! _agent_vm_have_tty \
+       || [[ "$(_agent_vm_ask_yn "Download the Lima build that has it now (both Windows zips, about 60 MB)?" Y)" != "1" ]]; then
+      echo "Continuing without .git protection." >&2
+      return 0
+    fi
+    if ! _agent_vm_install_fork_windows; then
+      echo "Warning: the download failed. Continuing without .git protection." >&2
+      return 0
+    fi
+    hash -r 2>/dev/null
+    if _agent_vm_lima_protects_git; then
+      echo "Lima now keeps every .git read-only for the VMs."
+    else
+      echo "Warning: the limactl on PATH ($(command -v limactl)) still cannot keep .git read-only." >&2
+      echo "  Another Lima install comes first on PATH. Continuing without .git protection." >&2
+    fi
+    return 0
+  fi
   if ! command -v brew >/dev/null 2>&1 || ! _agent_vm_have_tty \
      || [[ "$(_agent_vm_ask_yn "Install $AGENT_VM_LIMA_FORMULA now (built from source, takes a few minutes)?" Y)" != "1" ]]; then
     echo "Continuing without .git protection." >&2

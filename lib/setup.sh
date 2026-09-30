@@ -302,8 +302,9 @@ EOF
         echo "  Install it with: brew install $AGENT_VM_LIMA_FORMULA" >&2
         echo "  (or brew install lima, which lets the VMs write .git)" >&2
       elif _agent_vm_on_windows; then
-        echo "  Download limactl from https://github.com/lima-vm/lima/releases (the Windows zip)" >&2
-        echo "  and put it on your PATH, next to QEMU (winget install SoftwareFreedom.QEMU)." >&2
+        echo "  Get a Lima build for Windows at $(_agent_vm_lima_fork_release)" >&2
+        echo "  (both Windows zips, verified, unpacked on PATH), plus QEMU" >&2
+        echo "  (winget install SoftwareFreedom.QEMU). 'agent-vm setup' offers the download." >&2
       else
         echo "  Install it from https://lima-vm.io/docs/installation/" >&2
       fi

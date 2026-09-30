@@ -727,11 +727,27 @@ This needs Lima's `sshfs.readonlyNames`, which is not merged upstream yet ([lima
 brew unlink lima; brew install sylvinus/tap/lima-sylvinus
 
 # Linux without Homebrew: build it (needs Go and make; installs to /usr/local)
-git clone --depth 1 -b v2.3.0-sylvinus.1 https://github.com/sylvinus/lima
+git clone --depth 1 -b v2.3.0-sylvinus.2 https://github.com/sylvinus/lima
 cd lima && make native && sudo make install
 ```
 
-`agent-vm setup` checks which Lima you have. Without the protection it says so, and with Homebrew and a terminal it offers to run the Homebrew line above (and offers this build first when Lima is not installed at all). The formula builds from source, so it takes a few minutes. Going back is `brew uninstall lima-sylvinus && brew link lima`. `agent-vm doctor` shows where you stand, for Lima and for the current directory's VM.
+On Windows (Git Bash, AMD64 shown), `agent-vm setup` offers this download;
+by hand, both zips, verified against the release's `SHA256SUMS`, unpacked on
+your `PATH`:
+
+```bash
+base=https://github.com/sylvinus/lima/releases/download/v2.3.0-sylvinus.2
+curl -fsSLO "$base/lima-2.3.0-sylvinus.2-Windows-AMD64.zip" \
+     -fsSLO "$base/lima-additional-guestagents-2.3.0-sylvinus.2-Windows-AMD64.zip" \
+     -fsSLO "$base/SHA256SUMS"
+grep -E 'Windows-AMD64' SHA256SUMS | sha256sum -c
+for z in lima-2.3.0-sylvinus.2-Windows-AMD64.zip lima-additional-guestagents-2.3.0-sylvinus.2-Windows-AMD64.zip; do
+  unzip -q -o "$z" -d ~/.local/share/lima-sylvinus
+done
+export PATH="$HOME/.local/share/lima-sylvinus/bin:$PATH"   # and in ~/.bash_profile
+```
+
+`agent-vm setup` checks which Lima you have. Without the protection it says so, and with a terminal it offers to install the build that has it: the Homebrew line above where there is Homebrew (offered first when Lima is not installed at all), the download on Windows. The formula builds from source, so it takes a few minutes. Going back is `brew uninstall lima-sylvinus && brew link lima`. `agent-vm doctor` shows where you stand, for Lima and for the current directory's VM.
 
 What changes when Lima has it:
 

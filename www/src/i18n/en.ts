@@ -95,7 +95,7 @@ export const en = {
       { name: 'macOS, Linux or Windows', note: 'Windows is experimental: Git Bash, QEMU and Lima for Windows required.', href: '' },
       {
         name: 'Lima',
-        note: 'agent-vm setup offers to install it with Homebrew, as a build that keeps `.git` read-only until that is merged upstream. On Linux, QEMU and KVM too.',
+        note: 'agent-vm setup offers to install it with Homebrew, as a build that keeps `.git` read-only until that is merged upstream. On Linux, QEMU and KVM too. On Windows, QEMU (winget) and the Virtual Machine Platform; setup offers the Lima download.',
         href: 'https://lima-vm.io/docs/installation/',
       },
       {
@@ -246,7 +246,7 @@ export const en = {
     gitGuardBody:
       'Git on your machine runs what a repository’s `.git/config` and hooks name: `core.fsmonitor` on every `git status`, hooks on commit. Your editor and shell prompt run `git status` on their own, so a VM able to write `.git` could run commands on your host within seconds, and nothing of it would show in `git diff`. With a Lima that has `sshfs.readonlyNames`, every `.git` in the shares is read-only for the VM, at any depth, and Lima’s SFTP server enforces it on the host: the agent reads the history but cannot commit. It is not merged upstream yet ([lima-vm/lima#5529](https://github.com/lima-vm/lima/issues/5529)), so `agent-vm setup` offers a build that has it. The shares then use `reverse-sshfs`, slower on many files (see [Node.js](#node)).',
     gitGuardCode:
-      'brew unlink lima; brew install sylvinus/tap/lima-sylvinus\nagent-vm doctor                          # where you stand\nagent-vm --unsafe-writable-git claude    # let it commit anyway\n# no Homebrew: build github.com/sylvinus/lima',
+      'brew unlink lima; brew install sylvinus/tap/lima-sylvinus\nagent-vm doctor                          # where you stand\nagent-vm --unsafe-writable-git claude    # let it commit anyway\n# no Homebrew: build github.com/sylvinus/lima\n# Windows (Git Bash): setup offers this download; by hand (AMD64 shown):\nbase=https://github.com/sylvinus/lima/releases/download/v2.3.0-sylvinus.2\ncurl -fsSLO "$base/lima-2.3.0-sylvinus.2-Windows-AMD64.zip" \\\n     -fsSLO "$base/lima-additional-guestagents-2.3.0-sylvinus.2-Windows-AMD64.zip" \\\n     -fsSLO "$base/SHA256SUMS"\ngrep -E \'Windows-AMD64\' SHA256SUMS | sha256sum -c',
     gitGuardNote:
       'Existing VMs switch on their next start: `agent-vm stop` a running one. The `.git` name is not the only way in: a folder the VM fills with git’s internal files (`HEAD`, `objects/`, `refs/`, a `config`) is a repository to git under any name, and git on your machine runs the commands its `config` names when you use git in that folder: the one set to display output, for example, as soon as you type `git log`. `git config --global safe.bareRepository explicit` makes git ignore such folders: `agent-vm setup` asks to set it, and `doctor` warns while it is not. `--unsafe-writable-git`, or `AGENT_VM_UNSAFE_WRITABLE_GIT=1` in your shell, turns the protection off so the agent can commit, and reopens that path to your host: a warning says so on every run.',
     gitGuardEditor:

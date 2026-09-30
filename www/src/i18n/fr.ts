@@ -97,7 +97,7 @@ export const fr: Dictionary = {
       { name: 'macOS, Linux ou Windows', note: 'Windows est expérimental : Git Bash, QEMU et Lima pour Windows requis.', href: '' },
       {
         name: 'Lima',
-        note: 'agent-vm setup propose de l\'installer avec Homebrew, dans une version qui garde les `.git` en lecture seule, en attendant son intégration en amont. Sous Linux, il faut aussi QEMU et KVM.',
+        note: 'agent-vm setup propose de l\'installer avec Homebrew, dans une version qui garde les `.git` en lecture seule, en attendant son intégration en amont. Sous Linux, il faut aussi QEMU et KVM. Sous Windows, QEMU (winget) et la plateforme de machine virtuelle ; setup propose le téléchargement de Lima.',
         href: 'https://lima-vm.io/docs/installation/',
       },
       {
@@ -248,7 +248,7 @@ export const fr: Dictionary = {
     gitGuardBody:
       'Git, sur ta machine, exécute ce que désignent le `.git/config` et les hooks d\'un dépôt : `core.fsmonitor` à chaque `git status`, les hooks au commit. Ton éditeur et ton prompt de shell lancent `git status` d\'eux-mêmes : une VM capable d\'écrire dans `.git` pourrait donc lancer des commandes sur ton hôte en quelques secondes, sans que rien n\'apparaisse dans `git diff`. Avec un Lima qui a `sshfs.readonlyNames`, chaque `.git` des partages est en lecture seule pour la VM, à toute profondeur, et c\'est le serveur SFTP de Lima, sur l\'hôte, qui l\'impose : l\'agent lit l\'historique mais ne peut pas commiter. Ce n\'est pas encore intégré en amont ([lima-vm/lima#5529](https://github.com/lima-vm/lima/issues/5529)) : `agent-vm setup` propose une version qui l\'a. Les partages passent alors en `reverse-sshfs`, plus lent sur beaucoup de fichiers (voir [Node.js](#node)).',
     gitGuardCode:
-      'brew unlink lima; brew install sylvinus/tap/lima-sylvinus\nagent-vm doctor                          # où tu en es\nagent-vm --unsafe-writable-git claude    # commiter quand même\n# sans Homebrew : compiler github.com/sylvinus/lima',
+      'brew unlink lima; brew install sylvinus/tap/lima-sylvinus\nagent-vm doctor                          # où tu en es\nagent-vm --unsafe-writable-git claude    # commiter quand même\n# sans Homebrew : compiler github.com/sylvinus/lima\n# Windows (Git Bash) : setup propose ce téléchargement ; à la main (AMD64) :\nbase=https://github.com/sylvinus/lima/releases/download/v2.3.0-sylvinus.2\ncurl -fsSLO "$base/lima-2.3.0-sylvinus.2-Windows-AMD64.zip" \\\n     -fsSLO "$base/lima-additional-guestagents-2.3.0-sylvinus.2-Windows-AMD64.zip" \\\n     -fsSLO "$base/SHA256SUMS"\ngrep -E \'Windows-AMD64\' SHA256SUMS | sha256sum -c',
     gitGuardNote:
       'Les VM existantes basculent à leur prochain démarrage : arrête celle qui tourne (`agent-vm stop`). Le nom `.git` n\'est pas la seule entrée : un dossier que la VM remplit des fichiers internes de git (`HEAD`, `objects/`, `refs/`, un `config`) est un dépôt pour git sous n\'importe quel nom, et git, sur ta machine, lance les commandes que désigne son `config` quand tu l\'utilises dans ce dossier : par exemple celle chargée d\'afficher la sortie, dès que tu tapes `git log`. `git config --global safe.bareRepository explicit` fait ignorer ces dossiers par git : `agent-vm setup` propose de le régler, et `doctor` avertit tant que ce n\'est pas fait. `--unsafe-writable-git`, ou `AGENT_VM_UNSAFE_WRITABLE_GIT=1` dans ton shell, désactive la protection pour que l\'agent puisse commiter, et rouvre ce chemin vers ton hôte : un avertissement le rappelle à chaque lancement.',
     gitGuardEditor:
