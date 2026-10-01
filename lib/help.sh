@@ -36,12 +36,15 @@ Commands:
   info [dir]         Print machine-readable state as key=value lines
                      (version, template, state_dir, project_env, dir,
                      vm_name, base_exists, vm_exists, vm_running, vm_stale,
-                     ssh_host, ssh_config).
+                     ssh_host, ssh_config, git_protected,
+                     security_questions).
                      Use this from scripts instead of parsing the output
                      of the human-facing commands.
   env <sub> [args]   Read/write ~/.agent-vm/env, the secrets pushed into every
-                     VM. Subcommands: set KEY VALUE, get KEY, has KEY (exit
-                     status only), unset KEY, list (key names, never values).
+                     VM. Subcommands: set KEY [VALUE] (without VALUE, read
+                     from stdin, or typed unseen: out of your shell history),
+                     get KEY, has KEY (exit status only), unset KEY, list
+                     (key names, never values).
                      Use this rather than editing the file: it is sourced by a
                      shell, so one bad quote costs every secret in it.
   project-env <sub>  Same subcommands, for THIS directory's project only. Its
@@ -75,11 +78,24 @@ command or right after its name, never later: in 'agent-vm run docker run
   --readonly         Make every host share read-only: the project and the
                      ~/.agent-vm/volumes entries, rw ones included. Enforced
                      on the host side, so root in the VM cannot lift it.
-                     Changing the mode restarts the VM.
+                     Changing the mode restarts a running VM.
   --unsafe-writable-git
                      Leave every .git writable, so the agent can commit (see
                      below). Also accepted as --unsafe-writable-git=1.
+  --unsafe-disable-security-prompts
+                     Go on where a start would stop to ask about a security
+                     risk (below), without offering to change your git
+                     config; the warnings are still printed. For scripts
+                     with no terminal. Also
+                     AGENT_VM_UNSAFE_DISABLE_SECURITY_PROMPTS=1 in your shell.
   --rm               Automatically destroy the VM after the command exits
+  --scratch          A new VM with nothing of yours mounted (no project, no
+                     volumes), deleted when the command ends, Ctrl-C included.
+                     On a terminal, the deletion is asked first: no opens a
+                     shell in the VM, and its exit asks again.
+                     The project's env file and runtime script stay out;
+                     ~/.agent-vm/env and runtime.sh go in. The folder's own
+                     VM is left alone, and several can run at once.
 
 Examples:
   agent-vm setup                             # Create base VM
@@ -92,6 +108,7 @@ Examples:
   agent-vm --reset claude                    # Fresh VM from base template
   agent-vm --rm claude                       # Destroy VM after Claude exits
   agent-vm --readonly shell                  # Nothing on the host is writable
+  agent-vm --scratch claude                  # Nothing of yours mounted, then deleted
   agent-vm shell                             # Shell into the VM
   agent-vm sh -c "ls -la | grep config"      # One-shot command via login zsh
   agent-vm run npm install                   # Run a command in the VM
@@ -104,13 +121,22 @@ VMs are persistent and unique per directory. Running "agent-vm shell" or
 
 Every .git in the shared folders is read-only for the VMs when Lima supports
 it (sshfs.readonlyNames, not merged upstream yet: 'agent-vm setup' offers a
-Lima build that has it). Otherwise a VM can write .git/config and hooks, which
-git on this machine runs. 'agent-vm doctor' says which case you are in.
+Lima build that has it). Every .hg is too, and so is the folder of each
+core.hooksPath in the project (.husky for husky). 'agent-vm doctor' says
+where you stand.
+
+Before a VM boots with writable shares, agent-vm stops on what it cannot
+protect, and asks whether to go on (no by default, and when it cannot ask):
+a Lima without readonlyNames, hooks at the top of the project, git config or
+commands it names in files of the project, and git ignoring
+safe.bareRepository=explicit (which it offers to set: git would otherwise use
+a folder with HEAD, objects/ and refs/ as a repository, under any name). A
+VM that already runs gets the warnings only, and a restart when it lacks a
+protection. 'agent-vm info' lists what a start would ask
+(security_questions=).
 --unsafe-writable-git, or AGENT_VM_UNSAFE_WRITABLE_GIT=1 in your shell, leaves
 .git writable anyway, so the agent can commit in the project; a warning is
 printed on every run. Changing it applies when the VM is next started.
-A folder with HEAD, objects/ and refs/ is a repository to git under any name:
-'setup' asks to set safe.bareRepository=explicit so git ignores those.
 
 Customization:
   ~/.agent-vm/env                   Shared env vars / tokens (dotenv-style;

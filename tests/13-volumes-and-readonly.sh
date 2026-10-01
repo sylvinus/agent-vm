@@ -150,6 +150,10 @@ case "$out" in *"left read-only by --readonly; making it writable again"*) pass 
 printf '[{"location": "%s", "writable": true}]\n' "$PROJ" > "$REC_MOUNTS"
 out="$(AGENT_VM_TEST_RO=1 rec run true)"
 case "$out" in *"Project mount is not writable; repairing"*) pass "a writable VM that cannot write: a repair" ;; *) fail "broken mount: $out" ;; esac
+# The first push ran on the broken mount, where the VM could not see the
+# project's env file or runtime: the repaired VM gets them pushed again.
+check "after a repair, the env is pushed again, with the project's files" \
+  "$(grep -c 'rm -f "$HOME/.agent-vm.env"' "$REC") $(grep -c "^shell $PV sh -c" "$REC")" "2 2"
 rm -f "$REC_MOUNTS"
 ro_run
 rec_has "edit $PV --set del(.mountType) | .mounts" && pass "no record (an older VM): remounted to be sure" \
@@ -206,6 +210,15 @@ esac
 rec_has "edit $PV" && fail "the shares were edited on a running VM" || pass "and nothing is edited"
 check "and the record is unchanged" "$(cat "$REC_MOUNTS")" "[{\"location\": \"$PROJ\", \"writable\": true}]"
 _agent_vm_cleanup_state "$PV"
+# `agent-vm stop` said "VM stopped." whatever happened.
+out="$(rec stop)"
+case "$?:$out" in 0:*"VM stopped."*) pass "stop: a VM that stops is said stopped" ;; *) fail "stop: $out" ;; esac
+out="$(AGENT_VM_TEST_STOP_FAIL=1 rec stop)"
+case "$?:$out" in
+  1:*"is still running"*) pass "stop: a VM that keeps running is an error" ;;
+  *) fail "stop that did not take: $out" ;;
+esac
+case "$out" in *"VM stopped."*) fail "stop: reported stopped while running" ;; *) pass "stop: and not reported stopped" ;; esac
 
 section "directories that are never shared"
 # `cd ~ && agent-vm shell` handed the VM every dotfile and SSH key, read-write.

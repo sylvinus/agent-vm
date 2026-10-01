@@ -70,6 +70,12 @@ trap 'exit 130' INT TERM
 # The same probe agent-vm uses to decide.
 PROTECTS_GIT=""
 bash -c 'source "$1"; _agent_vm_lima_protects_git' _ "$AGENT_VM" && PROTECTS_GIT=1
+# A start asks before going on when this Lima has no readonlyNames, or when
+# your git config lacks safe.bareRepository, and offers to change that config.
+# The output is captured here, so a question would wait unseen: they are
+# answered yes, and nothing is offered. The suite is about what the VM can
+# reach, not about those questions (./test.sh covers them).
+export AGENT_VM_UNSAFE_DISABLE_SECURITY_PROMPTS=1
 
 printf 'agent-vm end-to-end suite\n'
 printf '  agent-vm:   %s\n' "$AGENT_VM"
@@ -162,6 +168,17 @@ if [ -n "$PROTECTS_GIT" ]; then
     && pass "the working tree stays writable" || fail "the working tree is not writable"
   (cd "$PROJ" && "$AGENT_VM" run cat .git/HEAD 2>/dev/null | grep -q '^ref:') \
     && pass "the VM can still read .git" || fail "the VM cannot read .git"
+  (cd "$PROJ" && "$AGENT_VM" run sh -c 'mkdir -p planted/.hg' >/dev/null 2>&1)
+  [ ! -e "$PROJ/planted/.hg" ] && pass "the VM cannot plant a .hg" || fail "the VM planted planted/.hg"
+  # core.hooksPath in the project: its folder joins the names at the next start.
+  git -C "$PROJ" config core.hooksPath .husky/_
+  stop_vm
+  (cd "$PROJ" && "$AGENT_VM" run sh -c 'mkdir -p .husky/_ && echo x > .husky/pre-commit' >/dev/null 2>&1)
+  [ ! -e "$PROJ/.husky" ] && pass "the VM cannot write the core.hooksPath folder" \
+    || fail "the VM wrote .husky although core.hooksPath points there"
+  git -C "$PROJ" config --unset core.hooksPath
+  rm -rf "$PROJ/.husky"
+  stop_vm
 else
   info "skipped: this Lima has no sshfs.readonlyNames, the VM can write .git"
 fi
@@ -274,8 +291,8 @@ fi
 # =============================================================================
 section "what the VM can reach on the host"
 # =============================================================================
-# Not a pass/fail: it reports a documented Lima behaviour that the site and the
-# README disclose. Lima NATs the guest's gateway to the host's 127.0.0.1, so
+# Not a pass/fail: it reports a documented Lima behaviour that the site
+# discloses. Lima NATs the guest's gateway to the host's 127.0.0.1, so
 # whatever you have listening on localhost answers from inside the VM.
 reachable=""
 for port in 5432 6379 3306 11434; do
@@ -289,6 +306,26 @@ if [ -n "$reachable" ]; then
 else
   info "no common host service answered on 192.168.5.2 (nothing listening)"
 fi
+
+# =============================================================================
+section "--scratch: nothing of the host mounted, deleted after"
+# =============================================================================
+# stderr captured: the question before the deletion is not asked, so the VM
+# goes, as for any caller without a terminal.
+echo "host-only" > "$PROJ/scratch-probe.txt"
+scr_out="$(cd "$PROJ" && "$AGENT_VM" --scratch run sh -c \
+  "test ! -e '$PROJ/scratch-probe.txt' && echo no-host-file; touch '$PROJ/from-scratch.txt' && echo wrote-own-disk; echo \"shares=\$(findmnt -rn -t virtiofs,9p,fuse.sshfs | wc -l | tr -d ' ')\"" 2>&1)"
+case "$scr_out" in *no-host-file*) pass "the project's files are not in a scratch VM" ;; *) fail "a scratch VM sees the project: $scr_out" ;; esac
+case "$scr_out" in *wrote-own-disk*) pass "it works at the project's path, on its own disk" ;; *) fail "the scratch folder is not writable: $scr_out" ;; esac
+[ ! -e "$PROJ/from-scratch.txt" ] && pass "what it writes there does not reach the host" || fail "a scratch VM wrote into the project"
+case "$scr_out" in *shares=0*) pass "no share is mounted in it" ;; *) fail "a share is mounted in a scratch VM: $scr_out" ;; esac
+if limactl list -q 2>/dev/null | grep -q -- '-scratch-'; then
+  fail "the scratch VM is still there: $(limactl list -q | grep -- '-scratch-')"
+else
+  pass "the scratch VM is deleted"
+fi
+"$AGENT_VM" info "$PROJ" | grep -qx "vm_exists=1" && pass "the folder's own VM is still there" || fail "the folder's own VM went"
+rm -f "$PROJ/scratch-probe.txt"
 
 # =============================================================================
 section "the integrator surface against a real VM"

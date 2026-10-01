@@ -91,11 +91,22 @@ _agent_vm_version() {
 # are internal and free to change.
 #
 # Keys: version, template, state_dir, project_env, dir, vm_name, base_exists,
-# vm_exists, vm_running, vm_stale, ssh_host, ssh_config. Booleans are 1/0;
-# anything that cannot be determined is "unknown" rather than a guess.
+# vm_exists, vm_running, vm_stale, ssh_host, ssh_config, git_protected,
+# security_questions. Booleans are 1/0; anything that cannot be determined is
+# "unknown" rather than a guess.
+#
+# git_protected: whether a start keeps .git read-only for the VM (see
+# _agent_vm_lima_protects_git and the --unsafe-writable-git opt-out).
+# security_questions: what a start with writable shares of a stopped VM would
+# stop on unless answered yes (see _agent_vm_confirm_unsafe), comma-separated,
+# or "none": lima (this Lima cannot keep .git read-only), lima-unknown (it
+# cannot tell, which stops the start with an error), hooks (a hooks folder that
+# cannot be protected), git-config (git config or commands in the project),
+# bare-repo (safe.bareRepository). A script with no terminal passes
+# --unsafe-disable-security-prompts to accept them, or --readonly.
 #
 # ssh_host is the Host alias in ssh_config, the file Lima rewrites with the
-# current port on each start (see "Connecting over SSH" in the README).
+# current port on each start (https://www.agent-vm.org/#connect-an-ide-over-ssh).
 _agent_vm_info() {
   local dir="${1:-$(pwd)}"
   local vm_name
@@ -117,6 +128,8 @@ _agent_vm_info() {
     echo "vm_stale=unknown"
     echo "ssh_host=lima-$vm_name"
     echo "ssh_config=unknown"
+    echo "git_protected=unknown"
+    echo "security_questions=unknown"
     return 0
   fi
 
@@ -144,4 +157,31 @@ _agent_vm_info() {
   [[ "$vm_exists" == "1" ]] \
     && ssh_config="$(limactl list "$vm_name" --format '{{.SSHConfigFile}}' 2>/dev/null)"
   echo "ssh_config=${ssh_config:-unknown}"
+
+  local lima_st=0 protected questions="" rel in_repo
+  _agent_vm_lima_protects_git || lima_st=$?
+  if _agent_vm_writable_git_optout; then
+    protected=0
+  else
+    case "$lima_st" in
+      0) protected=1 ;;
+      1) protected=0; questions="lima" ;;
+      *) protected=unknown; questions="lima-unknown" ;;
+    esac
+  fi
+  if [[ "$protected" == 1 ]]; then
+    while IFS=$'\t' read -r rel in_repo; do
+      [[ -n "$rel" ]] || continue
+      if ! _agent_vm_hooks_name "$in_repo" >/dev/null; then
+        questions="${questions:+$questions,}hooks"
+        break
+      fi
+    done <<< "$(_agent_vm_project_hooks "$dir")"
+    [[ -z "$(_agent_vm_project_config_risks "$dir")" ]] || questions="${questions:+$questions,}git-config"
+  fi
+  case "$(_agent_vm_bare_repo_state)" in
+    unset|old) questions="${questions:+$questions,}bare-repo" ;;
+  esac
+  echo "git_protected=$protected"
+  echo "security_questions=${questions:-none}"
 }

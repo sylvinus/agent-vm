@@ -107,9 +107,11 @@ _agent_vm_project_mountpoint() {
 # NOT hold for reverse-sshfs otherwise, which only passes `-o ro` to the
 # guest's sshfs; _agent_vm_mount_is_host_enforced checks for that case.
 #
-# $4 = 1 keeps every .git read-only for the guest (see _agent_vm_lima_protects_git):
-# each entry gets the builtin SFTP driver and readonlyNames. The caller also
-# has to set the mount type, see _agent_vm_mounts_expr.
+# $4 keeps names read-only for the guest (see _agent_vm_lima_protects_git):
+# a readonlyNames JSON array, or 1 for the project's default one (see
+# _agent_vm_readonly_names). Each entry then gets the builtin SFTP driver and
+# those names. The caller also has to set the mount type, see
+# _agent_vm_mounts_expr.
 #
 # Side effects: stages any file mounts as hardlinks under
 # ~/.agent-vm/file-mounts/<vm>/ and persists the file mount metadata to
@@ -118,7 +120,10 @@ _agent_vm_project_mountpoint() {
 # mounts JSON array (consumed by `limactl edit --set ".mounts = ..."`).
 _agent_vm_build_mounts_json() {
   local vm_name="$1" host_dir="$2" project_writable="${3:-true}" sshfs=""
-  [[ "${4:-}" == 1 ]] && sshfs=", \"sshfs\": {\"sftpDriver\": \"builtin\", \"readonlyNames\": [\".git\"]}"
+  case "${4:-}" in
+    1)  sshfs=", \"sshfs\": {\"sftpDriver\": \"builtin\", \"readonlyNames\": $(_agent_vm_readonly_names "$host_dir")}" ;;
+    \[*) sshfs=", \"sshfs\": {\"sftpDriver\": \"builtin\", \"readonlyNames\": $4}" ;;
+  esac
   # Every entry names its mount point: agent-vm addresses the guest side by the
   # shell's spelling of the path (--workdir, the write probe), which on Windows
   # is not the C:/... form Lima reads the location in.
@@ -245,7 +250,7 @@ _agent_vm_build_mounts_json() {
 
 # The mounts JSON last applied to <vm>, kept so --readonly can tell whether
 # any share is still writable: the guest cannot be asked, since after a mode
-# change it still believes the old one (see _agent_vm_project_writable).
+# change it still believes the old one (see _agent_vm_push_env_and_probe).
 _agent_vm_record_mounts() {
   mkdir -p "$AGENT_VM_STATE_DIR" 2>/dev/null
   printf '%s\n' "$2" > "$AGENT_VM_STATE_DIR/.agent-vm-mounts-$1"
@@ -267,7 +272,18 @@ _agent_vm_mounts_protect_git() {
   [[ -f "$record" ]] && grep -q '"readonlyNames"' "$record"
 }
 
-# Can the guest actually write into the project share?
+# 0 when <vm> is recorded with readonlyNames <names> (a JSON array, as
+# _agent_vm_readonly_names prints it).
+_agent_vm_mounts_have_readonly_names() {
+  local record="$AGENT_VM_STATE_DIR/.agent-vm-mounts-$1"
+  [[ -f "$record" ]] && grep -qF "\"readonlyNames\": $2" "$record"
+}
+
+# _agent_vm_push_env_and_probe <vm> <dir> <payload> [<env> [<runtime>]]:
+# can the guest actually write into the project share? Asked in the same
+# `limactl shell` as the env push every start makes: each one is a round trip.
+# Prints env-ok once the env file is written, and runtime-found when <runtime>
+# is a file; returns the probe's answer, 0 when the write succeeded.
 #
 # `test -w` cannot answer this. Lima writes the guest's /etc/fstab from
 # cloud-init, whose `mounts` module runs on the FIRST boot only, while the
@@ -277,18 +293,7 @@ _agent_vm_mounts_protect_git() {
 # "writable" while the VMM is already refusing the writes.
 #
 # Only attempting a write goes through the whole path, which is also exactly
-# the property --readonly claims. Returns 0 when the write succeeded.
-_agent_vm_project_writable() {
-  local vm_name="$1" host_dir="$2"
-  limactl shell "$vm_name" sh -c \
-    'p="$1/.agent-vm-write-probe.$$"; touch "$p" 2>/dev/null || exit 1; rm -f "$p"' \
-    sh "$host_dir" &>/dev/null
-}
-
-# _agent_vm_push_env_and_probe <vm> <dir> <payload> [<env> [<runtime>]]:
-# the same probe, in the same `limactl shell` as the env push every start
-# makes: each one is a round trip. Prints env-ok once the env file is written,
-# and runtime-found when <runtime> is a file; returns the probe's answer.
+# the property --readonly claims.
 #
 # The payload (~/.agent-vm/env, then the project's env when it is outside the
 # project, see _agent_vm_env_payload), then <env>, becomes

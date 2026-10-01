@@ -1,0 +1,103 @@
+---
+// A section of reference prose: groups of topics, each with paragraphs, an
+// optional list and an optional code sample. Used for `reference` and
+// `security`, which share this shape in the dictionaries.
+import CodeBlock from './CodeBlock.astro';
+import { inline } from '../lib/inline';
+import Heading from './Heading.astro';
+import { slug } from '../lib/slug';
+import { en } from '../i18n/en';
+import { t, type Locale } from '../i18n';
+
+interface Props {
+  locale: Locale;
+  part: 'reference' | 'security';
+}
+
+const { locale, part } = Astro.props;
+const d = t(locale)[part];
+// Anchors come from the English titles, so links work in every language.
+const source = en[part];
+---
+
+<section class="section docs" id={part}>
+  <div class="container">
+    <div class="section-head">
+      <p class="eyebrow">{d.eyebrow}</p>
+      <Heading as="h2" id={part} own={false} locale={locale}>{d.title}</Heading>
+      <p class="lede" set:html={inline(d.lede)} />
+    </div>
+
+    {
+      d.groups.map((group, g) => (
+        <div class="docs__group">
+          <Heading as="h3" id={slug(source.groups[g]!.title)} locale={locale} class="docs__group-title">{group.title}</Heading>
+          <div class="docs__topics">
+            {group.topics.map((topic, i) => (
+              <article class="docs__topic">
+                <Heading as="h4" id={slug(source.groups[g]!.topics[i]!.title)} locale={locale} class="docs__topic-title">{topic.title}</Heading>
+                {topic.paras.map((para) => <p class="prose docs__p" set:html={inline(para)} />)}
+                {topic.list.length > 0 && (
+                  <ul class="docs__list">
+                    {topic.list.map((item) => <li class="prose docs__p" set:html={inline(item)} />)}
+                  </ul>
+                )}
+                {topic.code && <CodeBlock locale={locale} code={topic.code} />}
+              </article>
+            ))}
+          </div>
+        </div>
+      ))
+    }
+  </div>
+</section>
+
+<style>
+  .docs__group {
+    display: grid;
+    gap: 1rem;
+    margin-top: clamp(2rem, 4vw, 3rem);
+  }
+
+  .docs__group-title {
+    font-size: 1.15rem;
+  }
+
+  .docs__topics {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 28rem), 1fr));
+    gap: 1px;
+    background: var(--line);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+  }
+
+  .docs__topic {
+    display: grid;
+    align-content: start;
+    min-width: 0;
+    gap: 0.75rem;
+    padding: clamp(1.25rem, 2.4vw, 1.75rem);
+    background: var(--surface);
+  }
+
+  /* An odd count would otherwise leave a hole in the last row. */
+  .docs__topic:last-child:nth-child(odd) {
+    grid-column: 1 / -1;
+  }
+
+  .docs__topic-title {
+    font-size: 1.02rem;
+  }
+
+  .docs__p {
+    font-size: 0.91rem;
+  }
+
+  .docs__list {
+    display: grid;
+    gap: 0.5rem;
+    padding-left: 1.1rem;
+  }
+</style>

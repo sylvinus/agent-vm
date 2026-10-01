@@ -152,9 +152,28 @@ _agent_vm_env_lines() {
 _agent_vm_project_env_file() {
   local host_dir="${1:-$(pwd)}" rel="${AGENT_VM_PROJECT_ENV:-.agent-vm.env}"
   case "$rel" in
-    /*) printf '%s\n' "$rel" ;;
-    *)  printf '%s\n' "${host_dir}/${rel}" ;;
+    /*) _agent_vm_path_join / "$rel" ;;
+    *)  _agent_vm_path_join "$host_dir" "$rel" ;;
   esac
+}
+
+# _agent_vm_path_join <dir> <path>: <dir>/<path>, with `.` and `..` resolved in
+# the text, as `cd` does. Whether a project file is read by the host or by the
+# VM depends on whether it is inside the project (_agent_vm_in_project): a
+# path that only goes through the project on its way out of it (`../x`) names
+# a file outside, which the VM cannot see.
+_agent_vm_path_join() {
+  local out="${1%/}" rest="$2/" comp
+  while [[ -n "$rest" ]]; do
+    comp="${rest%%/*}"
+    rest="${rest#*/}"
+    case "$comp" in
+      ""|.) ;;
+      ..) out="${out%/*}" ;;
+      *)  out="$out/$comp" ;;
+    esac
+  done
+  printf '%s\n' "${out:-/}"
 }
 
 # A project env file is a file in someone's repository, so the failure that
@@ -352,7 +371,8 @@ _agent_vm_env_file() {
 # Exists so integrators don't hand-roll the quoting: the file is *sourced* by a
 # shell, so one bad escape costs every secret in it (see _agent_vm_sq_escape).
 #
-#   agent-vm env set KEY VALUE   replace or add KEY (value never echoed)
+#   agent-vm env set KEY [VALUE] replace or add KEY (value never echoed; read
+#                                from stdin when not given)
 #   agent-vm env get KEY         print KEY's value
 #   agent-vm env has KEY         exit 0 if KEY is set, 1 otherwise (no output)
 #   agent-vm env unset KEY       remove KEY
@@ -389,12 +409,31 @@ _agent_vm_env() {
       fi ;;
     list) ;;
     *)
-      echo "Usage: agent-vm $verb {set KEY VALUE|get KEY|has KEY|unset KEY|list}" >&2
+      echo "Usage: agent-vm $verb {set KEY [VALUE]|get KEY|has KEY|unset KEY|list}" >&2
       return 1 ;;
   esac
-  if [[ "$action" == set && $# -lt 3 ]]; then
-    echo "Error: 'agent-vm $verb set' needs a VALUE." >&2
-    return 1
+  # Without VALUE, `set` reads it from stdin, typed without echo on a
+  # terminal: a value on the command line lands in the shell history and in
+  # `ps`. From a pipe, one trailing newline goes, as `echo` adds it.
+  # A name of its own: zsh prints a local declared twice in one function, and
+  # `get` declares `value`.
+  local set_value=""
+  if [[ "$action" == set ]]; then
+    if [[ $# -ge 3 ]]; then
+      set_value="$3"
+    elif [[ -t 0 ]]; then
+      printf 'Value for %s (not shown): ' "$key" >&2
+      IFS= read -rs set_value || set_value=""
+      printf '\n' >&2
+    else
+      set_value="$(cat; printf x)"
+      set_value="${set_value%x}"
+      set_value="${set_value%$'\n'}"
+    fi
+    if [[ $# -lt 3 && -z "$set_value" ]]; then
+      echo "Error: 'agent-vm $verb set $key' needs a VALUE, as an argument or on stdin." >&2
+      return 1
+    fi
   fi
 
   # The x keeps the file's trailing newlines, which $(...) would strip.
@@ -423,7 +462,7 @@ _agent_vm_env() {
       }
       new="${new%x}"
       if [[ "$action" == set ]]; then
-        new="$new$(printf "%s='%s'" "$key" "$(_agent_vm_sq_escape "$3")")"$'\n'
+        new="$new$(printf "%s='%s'" "$key" "$(_agent_vm_sq_escape "$set_value")")"$'\n'
       fi
       # A silently-dropped write here means the caller is told the secret was
       # stored when it was not — the worst possible failure for this file.

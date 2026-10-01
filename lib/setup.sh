@@ -307,6 +307,7 @@ EOF
         declined_protection=1
         if [[ "$(_agent_vm_ask_yn "Install brew's lima instead, which lets the VMs write .git?" Y)" == "1" ]]; then
           brew install lima || return 1
+          echo "With this Lima, every start with writable shares will ask first ('agent-vm doctor' says why)." >&2
         fi
       fi
     fi
@@ -427,12 +428,13 @@ EOF
   fi
 
   # After the wizard: its questions are the familiar ones (which agents, how
-  # much RAM), these are not, and a first run should not open on them. Still
-  # before the VM is created, since one of them can replace Lima. Announced, so
-  # a warning reads as the result of a check and not out of the blue.
+  # much RAM), this one is not, and a first run should not open on it. Still
+  # before the VM is created, since it can replace Lima. Announced, so a
+  # warning reads as the result of a check and not out of the blue.
+  # safe.bareRepository is checked on every start instead (see
+  # _agent_vm_check_bare_repo_setting).
   echo "Running security checks..."
   [[ -n "$declined_protection" ]] || _agent_vm_offer_git_protection
-  _agent_vm_offer_bare_repo_setting
 
   if [[ "$install_chromium" == "1" && "$install_mcp_chrome" == "1" ]]; then
     local wants_chrome_mcp=0

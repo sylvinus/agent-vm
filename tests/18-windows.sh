@@ -271,6 +271,19 @@ check "a CRLF runtime reaches the VM without CRs" \
 check "CRLF env files reach the VM without CRs" \
   "$(grep -c '^[AB]=' "$SB/crlf-payload") $(od -c < "$SB/crlf-payload" | grep -c '\\r')" "2 0"
 
+# QEMU on Windows has no 9p: a mount type left unset is reverse-sshfs there,
+# which only the builtin SFTP server with readonlyNames enforces. On any other
+# host the same VM gets 9p. A limactl of its own, reporting QEMU and no type.
+mkdir -p "$SB/qemulima" "$SB/qemulima-home/agent-vm-w"
+printf '#!/bin/sh\n[ "$1" = list ] && echo "qemu <nil>"\nexit 0\n' > "$SB/qemulima/limactl"
+chmod +x "$SB/qemulima/limactl"
+echo 2.1.0 > "$SB/qemulima-home/agent-vm-w/lima-version"
+enforced_on() {  # <fake uname dir>
+  ( PATH="$1:$SB/qemulima:$PATH"; LIMA_HOME="$SB/qemulima-home"; _agent_vm_mount_is_host_enforced agent-vm-w; printf '%s' "$?" )
+}
+check "unset on QEMU, Windows host: reverse-sshfs, not enforced" "$(enforced_on "$SB/fakewin")" "1"
+check "unset on QEMU, Linux host: 9p, enforced" "$(enforced_on "$SB/fakelinux")" "0"
+
 # =============================================================================
 section "the fork release: asset names and checksums"
 # =============================================================================

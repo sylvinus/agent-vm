@@ -36,7 +36,6 @@ chmod +x "$SB/wizlima/limactl"
     esac
   }
   _agent_vm_offer_git_protection() { :; }
-  _agent_vm_offer_bare_repo_setting() { :; }
   _agent_vm_setup ) >/dev/null 2>&1
 check "wizard defaults: Ruby, Rust, Go, Pi and Playwright MCP off; Claude on" \
   "$(grep -E '^export AGENT_VM_INSTALL_(RUBY|RUST|GOLANG|PI|MCP_PLAYWRIGHT|CLAUDE)=' "$SB/wizard.stdin" 2>/dev/null | cut -d_ -f4- | tr '\n' ' ')" \
@@ -248,44 +247,73 @@ out="$(offer)"
 check "already protected: nothing said" "$out" ""
 [ ! -e "$SB/brew.log" ] && pass "already protected: brew is not run" || fail "already protected: brew ran: $(brew_calls)"
 
-section "setup: git on this machine ignores bare repositories"
+section "start: git on this machine ignores bare repositories"
 # A folder holding HEAD, objects/ and refs/ is a repository to git, whatever
-# its name, so .git protection does not cover it. Setup asks to set
-# safe.bareRepository=explicit. The stub git is the doctor section's.
-# ANSWER is the reply (1 yes, 0 no); NOTTY=1 means no terminal to ask on.
-bare_offer() {
+# its name, so .git protection does not cover it. A start with writable shares
+# offers to set safe.bareRepository=explicit; left unset, it asks whether to go
+# on, and stops by default. The stub git is the doctor section's.
+# ANSWER is the reply to the offer (1 yes, 0 no), GO_ON the one to the
+# security question; NOTTY=1 means no terminal to ask on. Prints the output,
+# then rc=N.
+bare_check() {
   rm -f "$SB/git.log"
   ( export PATH="$SB/fakegit:$PATH"
-    _agent_vm_have_tty() { [ -z "${NOTTY:-}" ]; }
-    _agent_vm_ask_yn() { echo "${ANSWER:-1}"; }
-    _agent_vm_offer_bare_repo_setting ) 2>&1
+    unset AGENT_VM_UNSAFE_DISABLE_SECURITY_PROMPTS
+    _agent_vm_can_ask() { [ -z "${NOTTY:-}" ]; }
+    _agent_vm_ask_yn() { case "$1" in "Continue anyway?") echo "${GO_ON:-0}" ;; *) echo "${ANSWER:-1}" ;; esac; }
+    _agent_vm_check_bare_repo_setting; echo "rc=$?" ) 2>&1
 }
 git_set_called() { grep -q 'config --global safe.bareRepository explicit' "$SB/git.log" 2>/dev/null; }
 
 rm -f "$SB/git-bare"
-out="$(bare_offer)"
+out="$(bare_check)"
 [ "$(cat "$SB/git-bare" 2>/dev/null)" = "explicit" ] && pass "yes: the setting is made" || fail "yes: not set: $out"
 case "$out" in
-  *"HEAD, objects/ and refs/"*"git config --global safe.bareRepository explicit"*"now ignores"*) pass "yes: the risk, the command, then the result" ;;
+  *"HEAD, objects/ and refs/"*"git config --global safe.bareRepository explicit"*"now ignores"*"rc=0") pass "yes: the risk, the command, the result, and on" ;;
   *) fail "yes: $out" ;;
 esac
 rm -f "$SB/git-bare"
-out="$(ANSWER=0 bare_offer)"
+out="$(ANSWER=0 bare_check)"
 git_set_called && fail "no: the setting was made anyway" || pass "no: git config is not run"
-case "$out" in *"Warning: not set"*) pass "no: says what is left open" ;; *) fail "no: $out" ;; esac
-out="$(NOTTY=1 bare_offer)"
+case "$out" in *"Warning: not set"*"Aborted."*"rc=1") pass "no: says what is left open, and stops by default" ;; *) fail "no: $out" ;; esac
+out="$(ANSWER=0 GO_ON=1 bare_check)"
+case "$out" in *"rc=0") pass "no, then go on: on" ;; *) fail "no, then go on: $out" ;; esac
+out="$(NOTTY=1 bare_check)"
 git_set_called && fail "no terminal: the setting was made without asking" || pass "no terminal: nothing is changed"
-case "$out" in *"git config --global safe.bareRepository explicit"*"Warning: not set"*) pass "no terminal: the command is printed" ;; *) fail "no terminal: $out" ;; esac
-out="$(FAKE_GIT_SET_FAILS=1 bare_offer)"
-case "$out" in *"did not take"*) pass "a failed git config is said" ;; *) fail "failed git config: $out" ;; esac
-out="$(FAKE_GIT_VERSION=2.30.1 bare_offer)"
+case "$out" in *"git config --global safe.bareRepository explicit"*"Aborted."*"rc=1") pass "no terminal: the command is printed, and it stops" ;; *) fail "no terminal: $out" ;; esac
+out="$(FAKE_GIT_SET_FAILS=1 bare_check)"
+case "$out" in *"did not take"*"Aborted."*"rc=1") pass "a failed git config is said, and it stops" ;; *) fail "failed git config: $out" ;; esac
+# Disabled questions: no offer either, the global config is not changed unasked.
+rm -f "$SB/git.log"
+out="$( export AGENT_VM_UNSAFE_DISABLE_SECURITY_PROMPTS=1; PATH="$SB/fakegit:$PATH"; _agent_vm_check_bare_repo_setting 2>&1; echo "rc=$?" )"
+git_set_called && fail "prompts disabled: the setting was made" || pass "prompts disabled: git config is not run"
+case "$out" in *"Warning: not set"*"Continuing: AGENT_VM_UNSAFE_DISABLE_SECURITY_PROMPTS=1."*"rc=0") pass "prompts disabled: warned, then on" ;; *) fail "prompts disabled: $out" ;; esac
+out="$(FAKE_GIT_VERSION=2.30.1 bare_check)"
 git_set_called && fail "old git: set on a git that ignores it" || pass "old git: nothing is set"
-case "$out" in *"older than 2.38"*"Upgrade git"*) pass "old git: says to upgrade" ;; *) fail "old git: $out" ;; esac
+case "$out" in *"older than 2.38"*"Aborted. Upgrade git"*"rc=1") pass "old git: stops, and says to upgrade" ;; *) fail "old git: $out" ;; esac
 echo explicit > "$SB/git-bare"
-check "already set: nothing said" "$(bare_offer)" ""
+check "already set: nothing said" "$(bare_check)" "rc=0"
 git_set_called && fail "already set: git config was run" || pass "already set: git config is not run"
-check "no git on this machine: nothing to protect" "$(PATH="$SB/nolimactl" _agent_vm_bare_repo_state)" "nogit"
-check "setup makes the offer" "$(declare -f _agent_vm_setup | grep -c '_agent_vm_offer_bare_repo_setting')" "1"
+check "no git on this machine: nothing to protect" "$( hash -r; PATH="$SB/nolimactl" _agent_vm_bare_repo_state)" "nogit"
+check "setup no longer asks" "$(declare -f _agent_vm_setup | grep -c 'bare_repo')" "0"
+
+# In a start: before anything changes, and not under --readonly, where the VM
+# cannot write a repository anywhere.
+rm -f "$SB/git-bare"
+out="$( export PATH="$SB/fakegit:$PATH"; unset AGENT_VM_UNSAFE_DISABLE_SECURITY_PROMPTS; _agent_vm_can_ask() { return 1; }
+        touch "$PROTECTS"; AGENT_VM_TEST_STOPPED=1 rec run true; echo "rc=$?" )"
+case "$out" in *"Aborted. Run the command above"*"rc=1") pass "start: unset, no terminal: stopped" ;; *) fail "start: not stopped: $out" ;; esac
+grep -Eq '^(edit|start|clone) ' "$REC" && fail "start: the VM was touched before the abort" || pass "start: nothing touched"
+printf '[{"location": "%s", "writable": true, %s}]\n' "$PROJ" "$SSHFS_RO" > "$HOME/.agent-vm/.agent-vm-mounts-$PV"
+out="$( export PATH="$SB/fakegit:$PATH"; unset AGENT_VM_UNSAFE_DISABLE_SECURITY_PROMPTS; _agent_vm_can_ask() { return 1; }
+        rec run true; echo "rc=$?" )"
+case "$out" in *"Aborted."*) fail "start of a running VM: stopped on the setting: $out" ;; *"Warning: git on this machine uses repositories a VM creates"*"rc=0") pass "start of a running VM: warned, not asked" ;; *) fail "start of a running VM: $out" ;; esac
+case "$( PATH="$SB/fakegit:$PATH"; rec info | grep '^security_questions=')" in *bare-repo*) pass "info: security_questions names the setting" ;; *) fail "info: bare-repo not named" ;; esac
+printf '[{"location": "%s", "writable": false, %s}]\n' "$PROJ" "$SSHFS_RO" > "$HOME/.agent-vm/.agent-vm-mounts-$PV"
+out="$( export PATH="$SB/fakegit:$PATH"; unset AGENT_VM_UNSAFE_DISABLE_SECURITY_PROMPTS; _agent_vm_can_ask() { return 1; }
+        AGENT_VM_TEST_STOPPED=1 AGENT_VM_TEST_RO=1 AGENT_VM_TEST_MOUNTTYPE=reverse-sshfs rec --readonly run true; echo "rc=$?" )"
+case "$out" in *"repositories not named .git"*|*"Aborted."*) fail "start --readonly: asked anyway: $out" ;; *"rc=0") pass "start --readonly: no question" ;; *) fail "start --readonly: $out" ;; esac
+rm -f "$PROTECTS" "$HOME/.agent-vm/.agent-vm-mounts-$PV"
 # A first run opens on the familiar questions: the security ones come after the
 # wizard, and before the VM exists.
 check "security checks: after the wizard, before the VM" \

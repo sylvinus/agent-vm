@@ -46,9 +46,12 @@ _agent_vm_abs_dir() {
 # agent-vm itself (the host runs its files), agent-vm's state (every VM's env)
 # or Lima's (the VMs' SSH key and disks). Returns 1 when it is none of them.
 # Compared as physical paths: a share is the directory a path resolves to.
+# And whatever the case where the file system ignores it: `cd /c/users/me`
+# reaches the home directory in Git Bash, which keeps the spelling typed.
 _agent_vm_unsafe_project() {
   local dir p what
   dir="$(CDPATH= cd -P -- "$1" 2>/dev/null && pwd)" || dir="$1"
+  _agent_vm_fs_nocase && dir="$(printf '%s' "$dir" | tr '[:upper:]' '[:lower:]')"
   for what in "your home directory" "agent-vm itself" "agent-vm's state" "Lima's state"; do
     case "$what" in
       "your home directory") p="$HOME" ;;
@@ -58,6 +61,7 @@ _agent_vm_unsafe_project() {
     esac
     [[ -n "$p" ]] || continue
     p="$(CDPATH= cd -P -- "$p" 2>/dev/null && pwd)" || p="${p%/}"
+    _agent_vm_fs_nocase && p="$(printf '%s' "$p" | tr '[:upper:]' '[:lower:]')"
     case "${p%/}/" in
       "${dir%/}/"*)
         printf '%s\n' "$what"
@@ -103,6 +107,40 @@ _agent_vm_name() {
   local base
   base=$(basename "$dir" | tr -cs 'a-zA-Z0-9' '-' | sed 's/^-//;s/-$//')
   echo "agent-vm-${base}-${hash}"
+}
+
+# A name for a --scratch VM started in <dir>: its own, so it is never the
+# folder's VM and several can run at once. Short enough for Lima (76
+# characters, and a socket path under ~/.lima of at most 104 on macOS).
+_agent_vm_scratch_name() {
+  local base rand
+  base=$(basename "$1" | tr -cs 'a-zA-Z0-9' '-' | cut -c1-20 | sed 's/^-*//;s/-*$//')
+  rand="$(od -An -N4 -tx1 /dev/urandom 2>/dev/null | tr -d ' \n')"
+  if [[ ! "$rand" =~ ^[0-9a-f]{8}$ ]]; then
+    echo "Error: cannot read /dev/urandom to name the VM." >&2
+    return 1
+  fi
+  echo "agent-vm-${base:-project}-scratch-$rand"
+}
+
+# Where a --scratch run records its VM, with the pid of the shell running it.
+_agent_vm_scratch_marker() {
+  printf '%s/.agent-vm-scratch-%s\n' "$AGENT_VM_STATE_DIR" "$1"
+}
+
+# --scratch VMs a run could not delete (killed, its terminal closed), one per
+# line: recorded by a run whose pid is gone. A reused pid only delays the
+# cleanup. Only names _agent_vm_scratch_name makes: these are deleted unasked.
+_agent_vm_scratch_leftovers() {
+  local f pid vm
+  find "$AGENT_VM_STATE_DIR" -maxdepth 1 -name '.agent-vm-scratch-*' 2>/dev/null \
+    | while IFS= read -r f; do
+        vm="${f##*/.agent-vm-scratch-}"
+        [[ "$vm" =~ ^agent-vm-[A-Za-z0-9-]+-scratch-[0-9a-f]{8}$ ]] || continue
+        pid="$(cat "$f" 2>/dev/null)"
+        [[ "$pid" =~ ^[0-9]+$ ]] && kill -0 "$pid" 2>/dev/null && continue
+        printf '%s\n' "$vm"
+      done
 }
 
 # Exact-line match against an already-captured string, with no pipe.
@@ -189,6 +227,7 @@ _agent_vm_cleanup_state() {
   rm -f "$AGENT_VM_STATE_DIR/.agent-vm-term-${vm_name}"
   rm -f "$AGENT_VM_STATE_DIR/.agent-vm-file-mounts-${vm_name}"
   rm -f "$AGENT_VM_STATE_DIR/.agent-vm-mounts-${vm_name}"
+  rm -f "$(_agent_vm_scratch_marker "$vm_name")"
   rm -rf "$AGENT_VM_STATE_DIR/file-mounts/${vm_name}"
   # Deleting the template retires the marker that says it is usable.
   if [[ "$vm_name" == "$AGENT_VM_TEMPLATE" ]]; then

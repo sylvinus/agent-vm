@@ -25,7 +25,7 @@
 # =============================================================================
 #
 # The identity can also come from GIT_AUTHOR_* / GIT_COMMITTER_* in
-# ~/.agent-vm/env, see "Letting the agent commit and push" in the README.
+# ~/.agent-vm/env: https://www.agent-vm.org/#letting-the-agent-commit
 
 # git config --global user.name "Your Name"
 # git config --global user.email "you@example.com"

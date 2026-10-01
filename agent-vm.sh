@@ -101,7 +101,7 @@ _agent_vm_ensure_running() {
   local vm_name="$1"
   local host_dir="$2"
   shift 2
-  local disk="" memory="" cpus="" ssh_port="" reset="" rdonly="" _agent_vm_unsafe_git_flag=""
+  local disk="" memory="" cpus="" ssh_port="" reset="" rdonly="" scratch="" _agent_vm_unsafe_git_flag="" _agent_vm_unsafe_no_prompts=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --disk)     disk="$2"; shift 2 ;;
@@ -110,10 +110,20 @@ _agent_vm_ensure_running() {
       --ssh-port) ssh_port="$2"; shift 2 ;;
       --reset)    reset=1; shift ;;
       --readonly) rdonly=1; shift ;;
+      --scratch)  scratch=1; shift ;;
       --unsafe-writable-git) _agent_vm_unsafe_git_flag=1; shift ;;
+      --unsafe-disable-security-prompts) _agent_vm_unsafe_no_prompts=1; shift ;;
       *)          shift ;;
     esac
   done
+
+  # --scratch (see _agent_vm_run_scratch): a new VM with no share at all, so
+  # nothing to reset or make read-only, and none of the checks below that
+  # are about a share apply.
+  if [[ -n "$scratch" && ( -n "$reset" || -n "$rdonly" ) ]]; then
+    echo "Error: --scratch makes a new VM that shares nothing: --reset and --readonly do not go with it." >&2
+    return 1
+  fi
 
   # The project mount's mode is decided once, here, so the create path bakes it
   # into the new VM's config instead of creating it writable and immediately
@@ -142,7 +152,7 @@ _agent_vm_ensure_running() {
   # read-write, and a share holding agent-vm's own files lets the VM change
   # what the host runs next.
   local unsafe
-  if unsafe="$(_agent_vm_unsafe_project "$host_dir")"; then
+  if [[ -z "$scratch" ]] && unsafe="$(_agent_vm_unsafe_project "$host_dir")"; then
     echo "Error: refusing to share $host_dir with a VM: it is, or contains, $unsafe." >&2
     echo "Run agent-vm from a project directory." >&2
     return 1
@@ -152,7 +162,7 @@ _agent_vm_ensure_running() {
   # fails silently and the VM starts with a bare, root-owned mountpoint, so
   # every write into the project (e.g. creating .claude) fails with
   # "Permission denied". Fail fast with an actionable message instead.
-  if [[ "$host_dir" == *[[:space:]]* ]]; then
+  if [[ -z "$scratch" && "$host_dir" == *[[:space:]]* ]]; then
     echo "Error: project path contains whitespace, which Lima cannot mount:" >&2
     echo "  $host_dir" >&2
     echo "Rename the directory to remove spaces (e.g. with '-'), then retry." >&2
@@ -186,14 +196,106 @@ _agent_vm_ensure_running() {
     return 1
   fi
 
+  # The security checks, before anything changes. A risk agent-vm cannot
+  # remove stops the start unless the user says to go on (see
+  # _agent_vm_confirm_unsafe). Asked only for a VM about to boot: for one that
+  # already runs, stopping here would protect nothing, so the warning alone is
+  # printed (a running VM that lacks a protection is offered a restart further
+  # down).
+  local vm_up=""
+  [[ -z "$reset" ]] && _agent_vm_running "$vm_name" && vm_up=1
+
   # Every .git read-only for the guest, when this Lima can enforce it and it
   # was not turned off. Asked once here: the mounts built below, on every
-  # path, follow the answer.
-  local protect_git=""
-  if _agent_vm_writable_git_optout; then
+  # path, follow the answer. A Lima that cannot, with shares left writable
+  # and nobody having asked for a writable .git, is a risk to accept. One
+  # whose answer could not be read stops the start: taking it for a no would
+  # drop the protection of the VM.
+  local protect_git="" lima_st=0
+  if [[ -n "$scratch" ]]; then
+    :
+  elif _agent_vm_writable_git_optout; then
     _agent_vm_writable_git_warning >&2
-  elif _agent_vm_lima_protects_git; then
-    protect_git=1
+  else
+    _agent_vm_lima_protects_git || lima_st=$?
+    if [[ "$lima_st" == 0 ]]; then
+      protect_git=1
+    elif [[ -n "$rdonly" ]]; then
+      :
+    elif [[ "$lima_st" == 2 ]]; then
+      echo "Error: cannot tell whether this Lima keeps .git read-only: 'limactl validate' gave no answer agent-vm knows ('agent-vm doctor' shows more)." >&2
+      echo "  --readonly, or --unsafe-writable-git to accept a writable .git, still starts the VM." >&2
+      return 1
+    elif [[ -n "$vm_up" ]]; then
+      echo "Warning: this Lima cannot keep .git read-only, so the VM can write .git ('agent-vm doctor' says more)." >&2
+    else
+      _agent_vm_git_protection_hint | _agent_vm_box "Lima cannot keep .git read-only"
+      if ! _agent_vm_confirm_unsafe; then
+        echo "Aborted. Install that Lima build, or use --readonly; --unsafe-writable-git accepts a writable .git." >&2
+        return 1
+      fi
+    fi
+  fi
+
+  # With it, the names the shares need: those always listed, and one per
+  # hooks folder git runs from in the project (see _agent_vm_project_hooks),
+  # its first component. A dot-name (.husky, .githooks) is taken as is; any
+  # other is read-only in every folder of the project, so it is asked first
+  # (yes by default, and when no one can answer). A folder that cannot be
+  # protected, or one declined, is a risk to accept. So are git config files
+  # in the project, and settings running commands from it. Under --readonly
+  # the VM writes none of them: the names are taken as they come, with no
+  # warning and no question.
+  local ro_names="" hooks_rel hooks_in hooks_name hooks_names=() hooks_notes=""
+  if [[ -n "$protect_git" ]]; then
+    while IFS=$'\t' read -r hooks_rel hooks_in; do
+      [[ -n "$hooks_rel" ]] || continue
+      if [[ -n "$rdonly" ]]; then
+        hooks_name="$(_agent_vm_hooks_name "$hooks_in")" && hooks_names+=("$hooks_name")
+        continue
+      fi
+      if ! hooks_name="$(_agent_vm_hooks_name "$hooks_in")"; then
+        if [[ "$hooks_rel" == . ]]; then
+          echo "Warning: git's core.hooksPath is the project directory itself, which the VM can write: git on this machine runs the hooks the agent puts there." >&2
+        else
+          echo "Warning: git's core.hooksPath is '$hooks_rel', in the project, and its name cannot be made read-only: git on this machine runs the hooks the agent puts there." >&2
+        fi
+        if [[ -z "$vm_up" ]] && ! _agent_vm_confirm_unsafe; then
+          echo "Aborted. Point core.hooksPath to a folder of the project (agent-vm keeps it read-only), or outside it." >&2
+          return 1
+        fi
+        continue
+      fi
+      if [[ "$hooks_name" != .* && -z "$vm_up" ]] && ! _agent_vm_prompts_disabled_by >/dev/null \
+         && _agent_vm_can_ask \
+         && [[ "$(_agent_vm_ask_yn "Git runs hooks from $hooks_rel. Make every '$hooks_name' folder in the project read-only for the VM?" Y)" != "1" ]]; then
+        echo "Warning: '$hooks_name' stays writable, and git on this machine runs the hooks the agent puts in $hooks_rel." >&2
+        if ! _agent_vm_confirm_unsafe; then
+          echo "Aborted. Answer yes to protect it, or point core.hooksPath outside the project." >&2
+          return 1
+        fi
+        continue
+      fi
+      hooks_names+=("$hooks_name")
+      hooks_notes="$hooks_notes$(_agent_vm_hooks_note "$hooks_rel" "$hooks_name")"$'\n'
+    done <<< "$(_agent_vm_project_hooks "$host_dir")"
+    ro_names="$(_agent_vm_names_json ${hooks_names[@]+"${hooks_names[@]}"})"
+
+    local git_risks=""
+    [[ -n "$rdonly" ]] || git_risks="$(_agent_vm_project_config_risks "$host_dir")"
+    if [[ -n "$git_risks" ]]; then
+      echo "Warning: git on this machine uses these, and the VM can write them:" >&2
+      printf '%s\n' "$git_risks" | sed 's/^/  /' >&2
+      if [[ -z "$vm_up" ]] && ! _agent_vm_confirm_unsafe; then
+        echo "Aborted. Move them out of the project, or have them name commands outside it." >&2
+        return 1
+      fi
+    fi
+  fi
+  # A repository not named .git, which no name protects (see
+  # _agent_vm_bare_repo_state): only a VM that can write needs the setting.
+  if [[ -z "$rdonly" && -z "$scratch" ]]; then
+    _agent_vm_check_bare_repo_setting "$vm_up" || return 1
   fi
 
   # Destroy existing VM if --reset was requested
@@ -218,8 +320,9 @@ _agent_vm_ensure_running() {
     # Apply mount and resource settings via edit after clone
     # Mount and memory/cpus are applied separately from disk, because
     # Lima rejects the entire edit if disk shrinking is attempted.
-    local mounts_json
-    mounts_json=$(_agent_vm_build_mounts_json "$vm_name" "$host_dir" "$want_writable" "$protect_git")
+    local mounts_json="[]"
+    [[ -n "$scratch" ]] \
+      || mounts_json=$(_agent_vm_build_mounts_json "$vm_name" "$host_dir" "$want_writable" "${protect_git:+$ro_names}")
     local edit_args=()
     edit_args+=(--set "$(_agent_vm_mounts_expr "$mounts_json" "$protect_git")")
     [[ -n "$memory" ]] && edit_args+=(--memory "$memory")
@@ -236,6 +339,7 @@ _agent_vm_ensure_running() {
       return 1
     fi
     _agent_vm_record_mounts "$vm_name" "$mounts_json"
+    printf '%s' "$hooks_notes"
     if [[ -n "$disk" ]]; then
       if ! create_out=$(cd /tmp && limactl edit "$vm_name" --disk "$disk" 2>&1); then
         echo "Warning: Cannot set disk to ${disk} GiB (it can grow, not shrink: 'agent-vm setup --disk ${disk}' for a smaller base):" >&2
@@ -261,10 +365,7 @@ _agent_vm_ensure_running() {
     apply_resize=1
     if _agent_vm_running "$vm_name"; then
       echo "VM '$vm_name' is currently running. It must be stopped to apply new settings."
-      printf "Stop the VM and apply changes? [y/N] " >&2
-      local reply=""
-      IFS= read -r reply 2>/dev/null </dev/tty || reply=""
-      if [[ "$reply" =~ ^[Yy]$ ]]; then
+      if _agent_vm_can_ask && [[ "$(_agent_vm_ask_yn "Stop the VM and apply changes?" N)" == "1" ]]; then
         echo "Stopping VM..."
         if ! _agent_vm_stop_vm "$vm_name"; then
           echo "Error: could not stop VM '$vm_name'; its settings are unchanged." >&2
@@ -323,23 +424,57 @@ _agent_vm_ensure_running() {
   # starts with the VM (a service, a job of the agent's) a writable window. A
   # running one keeps what it has until it stops; for the mode, the reconcile
   # step after the start asks to restart it.
-  local was_protected="" git_stale="" mode_stale=""
+  # Or protected, with other names than the ones asked: from before .hg, or
+  # before core.hooksPath changed.
+  local was_protected="" git_stale="" names_stale="" mode_stale=""
   _agent_vm_mounts_protect_git "$vm_name" && was_protected=1
   [[ "$was_protected" != "$protect_git" ]] && git_stale=1
-  if [[ "$want_writable" == "false" ]]; then
+  if [[ -n "$protect_git" && -n "$was_protected" ]] \
+     && ! _agent_vm_mounts_have_readonly_names "$vm_name" "$ro_names"; then
+    names_stale=1
+  fi
+  if [[ -n "$scratch" ]]; then
+    # Shares nothing, as made: nothing to bring in line.
+    git_stale=""
+  elif [[ "$want_writable" == "false" ]]; then
     _agent_vm_mounts_all_readonly "$vm_name" || mode_stale=1
   elif _agent_vm_mounts_all_readonly "$vm_name"; then
     mode_stale=1
   fi
+  # A running VM that lacks a protection it should have lets the agent go on
+  # writing what it covers: a restart applies it, which cuts whatever else uses
+  # the VM, so it is asked. Declined, or with no one to ask, it is a risk to
+  # accept (see _agent_vm_confirm_unsafe). Not under --readonly: a read-only
+  # VM writes nothing, and a writable one is restarted below to apply it.
+  if [[ -z "$rdonly" && -n "$was_running" && -n "$protect_git" && ( -n "$git_stale" || -n "$names_stale" ) ]]; then
+    if [[ -n "$git_stale" ]]; then
+      echo "Warning: VM '$vm_name' is running with .git writable, so the agent can still write .git." >&2
+    else
+      echo "Warning: VM '$vm_name' runs with an older list of read-only names (it needs $(_agent_vm_names_text "$ro_names")), so the agent can still write the new ones." >&2
+    fi
+    if ! _agent_vm_prompts_disabled_by >/dev/null && _agent_vm_can_ask \
+       && [[ "$(_agent_vm_ask_yn "Restart it now to apply them? Sessions using it are cut." Y)" == "1" ]]; then
+      if ! _agent_vm_stop_vm "$vm_name"; then
+        echo "Error: could not stop VM '$vm_name'; its shares are unchanged." >&2
+        return 1
+      fi
+      was_running=""
+    elif ! _agent_vm_confirm_unsafe; then
+      echo "Aborted. 'agent-vm stop', then run again." >&2
+      return 1
+    fi
+  fi
   if [[ -n "$git_stale" && -n "$was_running" ]]; then
     if [[ -n "$protect_git" ]]; then
-      echo "Warning: VM '$vm_name' is running with .git writable, so the agent can still write .git. 'agent-vm stop', then run again." >&2
+      :
     elif _agent_vm_writable_git_optout; then
       echo "Note: VM '$vm_name' keeps .git read-only until it stops." >&2
     else
       echo "Warning: this Lima cannot keep .git read-only; VM '$vm_name' keeps its current shares until it stops." >&2
     fi
-  elif [[ -z "$was_running" && ( -n "$git_stale" || -n "$mode_stale" ) ]]; then
+  elif [[ -n "$names_stale" && -n "$was_running" ]]; then
+    :
+  elif [[ -z "$was_running" && ( -n "$git_stale" || -n "$names_stale" || -n "$mode_stale" ) ]]; then
     # Names of their own: zsh prints a local declared twice in one function.
     local shares_json shares_out
     if [[ -n "$git_stale" ]]; then
@@ -350,13 +485,16 @@ _agent_vm_ensure_running() {
       else
         echo "Warning: this Lima cannot keep .git read-only; VM '$vm_name' goes back to Lima's default mount type." >&2
       fi
+    elif [[ -n "$names_stale" ]]; then
+      echo "Making $(_agent_vm_names_text "$ro_names") read-only for VM '$vm_name'..."
     fi
+    [[ -n "$git_stale" || -n "$names_stale" ]] && printf '%s' "$hooks_notes"
     if [[ -n "$mode_stale" && "$want_writable" == "false" ]]; then
       echo "Making every share of VM '$vm_name' read-only..."
     elif [[ -n "$mode_stale" ]]; then
       echo "VM '$vm_name' was left read-only by --readonly; making it writable again..."
     fi
-    shares_json=$(_agent_vm_build_mounts_json "$vm_name" "$host_dir" "$want_writable" "$protect_git")
+    shares_json=$(_agent_vm_build_mounts_json "$vm_name" "$host_dir" "$want_writable" "${protect_git:+$ro_names}")
     if ! shares_out=$(cd /tmp && limactl edit "$vm_name" \
       --set "$(_agent_vm_mounts_expr "$shares_json" "$protect_git")" 2>&1); then
       echo "Error: could not change the shares of '$vm_name':" >&2
@@ -403,14 +541,33 @@ _agent_vm_ensure_running() {
   # _agent_vm_push_env_and_probe. The file is on the VM's disk, so a restart
   # below keeps it. So does the question of whether the project's runtime
   # script is there, which only the VM reads when it is in the project.
-  local is_writable="false" probe_out guest_env="" guest_runtime="" project_env project_runtime
-  project_env="$(_agent_vm_project_env_file "$host_dir")"
-  project_runtime="$(_agent_vm_project_runtime_path "$host_dir")"
-  _agent_vm_in_project "$host_dir" "$project_env" && guest_env="$project_env"
-  _agent_vm_in_project "$host_dir" "$project_runtime" && guest_runtime="$project_runtime"
-  probe_out="$(_agent_vm_push_env_and_probe "$vm_name" "$host_dir" "$(_agent_vm_env_payload "$host_dir")" \
+  #
+  # --scratch takes nothing of the project: no env file, no runtime script,
+  # only ~/.agent-vm/env. It works at the project's path on the VM's own disk,
+  # made here, which the probe then finds writable.
+  local is_writable="false" probe_out guest_env="" guest_runtime="" project_env="" project_runtime="" env_payload
+  if [[ -n "$scratch" ]]; then
+    if ! limactl shell "$vm_name" sh -c 'sudo install -d -o "$(id -u)" -g "$(id -g)" "$1"' sh "$host_dir" </dev/null >/dev/null 2>&1; then
+      echo "Error: could not make $host_dir in VM '$vm_name'." >&2
+      return 1
+    fi
+    env_payload="$( [ ! -f "$AGENT_VM_STATE_DIR/env" ] || _agent_vm_strip_cr < "$AGENT_VM_STATE_DIR/env" )"
+  else
+    project_env="$(_agent_vm_project_env_file "$host_dir")"
+    project_runtime="$(_agent_vm_project_runtime_path "$host_dir")"
+    _agent_vm_in_project "$host_dir" "$project_env" && guest_env="$project_env"
+    _agent_vm_in_project "$host_dir" "$project_runtime" && guest_runtime="$project_runtime"
+    env_payload="$(_agent_vm_env_payload "$host_dir")"
+  fi
+  probe_out="$(_agent_vm_push_env_and_probe "$vm_name" "$host_dir" "$env_payload" \
     "$guest_env" "$guest_runtime")" && is_writable="true"
   [[ "$probe_out" == *env-ok* ]] || echo "Warning: failed to push the env files into VM '$vm_name'." >&2
+  # A scratch VM has no share to repair: the repair below would mount the
+  # project into it.
+  if [[ -n "$scratch" && "$is_writable" != "true" ]]; then
+    echo "Error: $host_dir is not writable in VM '$vm_name'." >&2
+    return 1
+  fi
   local needs_remount=""
   [[ "$is_writable" != "$want_writable" ]] && needs_remount=1
   if [[ "$want_writable" == "false" ]] && ! _agent_vm_mounts_all_readonly "$vm_name"; then
@@ -423,10 +580,7 @@ _agent_vm_ensure_running() {
     # direction does not ask: a broken mount is already unusable.
     if [[ "$want_writable" == "false" ]] && [[ -n "$was_running" ]]; then
       echo "VM '$vm_name' was already running. It must be restarted to make its shares read-only."
-      printf "Stop the VM and apply --readonly? [y/N] " >&2
-      local ro_reply=""
-      IFS= read -r ro_reply 2>/dev/null </dev/tty || ro_reply=""
-      if [[ ! "$ro_reply" =~ ^[Yy]$ ]]; then
+      if ! _agent_vm_can_ask || [[ "$(_agent_vm_ask_yn "Stop the VM and apply --readonly?" N)" != "1" ]]; then
         # Not "continue with current settings" like the resize path does:
         # carrying on writable after --readonly was asked for is the one
         # outcome that must not be silent.
@@ -448,7 +602,7 @@ _agent_vm_ensure_running() {
     # Rebuild the full mounts JSON so any ~/.agent-vm/volumes entries are
     # preserved (a plain project-dir-only set would silently drop them).
     local reconcile_mounts_json
-    reconcile_mounts_json=$(_agent_vm_build_mounts_json "$vm_name" "$host_dir" "$want_writable" "$protect_git")
+    reconcile_mounts_json=$(_agent_vm_build_mounts_json "$vm_name" "$host_dir" "$want_writable" "${protect_git:+$ro_names}")
     local edit_out
     if ! edit_out=$(cd /tmp && limactl edit "$vm_name" \
       --set "$(_agent_vm_mounts_expr "$reconcile_mounts_json" "$protect_git")" 2>&1); then
@@ -466,8 +620,13 @@ _agent_vm_ensure_running() {
       return 1
     fi
 
+    # The push again, with the probe: the first one ran on the old mount, which
+    # in the repair case did not show the project, so its env file and runtime
+    # script were not found.
     is_writable="false"
-    _agent_vm_project_writable "$vm_name" "$host_dir" && is_writable="true"
+    probe_out="$(_agent_vm_push_env_and_probe "$vm_name" "$host_dir" "$env_payload" \
+      "$guest_env" "$guest_runtime")" && is_writable="true"
+    [[ "$probe_out" == *env-ok* ]] || echo "Warning: failed to push the env files into VM '$vm_name'." >&2
     if [[ "$is_writable" != "$want_writable" ]]; then
       if [[ "$want_writable" == "true" ]]; then
         echo "Error: project directory is still not writable inside the VM:" >&2
@@ -739,11 +898,18 @@ _agent_vm_lima_run() {
 
 # Starts this directory's VM with the caller's vm_opts, runs <function> with
 # the VM name and the directory before its own arguments, then deletes the VM
-# when the caller's rm is set. Returns the function's status.
+# when the caller's rm is set. Returns the function's status. With --scratch,
+# see _agent_vm_run_scratch.
 _agent_vm_in_vm() {
-  local fn="$1" host_dir vm_name st=0
+  local fn="$1" host_dir vm_name st=0 o
   shift
   host_dir="$(pwd)"
+  for o in ${vm_opts[@]+"${vm_opts[@]}"}; do
+    if [[ "$o" == --scratch ]]; then
+      _agent_vm_run_scratch "$fn" "$host_dir" "$@"
+      return
+    fi
+  done
   vm_name="$(_agent_vm_name "$host_dir")" || return 1
   _agent_vm_ensure_running "$vm_name" "$host_dir" ${vm_opts[@]+"${vm_opts[@]}"} || return 1
   _agent_vm_print_resources "$vm_name"
@@ -751,6 +917,52 @@ _agent_vm_in_vm() {
   if [[ -n "$rm" ]]; then
     echo "Removing VM..."
     _agent_vm_destroy
+  fi
+  return "$st"
+}
+
+# --scratch: a new VM of its own (see _agent_vm_scratch_name), sharing
+# nothing, deleted once <function> returns, whatever it returns, unless the
+# user keeps it a while to look inside (asked below). Ctrl-C
+# included: the trap lets the run go on to the deletion instead of ending
+# the shell with the interrupted command (bash ends a script whose child dies
+# of SIGINT, unless it traps it). A run that is killed outright leaves its VM
+# recorded with its pid, and the next --scratch run deletes it.
+_agent_vm_run_scratch() {
+  local fn="$1" host_dir="$2" vm_name st=0 old_int="" leftover
+  shift 2
+  [[ -n "${ZSH_VERSION:-}" ]] && setopt localoptions localtraps
+  while IFS= read -r leftover; do
+    [[ -n "$leftover" ]] || continue
+    echo "Deleting scratch VM '$leftover', left by a run that did not finish..."
+    _agent_vm_delete_vm "$leftover"
+  done <<< "$(_agent_vm_scratch_leftovers)"
+  vm_name="$(_agent_vm_scratch_name "$host_dir")" || return 1
+  mkdir -p "$AGENT_VM_STATE_DIR" && printf '%s\n' "$$" > "$(_agent_vm_scratch_marker "$vm_name")" || return 1
+  # The caller's: the shell session says the VM goes on exit.
+  rm=1
+  [[ -n "${BASH_VERSION:-}" ]] && old_int="$(trap -p INT)"
+  trap ':' INT
+  if _agent_vm_ensure_running "$vm_name" "$host_dir" ${vm_opts[@]+"${vm_opts[@]}"}; then
+    _agent_vm_print_resources "$vm_name"
+    "$fn" "$vm_name" "$host_dir" "$@" || st=$?
+    # Asked before the deletion, when it can be (yes by default): a no opens
+    # a shell in the VM, to look at what the command left, and asks again on
+    # its exit. Only an explicit no keeps it: no terminal, or a question cut
+    # short, deletes.
+    while _agent_vm_can_ask \
+          && [[ "$(_agent_vm_ask_yn "Delete scratch VM '$vm_name'?" Y)" == "0" ]]; do
+      echo "A shell in scratch VM '$vm_name'. Type 'exit' to be asked again."
+      limactl shell --workdir "$host_dir" "$vm_name" zsh -l
+    done
+  else
+    st=1
+  fi
+  echo "Deleting scratch VM '$vm_name'..."
+  _agent_vm_delete_vm "$vm_name" || st=1
+  if [[ -n "${BASH_VERSION:-}" ]]; then
+    trap - INT
+    [[ -z "$old_int" ]] || eval "$old_int"
   fi
   return "$st"
 }
@@ -891,7 +1103,10 @@ _agent_vm_stop() {
   vm_name="$(_agent_vm_resolve_target stop "$@")" || return 1
 
   echo "Stopping VM '$vm_name'..."
-  limactl stop "$vm_name" &>/dev/null
+  if ! _agent_vm_stop_vm "$vm_name"; then
+    echo "Error: VM '$vm_name' is still running, or Lima cannot say. See 'limactl list'." >&2
+    return 1
+  fi
   echo "VM stopped."
 }
 
@@ -922,10 +1137,7 @@ _agent_vm_destroy_all() {
   if _agent_vm_has_line "$vms" "$AGENT_VM_TEMPLATE"; then
     echo "($AGENT_VM_TEMPLATE is the base template: 'agent-vm setup' rebuilds it.)"
   fi
-  printf "Continue? [y/N] " >&2
-  local reply=""
-  IFS= read -r reply 2>/dev/null </dev/tty || reply=""
-  if [[ ! "$reply" =~ ^[Yy]$ ]]; then
+  if ! _agent_vm_can_ask || [[ "$(_agent_vm_ask_yn "Continue?" N)" != "1" ]]; then
     echo "Aborted."
     return 0
   fi

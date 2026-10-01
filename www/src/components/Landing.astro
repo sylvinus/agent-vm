@@ -3,6 +3,7 @@ import Hero from './Hero.astro';
 import Threat from './Threat.astro';
 import Install from './Install.astro';
 import Usage from './Usage.astro';
+import Docs from './Docs.astro';
 import Architecture from './Architecture.astro';
 import Contribute from './Contribute.astro';
 import Credits from './Credits.astro';
@@ -19,6 +20,8 @@ const { locale } = Astro.props;
 <Threat locale={locale} />
 <Install locale={locale} />
 <Usage locale={locale} />
+<Docs locale={locale} part="reference" />
 <Architecture locale={locale} />
+<Docs locale={locale} part="security" />
 <Contribute locale={locale} />
 <Credits locale={locale} />

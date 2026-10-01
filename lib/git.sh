@@ -23,22 +23,30 @@ a0828aa4518e21c9519d341be9f32adf07cbeb74a3f8beadaa2f350c45b5933b  lima-additiona
 1ae0b7b054191f4197898bd59697ee99350d3b7e95b895c1b0ec061c7ea87e7f  lima-additional-guestagents-2.3.0-sylvinus.2-Windows-ARM64.zip"
 AGENT_VM_LIMA_ISSUE="https://github.com/lima-vm/lima/issues/5529"
 
-# 0 when this Lima enforces sshfs.readonlyNames. Stock Lima accepts the field
-# and ignores it, with a mere warning, so support is probed, never assumed:
-# `limactl validate` on a config pairing it with virtiofs, which a Lima that
-# knows the field rejects, naming it. One that does not know it warns about an
-# "unknown field" and accepts the file. Anything else counts as no.
+# Does this Lima enforce sshfs.readonlyNames? 0 yes, 1 no, 2 cannot tell.
+# Stock Lima accepts the field and ignores it, with a mere warning, so support
+# is probed, never assumed: `limactl validate` on a config pairing it with
+# virtiofs, which a Lima that knows the field rejects, naming it. One that
+# does not know it warns about an "unknown field". Any other answer (no
+# limactl, a failure that names neither, a Lima that accepts the file without
+# a word) is "cannot tell", never "no": callers must not drop the protection
+# of a VM on an answer they could not read.
 #
 # Not cached: agent-vm is also a shell function, where a cached answer would
 # outlive a Lima upgrade.
 _agent_vm_lima_protects_git() {
   local dir out accepted=""
-  dir="$(mktemp -d 2>/dev/null)" || return 1
+  dir="$(mktemp -d 2>/dev/null)" || return 2
   printf 'images: [{location: "/"}]\nmountType: virtiofs\nmounts: [{location: "%s", sshfs: {sftpDriver: builtin, readonlyNames: [.git]}}]\n' \
     "$(_agent_vm_host_path "$dir")" > "$dir/probe.yaml"
   out="$(limactl validate "$(_agent_vm_host_path "$dir/probe.yaml")" 2>&1)" && accepted=1
   rm -rf "$dir"
-  [[ -z "$accepted" && "$out" == *readonlyNames* && "$out" != *"unknown field"* ]]
+  if [[ "$out" == *"unknown field"* && "$out" == *readonlyNames* ]]; then
+    return 1
+  elif [[ -z "$accepted" && "$out" == *readonlyNames* ]]; then
+    return 0
+  fi
+  return 2
 }
 
 # The `limactl edit --set` expression applying a mounts JSON, and the mount
@@ -53,6 +61,217 @@ _agent_vm_mounts_expr() {
   else
     printf 'del(.mountType) | .mounts = %s' "$1"
   fi
+}
+
+# The names readonlyNames always lists, one per line. .hg: Mercurial runs the
+# hooks of .hg/hgrc in a repository the user owns, which files written through
+# a share are.
+_agent_vm_base_readonly_names() {
+  printf '%s\n' .git .hg
+}
+
+# 0 when the relative path <rel> goes through one of the names above, matched
+# as the SFTP server does: per component, whatever the case.
+_agent_vm_under_readonly_name() {
+  local rest="$1/" c names
+  names=$'\n'"$(_agent_vm_base_readonly_names)"$'\n'
+  while [[ -n "$rest" ]]; do
+    c="$(printf '%s' "${rest%%/*}" | tr '[:upper:]' '[:lower:]')"
+    rest="${rest#*/}"
+    [[ "$names" == *$'\n'"$c"$'\n'* ]] && return 0
+  done
+  return 1
+}
+
+# 0 on the hosts whose file systems ignore case by default: macOS, Windows.
+_agent_vm_fs_nocase() {
+  [[ "$(uname -s 2>/dev/null)" == Darwin ]] || _agent_vm_on_windows
+}
+
+# <path> relative to <dir>, "." for <dir> itself; fails when it is not inside.
+# Compared whatever the case where the file system ignores it, so a path
+# spelled with other capitals is still found inside. (Not `path`: zsh ties
+# that name to PATH.)
+_agent_vm_rel_in() {
+  local target="${1%/}" dir="${2%/}" p d
+  p="$target"; d="$dir"
+  if _agent_vm_fs_nocase; then
+    p="$(printf '%s' "$p" | tr '[:upper:]' '[:lower:]')"
+    d="$(printf '%s' "$d" | tr '[:upper:]' '[:lower:]')"
+  fi
+  if [[ "$p" == "$d" ]]; then
+    printf '.\n'
+    return 0
+  fi
+  [[ -n "$d" && "$p" == "$d/"* ]] || return 1
+  printf '%s\n' "${target:$(( ${#dir} + 1 ))}"
+}
+
+# <dir> as git spells it: the physical path, C:/... on Windows.
+_agent_vm_git_spelling() {
+  local p
+  p="$(CDPATH= cd -P -- "$1" 2>/dev/null && pwd)" || return 1
+  _agent_vm_host_path "$p"
+}
+
+# <path> made absolute against <base> (both in git's spelling), `.` and `..`
+# resolved in the text.
+_agent_vm_git_abs() {
+  case "$1" in
+    /*) _agent_vm_path_join / "$1" ;;
+    [A-Za-z]:/*) _agent_vm_path_join "${1%%/*}" "${1#*/}" ;;
+    *) _agent_vm_path_join "$2" "$1" ;;
+  esac
+}
+
+# The git repositories git on this machine uses in the project <dir>: the one
+# holding <dir>, then those up to two levels below it (node_modules skipped),
+# fifty at most. One directory per line, to run git in.
+_agent_vm_project_repos() {
+  local dir="$1"
+  command -v git >/dev/null 2>&1 || return 0
+  _agent_vm_git_untrusted -C "$dir" rev-parse --git-dir >/dev/null 2>&1 && printf '%s\n' "$dir"
+  find "$dir" -mindepth 2 -maxdepth 3 \( -name node_modules -prune \) -o \( -name .git -print -prune \) 2>/dev/null \
+    | awk 'NR <= 50' | while IFS= read -r g; do
+        printf '%s\n' "${g%/.git}"
+      done
+}
+
+# The folder git on the host runs the hooks of the repository at <repo> from,
+# when core.hooksPath puts it in the project <proj> (in git's spelling) and
+# outside the names above (husky sets .husky/_). Two fields, tab-separated:
+# the folder relative to the project, "." for the project itself, then
+# relative to the top of the repository when that is in the project (what
+# names it: lib/x/.githooks is .githooks), or the same again. Fails otherwise,
+# or when git cannot tell. `--git-path` without --path-format (git 2.31)
+# answers relative to <repo>.
+_agent_vm_repo_hooks() {
+  local repo="$1" proj="$2" base top top_rel hooks rel in_repo
+  base="$(_agent_vm_git_spelling "$repo")" || return 1
+  hooks="$(_agent_vm_git_untrusted -C "$repo" rev-parse --git-path hooks 2>/dev/null)" || return 1
+  [[ -n "$hooks" && "$hooks" != *$'\n'* && "$hooks" != *$'\t'* ]] || return 1
+  hooks="$(_agent_vm_git_abs "$hooks" "$base")"
+  rel="$(_agent_vm_rel_in "$hooks" "$proj")" || return 1
+  [[ "$rel" == . ]] || ! _agent_vm_under_readonly_name "$rel" || return 1
+  in_repo="$rel"
+  if top="$(_agent_vm_git_untrusted -C "$repo" rev-parse --show-toplevel 2>/dev/null)" \
+     && top_rel="$(_agent_vm_rel_in "$top" "$proj")" && [[ "$top_rel" != . ]]; then
+    in_repo="$(_agent_vm_rel_in "$hooks" "$top")" || in_repo="$rel"
+  fi
+  printf '%s\t%s\n' "$rel" "$in_repo"
+}
+
+# Every hooks folder of the project <dir>'s repositories that is in the
+# project and outside the names above (see _agent_vm_repo_hooks), one per
+# line, with its two fields.
+_agent_vm_project_hooks() {
+  local dir="$1" proj repo
+  proj="$(_agent_vm_git_spelling "$dir")" || return 0
+  _agent_vm_project_repos "$dir" | while IFS= read -r repo; do
+    _agent_vm_repo_hooks "$repo" "$proj"
+  done | awk '!seen[$0]++'
+}
+
+# The name that keeps the hooks folder <rel> read-only: its first component,
+# which covers the folder and whatever it calls next to it (husky's hooks call
+# .husky/<hook>). Fails for the project itself, and for a name the mounts JSON
+# cannot carry.
+_agent_vm_hooks_name() {
+  local name="${1%%/*}"
+  [[ "$1" != . && -n "$name" && "$name" != *[\"\\]* && "$name" != *[[:cntrl:]]* ]] || return 1
+  printf '%s\n' "$name"
+}
+
+# The readonlyNames JSON array: the names always listed, then "$@", each once.
+_agent_vm_names_json() {
+  local n out="" seen=$'\n'
+  for n in $(_agent_vm_base_readonly_names) "$@"; do
+    [[ "$seen" == *$'\n'"$n"$'\n'* ]] && continue
+    seen="$seen$n"$'\n'
+    out="${out:+$out, }\"$n\""
+  done
+  printf '[%s]\n' "$out"
+}
+
+# The readonlyNames JSON array a start gives the project <dir> unless the user
+# declines a name: the names always listed, and those keeping its hooks
+# folders read-only.
+_agent_vm_readonly_names() {
+  local rel in_repo name names=()
+  while IFS=$'\t' read -r rel in_repo; do
+    [[ -n "$rel" ]] || continue
+    name="$(_agent_vm_hooks_name "$in_repo")" && names+=("$name")
+  done <<< "$(_agent_vm_project_hooks "$1")"
+  _agent_vm_names_json ${names[@]+"${names[@]}"}
+}
+
+# A readonlyNames JSON array as text: [".git", ".hg"] is ".git, .hg".
+_agent_vm_names_text() {
+  local s="${1#\[}"
+  s="${s%\]}"
+  printf '%s\n' "${s//\"/}"
+}
+
+_agent_vm_hooks_note() {
+  echo "Note: git runs hooks from $1 (core.hooksPath): every '$2' in the project is read-only for the VM too."
+}
+
+# What git on this machine takes from files the VM can write, for the
+# repository at <repo> in the project <proj> (git's spelling), one line each:
+# a config file included from the project, and a setting whose command names
+# a file in the project. The protected names are excepted, and core.hooksPath,
+# which _agent_vm_repo_hooks covers. A relative path in a command is taken
+# from the top of the repository, where git runs most of them.
+#
+# awk sorts the config first, so the shell only sees each file once and the
+# settings that hold a command (section and key names lowercased, as
+# `git config --list` prints them) with a path in their value: a start runs
+# this, and a fork per line would show.
+_agent_vm_repo_config_risks() {
+  local repo="$1" proj="$2" base top kind a b w rel
+  base="$(_agent_vm_git_spelling "$repo")" || return 0
+  top="$(_agent_vm_git_untrusted -C "$repo" rev-parse --show-toplevel 2>/dev/null)" || return 0
+  _agent_vm_git_untrusted -C "$repo" config --list --show-origin --includes 2>/dev/null \
+    | awk -F '\t' '
+        {
+          origin = $1; kv = substr($0, length($1) + 2)
+          if (origin ~ /^file:/ && !(origin in seen)) {
+            seen[origin] = 1; f = substr(origin, 6); gsub(/^"|"$/, "", f); print "O\t" f
+          }
+          key = kv; sub(/=.*/, "", key); val = substr(kv, length(key) + 2); lk = tolower(key)
+          if (lk !~ /^(core\.(fsmonitor|sshcommand|editor|pager|askpass|gitproxy|alternaterefscommand)|sequence\.editor|gpg\.program|gpg\..*\.program|diff\.external|diff\..*\.(command|textconv)|(difftool|mergetool|browser|man)\..*\.cmd|merge\..*\.driver|filter\..*\.(clean|smudge|process)|credential\.helper|credential\..*\.helper|pager\..*|alias\..*|interactive\.difffilter|uploadpack\.packobjectshook|web\.browser)$/) next
+          if (lk ~ /^alias\./ && val !~ /^!/) next
+          if (val ~ /\//) print "K\t" key "\t" val
+        }' \
+    | while IFS=$'\t' read -r kind a b; do
+        if [[ "$kind" == O ]]; then
+          rel="$(_agent_vm_rel_in "$(_agent_vm_git_abs "$a" "$base")" "$proj")" \
+            && ! _agent_vm_under_readonly_name "$rel" \
+            && printf 'config file %s\n' "$rel"
+          continue
+        fi
+        # Word by word, through awk: an unquoted expansion would glob them.
+        printf '%s\n' "${b#!}" | awk '{ for (i = 1; i <= NF; i++) print $i }' \
+          | while IFS= read -r w; do
+              w="${w#[\"\']}"; w="${w%[\"\']}"
+              # Not an option, an assignment or a URL: a path.
+              [[ "$w" == */* && "$w" != -* && "$w" != *=* && "$w" != *://* ]] || continue
+              [[ "$w" == "~/"* ]] && w="$HOME/${w#\~/}"
+              rel="$(_agent_vm_rel_in "$(_agent_vm_git_abs "$w" "$top")" "$proj")" || continue
+              _agent_vm_under_readonly_name "$rel" && continue
+              printf '%s = %s\n' "$a" "$b"
+              break
+            done
+      done
+}
+
+# The same for every repository of the project <dir>, each line once.
+_agent_vm_project_config_risks() {
+  local dir="$1" proj repo
+  proj="$(_agent_vm_git_spelling "$dir")" || return 0
+  _agent_vm_project_repos "$dir" | while IFS= read -r repo; do
+    _agent_vm_repo_config_risks "$repo" "$proj"
+  done | awk '!seen[$0]++'
 }
 
 # Why .git is not protected, and how to install a Lima that does it, on stdout.
@@ -295,16 +514,22 @@ EOF
 # touched either way. This never fails setup: the VMs work without it.
 _agent_vm_offer_git_protection() {
   _agent_vm_offer_fork_windows_update
-  _agent_vm_lima_protects_git && return 0
+  local st=0
+  _agent_vm_lima_protects_git || st=$?
+  [[ "$st" == 0 ]] && return 0
+  if [[ "$st" == 2 ]]; then
+    echo "Warning: cannot tell whether this Lima keeps .git read-only: 'limactl validate' gave no answer agent-vm knows. A start with writable shares stops until it can tell ('agent-vm doctor')." >&2
+    return 0
+  fi
   _agent_vm_git_protection_hint | _agent_vm_box "Lima cannot keep .git read-only"
   if _agent_vm_on_windows; then
     if ! _agent_vm_have_tty \
        || [[ "$(_agent_vm_ask_yn "Download the Lima build that has it now (both Windows zips, about 60 MB)?" Y)" != "1" ]]; then
-      echo "Continuing without .git protection." >&2
+      echo "Continuing without .git protection: every start with writable shares will ask first." >&2
       return 0
     fi
     if ! _agent_vm_install_fork_windows; then
-      echo "Warning: the download failed. Continuing without .git protection." >&2
+      echo "Warning: the download failed. Continuing without .git protection: every start with writable shares will ask first." >&2
       return 0
     fi
     hash -r 2>/dev/null
@@ -312,13 +537,13 @@ _agent_vm_offer_git_protection() {
       echo "Lima now keeps every .git read-only for the VMs."
     else
       echo "Warning: the limactl on PATH ($(_agent_vm_limactl_path)) still cannot keep .git read-only." >&2
-      echo "  Another Lima install comes first on PATH. Continuing without .git protection." >&2
+      echo "  Another Lima install comes first on PATH. Continuing without .git protection: every start with writable shares will ask first." >&2
     fi
     return 0
   fi
   if ! command -v brew >/dev/null 2>&1 || ! _agent_vm_have_tty \
      || [[ "$(_agent_vm_ask_yn "Install $AGENT_VM_LIMA_FORMULA now (built from source, takes a few minutes)?" Y)" != "1" ]]; then
-    echo "Continuing without .git protection." >&2
+    echo "Continuing without .git protection: every start with writable shares will ask first." >&2
     return 0
   fi
   local unlinked=""
@@ -328,7 +553,7 @@ _agent_vm_offer_git_protection() {
   if ! brew install "$AGENT_VM_LIMA_FORMULA"; then
     # Unlinked and nothing in its place would leave no limactl at all.
     [[ -n "$unlinked" ]] && brew link lima
-    echo "Warning: the install failed. Continuing without .git protection." >&2
+    echo "Warning: the install failed. Continuing without .git protection: every start with writable shares will ask first." >&2
     return 0
   fi
   hash -r 2>/dev/null
@@ -336,7 +561,7 @@ _agent_vm_offer_git_protection() {
     echo "Lima now keeps every .git read-only for the VMs."
   else
     echo "Warning: the limactl on PATH ($(_agent_vm_limactl_path)) still cannot keep .git read-only." >&2
-    echo "  Another Lima install comes first on PATH. Continuing without .git protection." >&2
+    echo "  Another Lima install comes first on PATH. Continuing without .git protection: every start with writable shares will ask first." >&2
   fi
 }
 
@@ -387,25 +612,40 @@ This makes git ignore such folders unless named with --git-dir:
 EOF
 }
 
-# Run by `setup`. Asks to run the command above, with a terminal to ask on;
-# without one, or on a no, says what is left open. Never fails setup.
-_agent_vm_offer_bare_repo_setting() {
-  case "$(_agent_vm_bare_repo_state)" in
+# Run when a VM starts with writable shares. Offers to run the command above,
+# when it can ask. Not set (no answer, a no, a git that ignores it): the
+# security question of _agent_vm_confirm_unsafe, whose default stops the
+# start. Fails when the start must stop. With the questions disabled, nothing
+# is offered either: the global git config is not changed unasked. With $1
+# set, the VM already runs, so a question would protect nothing: a warning
+# only.
+_agent_vm_check_bare_repo_setting() {
+  local state
+  state="$(_agent_vm_bare_repo_state)"
+  case "$state" in
     ok|nogit) return 0 ;;
-    old)
-      _agent_vm_bare_repo_hint | _agent_vm_box "Recommended: one git setting"
-      echo "Warning: $(git --version) is older than 2.38 and ignores that setting. Upgrade git, then run the command above." >&2
-      return 0 ;;
   esac
-  _agent_vm_bare_repo_hint | _agent_vm_box "Recommended: one git setting"
-  if ! _agent_vm_have_tty \
-     || [[ "$(_agent_vm_ask_yn "Run it now? It changes your global git config." Y)" != "1" ]]; then
-    echo "Warning: not set. Until you run the command above, git on this machine can run what a VM writes." >&2
+  if [[ -n "${1:-}" ]]; then
+    echo "Warning: git on this machine uses repositories a VM creates under another name than .git ('agent-vm doctor' says more)." >&2
     return 0
   fi
-  if git config --global safe.bareRepository explicit && [[ "$(_agent_vm_bare_repo_state)" == "ok" ]]; then
-    echo "Git on this machine now ignores repositories not named .git unless you name them."
-  else
-    echo "Warning: the setting did not take. Run the command above yourself." >&2
+  _agent_vm_bare_repo_hint | _agent_vm_box "Git: repositories not named .git"
+  if [[ "$state" == old ]]; then
+    echo "Warning: $(git --version) is older than 2.38 and ignores that setting." >&2
+    _agent_vm_confirm_unsafe && return 0
+    echo "Aborted. Upgrade git, then run the command above." >&2
+    return 1
   fi
+  if ! _agent_vm_prompts_disabled_by >/dev/null && _agent_vm_can_ask \
+     && [[ "$(_agent_vm_ask_yn "Run it now? It changes your global git config." Y)" == "1" ]]; then
+    if git config --global safe.bareRepository explicit && [[ "$(_agent_vm_bare_repo_state)" == "ok" ]]; then
+      echo "Git on this machine now ignores repositories not named .git unless you name them."
+      return 0
+    fi
+    echo "Warning: the setting did not take." >&2
+  fi
+  echo "Warning: not set. Until it is, git on this machine can run what a VM writes." >&2
+  _agent_vm_confirm_unsafe && return 0
+  echo "Aborted. Run the command above, then run agent-vm again." >&2
+  return 1
 }

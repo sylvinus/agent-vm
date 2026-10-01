@@ -16,6 +16,23 @@ check "rotation replaces, not appends" "$(grep -c '^ALBERT_API_KEY=' "$ENVHOME/.
 check "rotation keeps the fresh value" "$(avenv get ALBERT_API_KEY)" "k2"
 check "the quoted entry still reads back" "$(avenv get AC_GIT_USER_NAME)" "O'Brien"
 
+# Without VALUE, set reads it from stdin: a secret on the command line lands
+# in the shell history and in `ps`. One trailing newline goes, as echo adds
+# it; the rest of the value is kept.
+printf 'from-stdin\n' | avenv set STDIN_KEY >/dev/null
+check "set without VALUE reads stdin" "$(avenv get STDIN_KEY)" "from-stdin"
+printf 'two\nlines\n' | avenv set STDIN_KEY >/dev/null
+check "a value on stdin keeps its inner newline" "$(avenv get STDIN_KEY)" "two
+lines"
+if avenv set STDIN_KEY </dev/null >/dev/null 2>&1; then
+  fail "set with no VALUE and nothing on stdin succeeded"
+else
+  pass "set with no VALUE and nothing on stdin is refused"
+fi
+check "and the value is kept" "$(avenv get STDIN_KEY)" "two
+lines"
+avenv unset STDIN_KEY
+
 printf 'SOMEONE_ELSE=keep-me\n' >> "$ENVHOME/.agent-vm/env"
 avenv set ALBERT_API_KEY "k3" >/dev/null
 check "unmanaged lines are preserved" "$(grep -c '^SOMEONE_ELSE=keep-me$' "$ENVHOME/.agent-vm/env")" "1"

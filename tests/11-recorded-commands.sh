@@ -12,7 +12,8 @@ section "commands against a recording limactl"
 # script. What is piped into the env push goes to AGENT_VM_TEST_STDIN.
 # `validate` answers like stock Lima 2.2 does to readonlyNames, or, while the
 # file $PROTECTS exists, like a Lima that has it (both messages copied from
-# the real binaries).
+# the real binaries). AGENT_VM_TEST_VALIDATE_SILENT makes it accept the file
+# without a word, an answer agent-vm cannot read.
 REC="$SB/rec.log"
 PROTECTS="$SB/lima-protects"
 cat > "$SB/bin/limactl" <<'STUB'
@@ -22,6 +23,7 @@ listed() { [ -z "${AGENT_VM_TEST_CLONED:-}" ] || [ -e "$AGENT_VM_TEST_CLONED" ];
 case "$1" in
   --version) echo "limactl version 2.0.3" ;;
   validate)
+    [ -z "${AGENT_VM_TEST_VALIDATE_SILENT:-}" ] || exit 0
     if [ -e "${AGENT_VM_TEST_PROTECTS:-/nonexistent}" ]; then
       echo 'level=fatal msg="failed to validate YAML file `probe.yaml`: field `mounts[*].sshfs.readonlyNames` requires `mountType` to be `reverse-sshfs`"' >&2
       exit 1

@@ -121,7 +121,9 @@ current="$(git rev-parse --abbrev-ref HEAD)"
 ok "on $BRANCH"
 
 head="$(git rev-parse HEAD)"
-remote_head="$(git ls-remote origin "refs/heads/$BRANCH" | cut -f1)"
+# `|| true`: under set -e and pipefail, a failed ls-remote would exit here
+# without a word; the check below says what went wrong.
+remote_head="$(git ls-remote origin "refs/heads/$BRANCH" | cut -f1)" || true
 [ -n "$remote_head" ] || die "could not read origin/$BRANCH"
 [ "$head" = "$remote_head" ] \
   || die "HEAD is not origin/$BRANCH: push or pull first"

@@ -39,10 +39,12 @@ _agent_vm_take_opt() {
       val="$2"; taken=2 ;;
     --disk=*|--memory=*|--ram=*|--cpus=*|--ssh-port=*)
       val="${opt#*=}"; opt="${opt%%=*}"; taken=1 ;;
-    --reset|--readonly)
+    --reset|--readonly|--scratch)
       vm_opts+=("$opt"); taken=1; return 0 ;;
     --unsafe-writable-git|--unsafe-writable-git=1)
       vm_opts+=(--unsafe-writable-git); taken=1; return 0 ;;
+    --unsafe-disable-security-prompts)
+      vm_opts+=(--unsafe-disable-security-prompts); taken=1; return 0 ;;
     --rm)
       rm=1; taken=1; return 0 ;;
     *)

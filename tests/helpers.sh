@@ -19,6 +19,18 @@ SB="$(mktemp -d)"
 SB="$(CDPATH= cd -P -- "$SB" >/dev/null && pwd)"
 trap 'rm -rf "$SB"' EXIT
 export HOME="$SB/home"
+# git's config from this sandbox only: with XDG_CONFIG_HOME or
+# GIT_CONFIG_GLOBAL set, `git config --global` would read and write the real
+# one. safe.bareRepository is set, as on a machine agent-vm set up, so a start
+# does not stop on it; the tests of that question use a stub git.
+unset XDG_CONFIG_HOME GIT_CONFIG_GLOBAL
+export GIT_CONFIG_NOSYSTEM=1
+mkdir -p "$HOME"
+printf '[safe]\n\tbareRepository = explicit\n' > "$HOME/.gitconfig"
+# The stub Lima has no readonlyNames unless a test says so, and a VM started
+# on it asks before going on (see _agent_vm_confirm_unsafe). Answered yes here;
+# the tests of those questions unset it.
+export AGENT_VM_UNSAFE_DISABLE_SECURITY_PROMPTS=1
 # A real directory: `name` and `info` resolve their argument and reject a
 # path that does not exist, so the tests cannot use a made-up one.
 PROJ="$SB/proj"

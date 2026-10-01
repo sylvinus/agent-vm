@@ -47,6 +47,14 @@ fi
 printf 'OUTSIDE=1\n' > "$SB/pf-own.env"
 AGENT_VM_PROJECT_ENV="$SB/pf-own.env" pf_rec run true >/dev/null
 check "an env file outside the project is pushed by the host" "$(grep -c '^OUTSIDE=1$' "$SB/pf-stdin")" "1"
+# So is one a relative path takes out of the project: the VM cannot see it.
+AGENT_VM_PROJECT_ENV=../pf-own.env pf_rec run true >/dev/null
+check "a relative path out of the project (../) is pushed by the host" "$(grep -c '^OUTSIDE=1$' "$SB/pf-stdin")" "1"
+check "and named without the detour" \
+  "$(cd "$PF" && AGENT_VM_PROJECT_ENV=sub/../../pf-own.env _agent_vm_project_env_file) $(AGENT_VM_PROJECT_RUNTIME=/a/./b/../rt.sh _agent_vm_project_runtime_path "$PF")" \
+  "$SB/pf-own.env /a/rt.sh"
+check "project-env reads it there" \
+  "$( cd "$PF" && AGENT_VM_PROJECT_ENV=../pf-own.env AGENT_VM_STATE_DIR="$SB/pf-state" bash "$AGENT_VM_SH" project-env get OUTSIDE )" "1"
 rm -f "$SB/pf-own.env"
 # A runtime the VM does not find is not run.
 pf_rec run true >/dev/null

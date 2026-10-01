@@ -55,17 +55,48 @@
   `doctor` reports it too. `--unsafe-writable-git`, or
   `AGENT_VM_UNSAFE_WRITABLE_GIT=1` in the shell, turns it off, for those who
   let the agent commit in the project, with a warning on every run.
-- `setup` asks to set `safe.bareRepository=explicit` in the global git config,
-  and `doctor` warns while it is not set, or while git is older than 2.38 and
-  ignores it. A folder holding `HEAD`, `objects/`, `refs/` and a `config` is a
-  repository to git under any name, so `readonlyNames` does not cover it: a VM
-  could create one in a project, and git on the host would run the commands its
-  `config` names (`core.pager` as soon as `git log` is typed there).
+- Every `.hg` is read-only as well: Mercurial runs the hooks of `.hg/hgrc`
+  in a repository you own. When git's `core.hooksPath` puts the hooks in the
+  project (husky sets `.husky/_`), the first folder of that path, from the
+  top of its repository, joins the names too, so the agent cannot change the
+  hooks git runs on your commits. The repository holding the project and
+  those up to two levels below it are checked, with git before 2.31 too. A
+  name that does not start with a dot would lock every folder of that name
+  in the project, so the start asks first (yes by default). Hooks at the top
+  of a repository cannot be protected by name. `doctor` reports all of it.
+- Before a VM boots with writable shares, agent-vm stops on each risk it
+  cannot remove and asks whether to go on; Enter, or no terminal, aborts,
+  and nothing has changed. The risks: a Lima that cannot keep `.git`
+  read-only; hooks that cannot be protected, or a name declined; a git
+  config file included from the project, or a setting (`core.fsmonitor`, a
+  filter, a `!` alias...) whose command is a file in it; and
+  `safe.bareRepository=explicit` missing from the global git config, which
+  it offers to set, or ignored by a git older than 2.38. Without that
+  setting, a folder holding `HEAD`, `objects/`, `refs/` and a `config` is a
+  repository to git under any name, which `readonlyNames` does not cover,
+  and git on the host runs the commands its `config` names (`core.pager` as
+  soon as `git log` is typed there). A question is only asked when stderr is
+  a terminal too, so a caller capturing it gets "no" rather than a question
+  nobody sees. For a VM that already runs, the warnings are printed without
+  a question; one that lacks a protection it should have is offered a
+  restart, and continuing without it is the same kind of risk. `--readonly`
+  asks nothing, and `--unsafe-writable-git` nothing about `.git`.
+  `--unsafe-disable-security-prompts`, or
+  `AGENT_VM_UNSAFE_DISABLE_SECURITY_PROMPTS=1` in the shell, goes on without
+  asking, and without offering to change the git config; the warnings are
+  still printed.
+- A Lima whose answer to the `readonlyNames` probe cannot be read (a failing
+  `limactl validate`, a wording agent-vm does not know) stops the start with
+  an error. It was taken for a Lima without `readonlyNames`, and a stopped
+  VM then lost its protection on its next start.
+- The home directory and agent-vm's directories are refused as a project
+  whatever the case they are typed in, on macOS and Windows: Git Bash keeps
+  the spelling typed, so `cd /c/users/me` got past the check.
 - `--readonly` is now set on the Lima shares, so the host refuses the writes
   and root in the VM cannot lift it. It used to be a remount inside the
   guest. Under `reverse-sshfs` without `readonlyNames`, where Lima only passes
   the flag to the guest, agent-vm refuses `--readonly` instead of pretending.
-  Switching the mode restarts the VM.
+  Switching the mode restarts a running VM.
 - `--readonly` is refused on virtiofs under QEMU, where Lima's virtiofsd has no
   read-only mode and the flag only reaches the guest. It was accepted there as
   enforced on the host. 9p, QEMU's default, and virtiofs on `vz` are enforced.
@@ -104,6 +135,12 @@ has passwordless sudo, so anything enforced there is advisory at best.
 
 ### Changed
 
+- For scripts and tools that run agent-vm without a terminal: a start can
+  now stop on a security question (see Security above), with the reason on
+  stderr and a failing status. `agent-vm info` says beforehand what it would
+  stop on (`security_questions=`). Pass `--unsafe-disable-security-prompts`,
+  or set `AGENT_VM_UNSAFE_DISABLE_SECURITY_PROMPTS=1`, once the user has
+  agreed; or use `--readonly`.
 - `agent-vm.sh` loads the rest of agent-vm from `lib/`, next to it, and stops
   with the name of the missing file when it is not there: a copy of
   `agent-vm.sh` on its own no longer works. Clones, the curl installer and
@@ -156,16 +193,33 @@ has passwordless sudo, so anything enforced there is advisory at best.
   in place and is cleared when done. The full output goes to
   `~/.agent-vm/setup.log`, whose end is printed again if a step fails. Without
   a terminal, the output is printed as before.
-- `setup` opens on the wizard, agents first, and runs its security checks
-  (`.git` protection, `safe.bareRepository`) last, before creating the VM.
-  Their warnings are shorter, in a box fitted to the terminal, with the
-  question right below.
+- `setup` opens on the wizard, agents first, and runs its security check
+  (`.git` protection) last, before creating the VM. Its warnings are
+  shorter, in a box fitted to the terminal, with the question right below.
 
 ### Added
 
+- `--scratch`: a new VM with nothing of yours mounted, neither the project
+  nor `~/.agent-vm/volumes`, deleted when the command ends, Ctrl-C included.
+  On a terminal the deletion is asked first, yes by default: no opens a
+  shell in the VM, to look at what the command left, and leaving it asks
+  again. It has a name of its own (`agent-vm-<folder>-scratch-<random>`), so the
+  folder's VM is left alone and several can run at once. The project's env
+  file and runtime script stay out; `~/.agent-vm/env` and
+  `~/.agent-vm/runtime.sh` go in. Sharing nothing, it asks none of the
+  security questions and works on any Lima. A run killed outright leaves its
+  VM recorded, and the next `--scratch` run deletes it; `doctor` lists it
+  meanwhile.
+- `agent-vm env set KEY` and `project-env set KEY` without a value read it
+  from stdin, or have you type it unseen: a value on the command line lands
+  in the shell history and in `ps`.
+- `info` prints `git_protected=` (whether a start keeps `.git` read-only)
+  and `security_questions=` (what a start would stop on: `lima`,
+  `lima-unknown`, `hooks`, `git-config`, `bare-repo`, or `none`).
 - Windows, experimental, from Git Bash, with QEMU. `setup` offers to
   download a Lima build for Windows that keeps `.git` read-only (checked
-  against its `SHA256SUMS`, and replaced when agent-vm moves to a newer one),
+  against checksums pinned in agent-vm, not the release's `SHA256SUMS`, and
+  replaced when agent-vm moves to a newer one),
   finds winget's QEMU where it installs it, and explains a start that fails
   on WHPX: QEMU needs the "Windows Hypervisor Platform" feature, which only
   an administrator can turn on. Paths go to Lima in Windows form, with Git
@@ -191,8 +245,9 @@ has passwordless sudo, so anything enforced there is advisory at best.
   that save the port rather than an alias (#28). `0` goes back to a new port on
   each start. A port another agent-vm VM has is refused. `info` gains
   `ssh_host` and `ssh_config`: Lima's alias for the VM and the SSH config file
-  it keeps current. The README has the `~/.ssh/config` lines to use them, which
-  keep the host's SSH agent out of the VM.
+  it keeps current. [The website](https://www.agent-vm.org/#connect-an-ide-over-ssh)
+  has the `~/.ssh/config` lines to use them, which keep the host's SSH agent out
+  of the VM.
 - `curl -fsSL https://www.agent-vm.org/install.sh | sh` installs the latest
   release, checked against its `SHA256SUMS`, in `~/.local/share/agent-vm`, and
   runs `agent-vm install`. Running it again updates. `--version X.Y.Z` picks a

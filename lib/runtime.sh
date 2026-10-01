@@ -41,8 +41,8 @@ _agent_vm_runtime_interpreter() {
 _agent_vm_project_runtime_path() {
   local host_dir="$1" rel="${AGENT_VM_PROJECT_RUNTIME:-.agent-vm.runtime.sh}"
   case "$rel" in
-    /*) printf '%s\n' "$rel" ;;
-    *)  printf '%s\n' "${host_dir}/${rel}" ;;
+    /*) _agent_vm_path_join / "$rel" ;;
+    *)  _agent_vm_path_join "$host_dir" "$rel" ;;
   esac
 }
 

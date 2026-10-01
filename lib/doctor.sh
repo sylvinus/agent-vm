@@ -96,7 +96,7 @@ _agent_vm_doctor() {
 
   echo ""
   echo "Lima"
-  local have_lima=""
+  local have_lima="" protects_git=""
   if [[ -n "$(_agent_vm_limactl_path)" ]]; then
     have_lima=1
     local lima_ver
@@ -110,12 +110,19 @@ _agent_vm_doctor() {
     else
       $d ok "Lima $lima_ver"
     fi
-    if _agent_vm_lima_protects_git; then
-      $d ok "Lima keeps every .git read-only for the VMs (sshfs.readonlyNames)"
-    else
-      $d warn "this Lima cannot keep .git read-only for the VMs"
-      _agent_vm_git_protection_hint | _agent_vm_wrap 70 | sed 's/^/        /'
-    fi
+    local lima_st=0
+    _agent_vm_lima_protects_git || lima_st=$?
+    case "$lima_st" in
+      0)
+        _agent_vm_writable_git_optout || protects_git=1
+        $d ok "Lima keeps every .git read-only for the VMs (sshfs.readonlyNames)" ;;
+      1)
+        $d warn "this Lima cannot keep .git read-only for the VMs, so a start with writable shares asks first"
+        _agent_vm_git_protection_hint | _agent_vm_wrap 70 | sed 's/^/        /' ;;
+      *)
+        $d fail "cannot tell whether this Lima keeps .git read-only: 'limactl validate' gave no answer agent-vm knows" \
+          "A start with writable shares stops until it can tell. Check that 'limactl validate' works." ;;
+    esac
     if _agent_vm_writable_git_optout; then
       $d warn "AGENT_VM_UNSAFE_WRITABLE_GIT=1: the VMs can write .git, and git on this machine runs what .git/config and hooks name" \
         "Unset it to keep .git read-only."
@@ -217,8 +224,9 @@ _agent_vm_doctor() {
   done
 
   echo ""
-  local host_dir vm_name
+  local host_dir vm_name vm_exists="" ro_names=""
   host_dir="$(pwd)"
+  [[ -n "$protects_git" ]] && ro_names="$(_agent_vm_readonly_names "$host_dir")"
   echo "This directory ($host_dir)"
   if [[ "$host_dir" == *[[:space:]]* || "$host_dir" == *[\"\\]* || "$host_dir" == *[[:cntrl:]]* ]]; then
     $d fail "the path contains whitespace, a quote, a backslash or a control character" \
@@ -237,6 +245,7 @@ _agent_vm_doctor() {
       _agent_vm_exists "$vm_name" || st=$?
       case "$st" in
         0)
+          vm_exists=1
           if [[ "$(_agent_vm_stale_state "$vm_name")" == "1" ]]; then
             $d warn "$vm_name was cloned from an older base template" "'agent-vm --reset <command>' re-clones it."
           else
@@ -256,7 +265,11 @@ _agent_vm_doctor() {
           fi
           # What the VM was given, which may predate the Lima installed now:
           # the next start brings it in line (see _agent_vm_ensure_running).
-          if _agent_vm_mounts_protect_git "$vm_name"; then
+          if [[ -n "$protects_git" ]] && _agent_vm_mounts_protect_git "$vm_name" \
+             && ! _agent_vm_mounts_have_readonly_names "$vm_name" "$ro_names"; then
+            $d warn "its shares keep .git read-only, but not all of $(_agent_vm_names_text "$ro_names")" \
+              "The next start (after 'agent-vm stop' if it runs) fixes that."
+          elif _agent_vm_mounts_protect_git "$vm_name"; then
             $d ok "its shares keep every .git read-only"
           elif _agent_vm_writable_git_optout; then
             $d warn "its shares leave .git writable (AGENT_VM_UNSAFE_WRITABLE_GIT=1)"
@@ -268,6 +281,37 @@ _agent_vm_doctor() {
         *) $d warn "could not query Lima" ;;
       esac
     fi
+  fi
+  # Hooks folders the VM can write, and git on this machine runs (see
+  # _agent_vm_project_hooks), in this project and the repositories below it.
+  local hooks_rel hooks_in hooks_name hooks_what
+  while IFS=$'\t' read -r hooks_rel hooks_in; do
+    [[ -n "$hooks_rel" ]] || continue
+    hooks_what="git runs hooks from $hooks_rel (core.hooksPath)"
+    [[ "$hooks_rel" == . ]] && hooks_what="git runs hooks from the project directory itself (core.hooksPath)"
+    if ! hooks_name="$(_agent_vm_hooks_name "$hooks_in")"; then
+      $d warn "$hooks_what, which the VM can write" \
+        "agent-vm can only keep a folder of the project read-only, by a name without quotes or backslashes: point core.hooksPath to one."
+    elif [[ -z "$protects_git" ]]; then
+      $d warn "$hooks_what, which the VM can write" \
+        "agent-vm keeps it read-only when it keeps .git read-only (see above)."
+    elif [[ -z "$vm_exists" ]]; then
+      $d info "$hooks_what: every '$hooks_name' in the project will be read-only for the VM"
+    elif _agent_vm_mounts_have_readonly_names "$vm_name" "$ro_names"; then
+      $d ok "$hooks_what: every '$hooks_name' in the project is read-only for the VM"
+    else
+      $d warn "$hooks_what, which the VM can still write" \
+        "The next start (after 'agent-vm stop' if it runs) makes every '$hooks_name' in the project read-only."
+    fi
+  done <<< "$(_agent_vm_project_hooks "$host_dir")"
+  # Git config the VM can write, or commands it names in the project (see
+  # _agent_vm_repo_config_risks).
+  local git_risks
+  git_risks="$(_agent_vm_project_config_risks "$host_dir")"
+  if [[ -n "$git_risks" ]]; then
+    $d warn "git on this machine uses these, and the VM can write them:"
+    printf '%s\n' "$git_risks" | sed 's/^/        /'
+    printf '        %s\n' "Move them out of the project, or have them name commands outside it."
   fi
   local runtime runtime_text project_env
   runtime="$(_agent_vm_project_runtime_path "$host_dir")"
@@ -314,6 +358,12 @@ _agent_vm_doctor() {
     else
       $d info "$run_n running, ${run_cpus} CPUs and ${run_mem} GiB in total"
     fi
+    local leftover
+    while IFS= read -r leftover; do
+      [[ -n "$leftover" ]] || continue
+      $d warn "scratch VM $leftover was left by a run that did not finish" \
+        "The next --scratch run deletes it, or: agent-vm rm $leftover"
+    done <<< "$(_agent_vm_scratch_leftovers)"
   fi
 
   echo ""

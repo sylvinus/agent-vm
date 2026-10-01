@@ -151,7 +151,13 @@ check "info: vm_exists"    "$(get vm_exists)"   "0"
 check "info: vm_stale unknown with no VM" "$(get vm_stale)" "unknown"
 check "info: ssh_host is Lima's alias" "$(get ssh_host)" "lima-$(_agent_vm_name "$PROJ")"
 check "info: ssh_config unknown with no VM" "$(get ssh_config)" "unknown"
-check "info: key count"    "$(printf '%s\n' "$info_out" | grep -c '^[a-z_]*=')" "12"
+# This limactl answers `validate` with nothing: a Lima agent-vm cannot read.
+check "info: git_protected unknown when Lima cannot tell" "$(get git_protected)" "unknown"
+case "$(get security_questions)" in
+  lima-unknown|lima-unknown,*) pass "info: security_questions names the Lima that cannot tell" ;;
+  *) fail "info: security_questions: $(get security_questions)" ;;
+esac
+check "info: key count"    "$(printf '%s\n' "$info_out" | grep -c '^[a-z_]*=')" "14"
 
 # Every key must be present even with no Lima on the box. Build a PATH with the
 # limactl-bearing directories dropped rather than a hardcoded one, so this also
@@ -169,8 +175,8 @@ while [ -n "$_rest" ]; do
   nolima_path="${nolima_path:+$nolima_path:}$_d"
 done
 nolima="$(PATH="$nolima_path" bash -c 'source "$1"; agent-vm info "$2"' _ "$AGENT_VM_SH" "$PROJ" 2>/dev/null)"
-check "info without limactl still prints 12 keys" \
-  "$(printf '%s\n' "$nolima" | grep -c '^[a-z_]*=')" "12"
+check "info without limactl still prints 14 keys" \
+  "$(printf '%s\n' "$nolima" | grep -c '^[a-z_]*=')" "14"
 case "$nolima" in
   *"base_exists=unknown"*) pass "info without limactl says unknown, not 0" ;;
   *) fail "info without limactl should report unknown" ;;
@@ -209,4 +215,4 @@ check "CDPATH does not redirect the lookup" \
 # into a dash. `info` prints the resolved path raw, so a leaked line shows up as
 # one line too many among the key=value pairs.
 check "no stray cd output leaks into info" \
-  "$(cd "$SB/real" && CDPATH="$SB/decoy" agent-vm info twin | wc -l | tr -d ' ')" "12"
+  "$(cd "$SB/real" && CDPATH="$SB/decoy" agent-vm info twin | wc -l | tr -d ' ')" "14"

@@ -37,6 +37,39 @@ _agent_vm_ask_yn() {
   esac
 }
 
+# Can a question be asked, and seen? A terminal to read the answer from, and
+# stderr, where the question goes, on a terminal too: a caller capturing
+# stderr would otherwise wait on a question nobody sees.
+_agent_vm_can_ask() {
+  _agent_vm_have_tty && [[ -t 2 ]]
+}
+
+# What turned the security questions off, when something did:
+# --unsafe-disable-security-prompts (_agent_vm_ensure_running sets
+# _agent_vm_unsafe_no_prompts, as a local, for the flag), or
+# AGENT_VM_UNSAFE_DISABLE_SECURITY_PROMPTS=1 in the shell. Never a file of
+# the project, which the VM can write. Fails when they are on.
+_agent_vm_prompts_disabled_by() {
+  if [[ -n "${_agent_vm_unsafe_no_prompts:-}" ]]; then
+    printf '%s\n' "--unsafe-disable-security-prompts"
+  elif [[ "${AGENT_VM_UNSAFE_DISABLE_SECURITY_PROMPTS:-}" == 1 ]]; then
+    printf '%s\n' "AGENT_VM_UNSAFE_DISABLE_SECURITY_PROMPTS=1"
+  else
+    return 1
+  fi
+}
+
+# The question after a security warning: 0 to go on. No by default, and when
+# it cannot be asked (_agent_vm_can_ask); yes when the questions are off.
+_agent_vm_confirm_unsafe() {
+  local by
+  if by="$(_agent_vm_prompts_disabled_by)"; then
+    echo "Continuing: $by." >&2
+    return 0
+  fi
+  _agent_vm_can_ask && [[ "$(_agent_vm_ask_yn "Continue anyway?" N)" == "1" ]]
+}
+
 # _agent_vm_wrap <width> — word-wrap stdin to <width> columns. Lines indented
 # by two spaces are commands, kept whole so they can be copied.
 _agent_vm_wrap() {
@@ -53,9 +86,9 @@ _agent_vm_wrap() {
     }'
 }
 
-# _agent_vm_box <title> — print stdin on stderr as a boxed notice, for setup's
-# warnings and offers: one paragraph per line, wrapped to the terminal (72
-# columns at most). A question asked right after reads as being about the box.
+# _agent_vm_box <title> — print stdin on stderr as a boxed notice, for the
+# warnings and offers of setup and of a start: one paragraph per line,
+# wrapped to the terminal (72 columns at most). A question asked right after reads as being about the box.
 # No right border: it would need every line padded to its display width, which
 # bash and zsh count differently for non-ASCII text.
 _agent_vm_box() {

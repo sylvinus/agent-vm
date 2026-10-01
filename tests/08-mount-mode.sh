@@ -28,7 +28,7 @@ esac
 
 # .git protection: Lima refuses readonlyNames unless EVERY mount uses the
 # builtin driver, so the volumes entries need it as much as the project.
-SSHFS_RO='"sshfs": {"sftpDriver": "builtin", "readonlyNames": [".git"]}'
+SSHFS_RO='"sshfs": {"sftpDriver": "builtin", "readonlyNames": [".git", ".hg"]}'
 printf '%s:/mnt/v:rw\n' "$SB/extra-vol" > "$HOME/.agent-vm/volumes"
 mounts_prot="$(_agent_vm_build_mounts_json agent-vm-t "$PROJ" true 1)"
 rm -f "$HOME/.agent-vm/volumes"
@@ -77,7 +77,12 @@ check "an unknown VM type is undecided"     "$(mount_types 'wsl2 wsl2')"     "2"
 check "unset on vz: virtiofs, enforced"     "$(mount_types 'vz <nil>')"      "0"
 mkdir -p "$SB/lima-home/agent-vm-t"
 echo 2.1.0 > "$SB/lima-home/agent-vm-t/lima-version"
-check "unset on QEMU, Lima >= 1.0: 9p, enforced" "$(LIMA_HOME="$SB/lima-home" mount_types 'qemu <nil>')" "0"
+# Not on a Windows host, where QEMU has no 9p (tests/18-windows.sh).
+if _agent_vm_on_windows; then
+  printf '  skip unset on QEMU, Lima >= 1.0: 9p (a Windows host has no 9p)\n'
+else
+  check "unset on QEMU, Lima >= 1.0: 9p, enforced" "$(LIMA_HOME="$SB/lima-home" mount_types 'qemu <nil>')" "0"
+fi
 echo 0.23.2 > "$SB/lima-home/agent-vm-t/lima-version"
 check "unset on QEMU, Lima < 1.0: reverse-sshfs, not" "$(LIMA_HOME="$SB/lima-home" mount_types 'qemu <nil>')" "1"
 rm -f "$SB/lima-home/agent-vm-t/lima-version"
