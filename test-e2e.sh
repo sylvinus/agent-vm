@@ -116,7 +116,7 @@ section "first run in a project directory"
 # =============================================================================
 echo "hello" > "$PROJ/host-file.txt"
 
-if (cd "$PROJ" && "$AGENT_VM" run cat "$PROJ/host-file.txt" 2>/dev/null | grep -q hello); then
+if grep -q hello <<< "$(cd "$PROJ" && "$AGENT_VM" run cat "$PROJ/host-file.txt" 2>/dev/null)"; then
   pass "the project directory is mounted and readable in the VM"
 else
   fail "the project directory is not readable in the VM"
@@ -166,7 +166,7 @@ if [ -n "$PROTECTS_GIT" ]; then
   (cd "$PROJ" && "$AGENT_VM" run sh -c "echo still > '$PROJ/worktree-file.txt'") \
     && [ "$(cat "$PROJ/worktree-file.txt" 2>/dev/null)" = "still" ] \
     && pass "the working tree stays writable" || fail "the working tree is not writable"
-  (cd "$PROJ" && "$AGENT_VM" run cat .git/HEAD 2>/dev/null | grep -q '^ref:') \
+  grep -q '^ref:' <<< "$(cd "$PROJ" && "$AGENT_VM" run cat .git/HEAD 2>/dev/null)" \
     && pass "the VM can still read .git" || fail "the VM cannot read .git"
   (cd "$PROJ" && "$AGENT_VM" run sh -c 'mkdir -p planted/.hg' >/dev/null 2>&1)
   [ ! -e "$PROJ/planted/.hg" ] && pass "the VM cannot plant a .hg" || fail "the VM planted planted/.hg"
@@ -319,12 +319,12 @@ case "$scr_out" in *no-host-file*) pass "the project's files are not in a scratc
 case "$scr_out" in *wrote-own-disk*) pass "it works at the project's path, on its own disk" ;; *) fail "the scratch folder is not writable: $scr_out" ;; esac
 [ ! -e "$PROJ/from-scratch.txt" ] && pass "what it writes there does not reach the host" || fail "a scratch VM wrote into the project"
 case "$scr_out" in *shares=0*) pass "no share is mounted in it" ;; *) fail "a share is mounted in a scratch VM: $scr_out" ;; esac
-if limactl list -q 2>/dev/null | grep -q -- '-scratch-'; then
+if grep -q -- '-scratch-' <<< "$(limactl list -q 2>/dev/null)"; then
   fail "the scratch VM is still there: $(limactl list -q | grep -- '-scratch-')"
 else
   pass "the scratch VM is deleted"
 fi
-"$AGENT_VM" info "$PROJ" | grep -qx "vm_exists=1" && pass "the folder's own VM is still there" || fail "the folder's own VM went"
+grep -qx "vm_exists=1" <<< "$("$AGENT_VM" info "$PROJ")" && pass "the folder's own VM is still there" || fail "the folder's own VM went"
 rm -f "$PROJ/scratch-probe.txt"
 
 # =============================================================================
@@ -347,7 +347,7 @@ fi
 section "teardown"
 # =============================================================================
 if (cd "$PROJ" && "$AGENT_VM" rm >/dev/null 2>&1) \
-   && "$AGENT_VM" info "$PROJ" | grep -qx "vm_exists=0"; then
+   && grep -qx "vm_exists=0" <<< "$("$AGENT_VM" info "$PROJ")"; then
   pass "rm deletes the project VM"
 else
   fail "the project VM survived rm"

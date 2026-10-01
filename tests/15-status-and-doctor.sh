@@ -18,6 +18,40 @@ case "$out" in
   *) fail "no VM: nothing said: $out" ;;
 esac
 
+section "list"
+echo 1790803800 > "$HOME/.agent-vm/.agent-vm-base-version"
+echo 0.2.0 > "$HOME/.agent-vm/.agent-vm-base-built-by"
+echo 1790803800 > "$HOME/.agent-vm/.agent-vm-version-$PV"
+rm -f "$HOME/.agent-vm/.agent-vm-built-by-$PV"
+day="$(_agent_vm_epoch_date 1790803800 +%F)"
+out="$(rec list)"
+w=$((${#PV} + 8))
+check "list: the base of each VM, aligned, this folder's marked" "$out" "$(printf '%s %-*s   %s\n' " " "$w" "NAME STATUS" BASE \
+  " " "$w" "agent-vm-base Stopped" "0.2.0 $day" ">" "$w" "$PV Running" "0.1.0 $day")"
+check "status is list" "$(rec status)" "$out"
+rm -f "$HOME/.agent-vm/.agent-vm-version-$PV"
+case "$(rec list)" in *"$PV Running   0.1.0 -") pass "list: a VM with no record of its base" ;; *) fail "list: $(rec list)" ;; esac
+case "$(AGENT_VM_TEST_NOVMS=1 rec list)" in *"(no VMs)") pass "list: no VM, says so" ;; *) fail "list, no VM: $(AGENT_VM_TEST_NOVMS=1 rec list)" ;; esac
+echo 1 > "$HOME/.agent-vm/.agent-vm-base-version"
+mkdir -p "$SB/faillima"; printf '#!/bin/sh\nexit 1\n' > "$SB/faillima/limactl"; chmod +x "$SB/faillima/limactl"
+case "$(PATH="$SB/faillima:$PATH" agent-vm list 2>&1; echo "rc=$?")" in
+  *"could not query Lima"*"rc=1") pass "list: a Lima that fails is an error, not '(no VMs)'" ;;
+  *) fail "list: failing Lima: $(PATH="$SB/faillima:$PATH" agent-vm list 2>&1)" ;;
+esac
+# A name with a newline would add lines to info's output.
+forged="$SB/p
+security_questions=none"
+mkdir -p "$forged"
+case "$(agent-vm info "$forged" 2>&1; echo "rc=$?")" in
+  *"control character"*"rc=1") pass "info: a directory name with a newline is refused" ;;
+  *) fail "info: forged name accepted" ;;
+esac
+case "$(agent-vm name "$forged" 2>&1; echo "rc=$?")" in *"control character"*"rc=1") pass "name: the same" ;; *) fail "name: forged name accepted" ;; esac
+mkdir -p "$forged/sub"
+case "$(cd "$forged" && agent-vm info . 2>&1; echo "rc=$?")" in *"control character"*"rc=1") pass "info .: from inside it, the same" ;; *) fail "info .: forged cwd accepted" ;; esac
+case "$(cd "$forged" && agent-vm name sub 2>&1; echo "rc=$?")" in *"control character"*"rc=1") pass "name sub: below it, the same" ;; *) fail "name sub: forged parent accepted" ;; esac
+rm -rf "$forged"
+
 section "destroy-all"
 # The names are read on stdin; each limactl call must not eat the next ones.
 # This limactl reads its stdin, and a VM it deleted leaves its listing, except
@@ -53,7 +87,10 @@ case "$rc:$out" in
   *) fail "a VM that stays: $rc $out" ;;
 esac
 check "the others are still deleted" "$(grep -c '^delete' "$SB/destroy.log")" "3"
+[ -e "$HOME/.agent-vm/.agent-vm-base-built-by" ] && fail "deleting the base template left its version" \
+  || pass "deleting the base template forgets which agent-vm built it"
 echo 1 > "$HOME/.agent-vm/.agent-vm-base-version"
+echo 0.2.0 > "$HOME/.agent-vm/.agent-vm-base-built-by"
 
 section "doctor"
 date +%s > "$HOME/.agent-vm/.agent-vm-base-version"
@@ -97,6 +134,15 @@ case "$out" in
   *) fail "doctor: no warning about .git protection" ;;
 esac
 case "$out" in *"warn  its shares leave .git writable"*) pass "doctor: a VM with a writable .git is a warning" ;; *) fail "doctor: VM shares not reported" ;; esac
+case "$out" in *"built by agent-vm 0.1.0"*) fail "doctor: a current base taken for 0.1.0's" ;; *) pass "doctor: a current base is not 0.1.0's" ;; esac
+case "$out" in *"to their shares"*) fail "doctor: reverse-sshfs exposure reported on vz" ;; *) pass "doctor: no reverse-sshfs exposure on vz" ;; esac
+case "$( _agent_vm_unprotected_mount_is_sshfs() { return 0; }; rec doctor )" in
+  *"warn  it cannot keep the VMs to their shares either"*"SSH keys"*) pass "doctor: reverse-sshfs exposure reported where a start would ask" ;;
+  *) fail "doctor: reverse-sshfs exposure not reported" ;;
+esac
+mv "$HOME/.agent-vm/.agent-vm-base-built-by" "$SB/built-by.saved"
+case "$(rec doctor)" in *"warn  the base template was built by agent-vm 0.1.0"*"'agent-vm setup' rebuilds it"*) pass "doctor: a base of 0.1.0 is a warning, with the way out" ;; *) fail "doctor: base of 0.1.0 not reported" ;; esac
+mv "$SB/built-by.saved" "$HOME/.agent-vm/.agent-vm-base-built-by"
 touch "$PROTECTS"
 printf '[{"location": "%s", "writable": true, %s}]\n' "$PROJ" "$SSHFS_RO" > "$HOME/.agent-vm/.agent-vm-mounts-$PV"
 out="$(rec doctor)"

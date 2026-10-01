@@ -18,6 +18,7 @@ jobs:
           # token in .git/config would put it within reach of that code.
           persist-credentials: false
 
+      # For the tests of the zsh shim (tests/03-install.sh).
       - name: Install zsh
         run: sudo apt-get update && sudo apt-get install -y zsh
 
@@ -34,18 +35,15 @@ jobs:
       - name: Test suite
         run: ./test.sh
 
-      # agent-vm is sourced into whatever shell the user runs, and macOS still
-      # ships bash 3.2 — which errors on empty array expansion under `set -u`.
+      # macOS still ships bash 3.2, which errors on empty array expansion
+      # under `set -u`.
       # Modern bash does not, so a 3.2 run is the only way to catch it in CI.
       # With perl, which macOS ships too: project-env needs it.
       - name: Test suite on bash 3.2 (what macOS ships)
         run: docker run --rm -v "$PWD:/w" -w /w bash:3.2 sh -c 'apk add --no-cache perl >/dev/null && ./test.sh'
 
-      - name: Test suite under zsh (the usual way it is sourced)
-        run: zsh ./test.sh
-
   # Windows coverage: the stub suite under Git Bash, which is how agent-vm
-  # runs there. No docker (bash 3.2) and no zsh on a Windows runner, and no
+  # runs there. No docker (bash 3.2) on a Windows runner, and no
   # real VM anywhere in this workflow (test-e2e.sh stays manual, on every OS).
   test-windows:
     runs-on: windows-latest

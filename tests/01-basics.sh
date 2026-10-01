@@ -162,9 +162,6 @@ check "info: key count"    "$(printf '%s\n' "$info_out" | grep -c '^[a-z_]*=')" 
 # Every key must be present even with no Lima on the box. Build a PATH with the
 # limactl-bearing directories dropped rather than a hardcoded one, so this also
 # holds on a machine where Lima is genuinely installed.
-# Peel one entry per iteration instead of `for d in $PATH` with IFS=: — zsh does
-# not word-split unquoted expansions, so that form would hand back the whole
-# PATH as a single word and quietly keep the stub limactl visible.
 nolima_path=""
 _rest="$PATH:"
 while [ -n "$_rest" ]; do

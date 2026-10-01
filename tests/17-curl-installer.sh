@@ -81,6 +81,17 @@ else
   printf '  skip rerun: the link is kept (ln -s plants copies on this machine)\n'
 fi
 
+# The swap stopped between its two renames (a failed mv, a Ctrl-C): the
+# previous version goes back where it was, nothing else left.
+make_release 1.1.5
+fresh_link
+mkdir -p "$SB/wmvfail"
+printf '#!/bin/sh\ncase "$1" in *.new.*) exit 1 ;; esac\nexec %s "$@"\n' "$(command -v mv)" > "$SB/wmvfail/mv"
+chmod +x "$SB/wmvfail/mv"
+out="$(PATH="$SB/wmvfail:$PATH" winst)"; rc=$?
+check "swap cut short: the previous version is back" "$rc:$(cat "$WDIR/MARK" 2>/dev/null)" "1:1.1.0"
+check "swap cut short: no staging or old copy left" "$(ls -A "$WH/.local/share")" "agent-vm"
+
 make_release 1.2.0 corrupt
 fresh_link
 out="$(winst)"; rc=$?

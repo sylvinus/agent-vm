@@ -134,13 +134,13 @@ export const fr: Dictionary = {
         id: 'windows',
         label: 'Windows',
         code: '# dans Git Bash (expérimental)\nwinget install SoftwareFreedom.QEMU\ncurl -fsSL https://www.agent-vm.org/install.sh | sh',
-        note: 'Expérimental. À lancer dans Git Bash : c\'est l\'installeur curl, et `agent-vm setup` propose ensuite une version de Lima pour Windows. Les VM ont aussi besoin de l\'hyperviseur de Windows, la fonctionnalité Windows Hypervisor Platform. Elle est désactivée par défaut et seul un administrateur peut l\'activer, une fois (Fonctionnalités de Windows, ou `DISM /Online /Enable-Feature /FeatureName:HypervisorPlatform /All`, puis un redémarrage). Sur un portable géré, c\'est une demande à faire au service informatique. Sans elle, les VM ne démarrent pas.',
+        note: 'Expérimental. À lancer dans Git Bash : c\'est l\'installeur curl, et `agent-vm setup` propose ensuite une version de Lima pour Windows. Prends-la : avec le Lima d\'origine, les partages passent par `reverse-sshfs`, qui ne cantonne pas la VM à ses partages, et root dans la VM peut atteindre tes clés SSH et le reste de ton disque (un démarrage le dit, et demande). Les VM ont aussi besoin de l\'hyperviseur de Windows, la fonctionnalité Windows Hypervisor Platform. Elle est désactivée par défaut et seul un administrateur peut l\'activer, une fois (Fonctionnalités de Windows, ou `DISM /Online /Enable-Feature /FeatureName:HypervisorPlatform /All`, puis un redémarrage). Sur un portable géré, c\'est une demande à faire au service informatique. Sans elle, les VM ne démarrent pas.',
       },
     ],
     steps: [
       {
         title: 'Construire l\'image de base',
-        body: 'À faire une seule fois. Vérifie d\'abord que Lima peut garder les `.git` en lecture seule pour les VM, et sinon propose d\'installer une version de Lima qui le peut. Crée ensuite une VM Debian 13, y installe la chaîne d\'outils et les agents, puis l\'arrête et la garde comme image de base. L\'assistant propose une sélection par défaut : il suffit d\'appuyer sur Entrée pour l\'accepter.',
+        body: 'À faire une seule fois. Sans Lima, propose d\'abord de l\'installer, dans la version qui garde les `.git` en lecture seule pour les VM. L\'assistant propose ensuite une sélection par défaut : il suffit d\'appuyer sur Entrée pour l\'accepter. Après lui, un Lima qui ne sait pas garder les `.git` en lecture seule reçoit la même proposition. Crée enfin une VM Debian 13, y installe la chaîne d\'outils et les agents, puis l\'arrête et la garde comme image de base.',
         code: 'agent-vm setup',
       },
       {
@@ -165,7 +165,7 @@ export const fr: Dictionary = {
     ],
     updateTitle: 'Mise à jour',
     updateBody:
-      'Installé avec curl : relance l\'installeur. Avec Homebrew : `brew upgrade agent-vm`. Depuis un clone : `git pull`, rien à réinstaller. `agent-vm uninstall` retire le lien que posent les installations curl et git.',
+      'Installé avec curl : relance l\'installeur. Avec Homebrew : `brew upgrade agent-vm`. Depuis un clone : `git pull`, rien à réinstaller. `agent-vm uninstall` retire le lien que posent les installations curl et git. Depuis la 0.1.0, lance `agent-vm setup` une fois : une VM issue d\'une base construite par la 0.1.0 redémarre une fois de plus à son prochain lancement pour installer `sshfs`, nécessaire pour garder `.git` en lecture seule, et `--reset` lui donne la nouvelle base. Cette migration sera retirée dans une prochaine version.',
   },
 
 
@@ -197,17 +197,17 @@ export const fr: Dictionary = {
       },
       {
         title: 'Gérer le parc',
-        body: 'Dans `status`, le dossier courant est marqué d\'un `>`. Si un dossier a été renommé, seul `list` permet de retrouver sa VM.',
-        code: 'agent-vm status        # toutes les VM, la courante marquée\nagent-vm list          # les noms seulement\nagent-vm stop          # arrête, garde le disque\nagent-vm rm            # arrête et supprime\nagent-vm destroy-all   # toutes les VM, image de base comprise\nagent-vm doctor        # ce qui ne va pas, et quoi lancer',
+        body: 'Dans `list`, la VM du dossier courant est marquée d\'un `>`. Si un dossier a été renommé, seul `list` permet de retrouver sa VM.',
+        code: 'agent-vm list          # toutes les VM, la courante marquée, base de chacune\nagent-vm stop          # arrête, garde le disque\nagent-vm rm            # arrête et supprime\nagent-vm destroy-all   # toutes les VM, image de base comprise\nagent-vm doctor        # ce qui ne va pas, et quoi lancer',
       },
       {
         title: 'Restreindre la session',
-        body: 'Pratique pour une relecture ou un audit, où l\'agent n\'a rien à écrire. `--readonly` passe tous les partages de l\'hôte en lecture seule : le projet et les entrées de [`~/.agent-vm/volumes`](#customisation-files), y compris celles en `rw`, puisqu\'un volume accessible en écriture qui contient le projet serait un second accès. La restriction s\'applique aux partages Lima : c\'est l\'hôte qui refuse les écritures (l\'hyperviseur, ou le serveur SFTP de Lima sur les partages qui protègent `.git`), et root dans la VM ne peut pas la lever. Là où Lima ne l\'appliquerait que dans l\'invité, agent-vm refuse l\'option : `reverse-sshfs` sans `readonlyNames`, et virtiofs sous QEMU. Changer de mode redémarre une VM en marche. Le disque de la VM, `$HOME` et `/tmp` restent accessibles en écriture, donc l\'agent peut toujours installer des paquets et écrire ses caches. Toute écriture dans le projet échoue en revanche, y compris `node_modules`, le dossier d\'état de l\'agent et ce qu\'y écrirait un script de runtime, puisque le mode est appliqué avant leur exécution. `--scratch` va plus loin : une nouvelle VM où rien de ce qui est à toi n\'est monté, que l\'agent remplit depuis le réseau (un `git clone` avec un jeton tiré d\'`agent-vm env`), supprimée à la fin de la commande ; sur un terminal, elle demande d\'abord, et un non ouvre un shell dans la VM. Son travail sort par le même chemin, en push ou en pull request. Les connexions n\'y survivent pas : les agents ont besoin de leur jeton dans `agent-vm env`, `ANTHROPIC_API_KEY`, ou `CLAUDE_CODE_OAUTH_TOKEN` obtenu par `claude setup-token`.',
+        body: 'Pratique pour une relecture ou un audit, où l\'agent n\'a rien à écrire. `--readonly` passe tous les partages de l\'hôte en lecture seule : le projet et les entrées de [`~/.agent-vm/volumes`](#customisation-files), y compris celles en `rw`, puisqu\'un volume accessible en écriture qui contient le projet serait un second accès. La restriction s\'applique aux partages Lima : c\'est l\'hôte qui refuse les écritures (l\'hyperviseur, ou le serveur SFTP de Lima sur les partages qui protègent `.git`), et root dans la VM ne peut pas la lever. Là où Lima ne l\'appliquerait que dans l\'invité, agent-vm refuse l\'option : `reverse-sshfs` sans `readonlyNames`, et virtiofs sous QEMU. Une VM en marche dans l\'autre mode est redémarrée, après confirmation (non par défaut) : refusé, ou sans terminal, la commande échoue, dans un sens comme dans l\'autre, pour qu\'une VM en lecture seule d\'une autre session ne repasse pas en écriture sous elle. Le disque de la VM, `$HOME` et `/tmp` restent accessibles en écriture, donc l\'agent peut toujours installer des paquets et écrire ses caches. Toute écriture dans le projet échoue en revanche, y compris `node_modules`, le dossier d\'état de l\'agent et ce qu\'y écrirait un script de runtime, puisque le mode est appliqué avant leur exécution. `--scratch` va plus loin : une nouvelle VM où rien de ce qui est à toi n\'est monté, que l\'agent remplit depuis le réseau (un `git clone` avec un jeton tiré d\'`agent-vm env`), supprimée à la fin de la commande ; sur un terminal, elle demande d\'abord, et un non ouvre un shell dans la VM. Son travail sort par le même chemin, en push ou en pull request. Les connexions n\'y survivent pas : les agents ont besoin de leur jeton dans `agent-vm env`, `ANTHROPIC_API_KEY`, ou `CLAUDE_CODE_OAUTH_TOKEN` obtenu par `claude setup-token`.',
         code: 'agent-vm --readonly shell     # rien n\'est modifiable sur l\'hôte\nagent-vm --scratch claude     # rien de toi n\'est monté, supprimée à la sortie\nagent-vm --rm run npm test    # détruit la VM à la sortie',
       },
       {
         title: 'Redimensionner à la volée',
-        body: 'Par défaut : 10 Go de disque, 3 Go de mémoire, 1 CPU. Passe l\'option de nouveau et la VM est arrêtée, reconfigurée puis redémarrée. Le disque peut grandir, jamais rétrécir. CPU et mémoire sont plafonnés à la moitié de l\'hôte, mais VM par VM, pas au total : les VM persistent, et plusieurs VM allumées en même temps s\'additionnent. `agent-vm status` montre ce qui tourne, `rm` et `destroy-all` libèrent la place.',
+        body: 'Une nouvelle VM reprend ceux de l\'image de base : 10 Go de disque, 3 Go de mémoire, 1 CPU, sauf si `setup` en a reçu d\'autres. Passe une option avec une autre valeur et la VM est arrêtée, reconfigurée puis redémarrée ; une VM en marche demande d\'abord (non par défaut), et refusé, ou sans terminal, elle garde ses réglages. Le disque peut grandir, jamais rétrécir. CPU et mémoire sont plafonnés à la moitié de l\'hôte, mais VM par VM, pas au total : les VM persistent, et plusieurs VM allumées en même temps s\'additionnent. `agent-vm list` montre ce qui tourne, `rm` et `destroy-all` libèrent la place.',
         code: 'agent-vm --disk 50 opencode\nagent-vm --memory 16 --cpus 8 shell\nagent-vm --reset claude   # re-cloner depuis l\'image',
       },
       {
@@ -217,7 +217,7 @@ export const fr: Dictionary = {
       },
       {
         title: 'Interroger depuis un script',
-        body: 'Si tu pilotes agent-vm depuis un autre outil, passe par ces commandes plutôt que de parser la sortie destinée aux humains ou de lire `~/.agent-vm` : le nommage des VM, le nom de l\'image et les fichiers d\'état sont des détails d\'implémentation, amenés à changer. `version --min` renvoie `0` si le moteur est assez récent, `1` avec un message s\'il est trop ancien, et `2` si l\'appel lui-même est mal formé : une faute de frappe dans la version demandée ne passe donc pas pour un « moteur trop ancien ». Attention : un moteur antérieur à `--min` ignore l\'option et renvoie `0`. Dans `info`, les booléens valent `1` ou `0`, et ce qui ne peut pas être déterminé vaut `unknown`. Ces quatre commandes fonctionnent sans Lima. Sans terminal, un démarrage s\'arrête là où il poserait une question de sécurité : `security_questions` dans `info` les liste à l\'avance, `--unsafe-disable-security-prompts` les accepte, et `--readonly` les évite.',
+        body: 'Si tu pilotes agent-vm depuis un autre outil, passe par ces commandes plutôt que de parser la sortie destinée aux humains ou de lire `~/.agent-vm` : le nommage des VM, le nom de l\'image et les fichiers d\'état sont des détails d\'implémentation, amenés à changer. `version --min` renvoie `0` si le moteur est assez récent, `1` avec un message s\'il est trop ancien, et `2` si l\'appel lui-même est mal formé : une faute de frappe dans la version demandée ne passe donc pas pour un « moteur trop ancien ». Attention : un moteur antérieur à `--min` ignore l\'option et renvoie `0`. Dans `info`, les booléens valent `1` ou `0`, et ce qui ne peut pas être déterminé vaut `unknown`. Ces quatre commandes fonctionnent sans Lima. Sans terminal, un démarrage s\'arrête là où il poserait une question de sécurité : `security_questions` dans `info` les liste à l\'avance, `--unsafe-disable-security-prompts` les accepte, et `--readonly` les évite. Un redémarrage qu\'il demanderait échoue aussi : `--readonly` sur une VM en marche accessible en écriture, ou l\'inverse, et un redimensionnement d\'une VM en marche n\'est pas appliqué.',
         code: 'agent-vm version --min 0.2.0 || exit 1  # silencieux si OK\nagent-vm name [dir]    # nom de la VM d\'un dossier\nagent-vm info [dir]    # une paire clé=valeur par ligne\nagent-vm help          # l\'aide intégrée\n\n# clés de info : version, template, state_dir,\n# project_env, dir, vm_name, base_exists,\n# vm_exists, vm_running, vm_stale,\n# ssh_host, ssh_config, git_protected,\n# security_questions',
       },
     ],
@@ -290,8 +290,7 @@ export const fr: Dictionary = {
       {
         title: 'Gérer le parc',
         rows: [
-          ['status', 'État de toutes les VM, le dossier courant marqué d\'un `>`.'],
-          ['list', 'Liste toutes les VM agent-vm.'],
+          ['list, status', 'Liste toutes les VM agent-vm, celle du dossier courant marquée d\'un `>`, avec la version d’agent-vm qui a construit la base dont chacune est clonée, et sa date.'],
           ['stop [vm-name]', 'Arrête la VM de ce dossier, ou celle dont tu donnes le nom. Le disque est conservé.'],
           ['rm [vm-name]', 'Arrête et supprime. Un nom issu de `list` permet de viser une VM dont le dossier a disparu.'],
           ['destroy-all', 'Arrête et supprime toutes les VM agent-vm, image de base comprise. `setup` la reconstruit.'],
@@ -322,12 +321,12 @@ export const fr: Dictionary = {
     optionsNote: 'Pour `claude`, `opencode`, `codex`, `vibe`, `pi`, `shell` et `run`, à placer avant la commande ou juste après son nom. Tout ce qui suit appartient à la commande : dans `agent-vm run docker run --rm x`, `--rm` est l\'option de docker.',
     optionsHeaders: ['Option', 'Rôle', 'Défaut'],
     options: [
-      ['--disk GB', 'Taille du disque. Peut grandir, jamais rétrécir.', '10'],
-      ['--memory GB', 'Mémoire de la VM. Plafonnée à la moitié de l\'hôte, par VM.', '3'],
-      ['--cpus N', 'Nombre de CPU. Plafonné à la moitié de l\'hôte, par VM.', '1'],
-      ['--ssh-port N', 'Port fixe sur l\'hôte pour le SSH de la VM, pour les outils qui l\'enregistrent. `0` revient à un nouveau port à chaque démarrage. Redémarre la VM.', 'un nouveau par démarrage'],
+      ['--disk GB', 'Taille du disque. Peut grandir, jamais rétrécir.', 'celle de l\'image (10)'],
+      ['--memory GB', 'Mémoire de la VM. Plafonnée à la moitié de l\'hôte, par VM.', 'celle de l\'image (3)'],
+      ['--cpus N', 'Nombre de CPU. Plafonné à la moitié de l\'hôte, par VM.', 'celui de l\'image (1)'],
+      ['--ssh-port N', 'Port fixe sur l\'hôte pour le SSH de la VM, pour les outils qui l\'enregistrent. `0` revient à un nouveau port à chaque démarrage. Redémarre une VM en marche, après confirmation.', 'un nouveau par démarrage'],
       ['--reset', 'Détruit la VM et la re-clone depuis l\'image de base.', 'inactif'],
-      ['--readonly', 'Tous les partages de l\'hôte en lecture seule (projet et volumes), côté hôte. Redémarre une VM en marche.', 'inactif'],
+      ['--readonly', 'Tous les partages de l\'hôte en lecture seule (projet et volumes), côté hôte. Redémarre une VM en marche, après confirmation.', 'inactif'],
       ['--unsafe-writable-git', 'Laisse chaque `.git` modifiable pour que l\'agent puisse commiter, avec un avertissement. Voir [Protéger .git](#git).', 'inactif'],
       ['--unsafe-disable-security-prompts', 'Continue là où un démarrage s\'arrêterait pour poser une question de sécurité (voir [Protéger .git](#git)), sans proposer de modifier ta config git. Les avertissements restent affichés. Pour les scripts sans terminal ; `AGENT_VM_UNSAFE_DISABLE_SECURITY_PROMPTS=1` dans ton shell fait de même.', 'inactif'],
       ['--rm', 'Détruit la VM dès que la commande se termine.', 'inactif'],
@@ -349,7 +348,7 @@ export const fr: Dictionary = {
             title: 'Options de l\'installeur',
             paras: [
               'Les options se placent après `sh -s --` : `--version X.Y.Z`, `--git` pour un clone de `main`, `--dir DIR` pour un autre emplacement que `~/.local/share/agent-vm` (ou `$XDG_DATA_HOME/agent-vm`). Pour lire l\'installeur d\'abord, télécharge-le, puis lance-le avec `sh`.',
-              'Il se termine par `agent-vm install`, qui place un lien `agent-vm` dans `~/.local/bin` (`AGENT_VM_BIN_DIR` le change), ou un lanceur de deux lignes là où Git Bash ne crée pas de liens. La commande marche depuis n\'importe quel shell, fish compris : la ligne `source .../agent-vm.sh` que les versions précédentes ajoutaient à ton rc de shell ne sert plus, et `install` le signale quand il la trouve. `./install.sh` reste, pour l\'instant, comme raccourci.',
+              'Il se termine par `agent-vm install`, qui place un lien `agent-vm` dans `~/.local/bin` (`AGENT_VM_BIN_DIR` le change), ou un petit lanceur là où Git Bash ne crée pas de liens. La commande marche depuis n\'importe quel shell, fish compris : la ligne `source .../agent-vm.sh` que les versions précédentes ajoutaient à ton rc de shell ne sert plus, et `install` le signale quand il la trouve. `./install.sh` reste, pour l\'instant, comme raccourci.',
             ],
             list: [],
             code: 'curl -fsSL https://www.agent-vm.org/install.sh | sh -s -- --dir ~/tools/agent-vm\ncurl -fsSLO https://www.agent-vm.org/install.sh && sh install.sh',
@@ -428,7 +427,7 @@ export const fr: Dictionary = {
             title: 'Scripts de setup et de runtime',
             paras: [
               '`~/.agent-vm/setup.sh` tourne une fois, dans l\'image de base, à la fin de `setup`, en tant qu\'utilisateur de la VM avec sudo. `~/.agent-vm/runtime.sh` tourne dans la VM à chaque commande qui y entre, puis le `.agent-vm.runtime.sh` du projet : les deux doivent pouvoir être relancés. [`runtime.example.sh`](https://github.com/sylvinus/agent-vm/blob/main/runtime.example.sh) couvre l\'identité git, `gh auth setup-git`, les skills, les serveurs MCP et une ligne d\'état. Pas de clé privée dedans : l\'agent peut lire tout ce qu\'ils mettent en place.',
-              'Un script tourne sous le shell que nomme sa première ligne (bash ou sh, zsh sinon), lu sur l\'entrée standard : `$0` est le shell, et une commande du script qui lit l\'entrée standard lit la suite du script ; donne-lui `</dev/null`.',
+              '`setup.sh` tourne sous zsh. Un script de runtime tourne sous le shell que nomme sa première ligne (bash ou sh, zsh sinon). Les deux sont lus sur l\'entrée standard : `$0` est le shell, et une commande du script qui lit l\'entrée standard lit la suite du script ; donne-lui `</dev/null`.',
               '`AGENT_VM_PROJECT_RUNTIME` déplace le script du projet, relatif au projet ou absolu, `..` résolu comme le fait `cd`. Dans le projet, c\'est la VM qui le lit ; en dehors, l\'hôte. mise reprend `.ruby-version`, `.python-version`, `.node-version` et `.tool-versions`.',
             ],
             list: [],
@@ -443,7 +442,7 @@ export const fr: Dictionary = {
             title: 'Ressources, ports, doctor',
             paras: [
               'Processeurs et mémoire sont plafonnés à la moitié de l\'hôte par VM, avec un avertissement. `AGENT_VM_HOST_SHARE` change le diviseur (`1` pour tout l\'hôte) ; quand la capacité de l\'hôte ne peut pas être lue, rien n\'est plafonné.',
-              'Un port fixé avec `--ssh-port` reste jusqu\'à `--reset` ou `rm`. Un port déjà pris par une autre VM agent-vm est refusé ; un port pris par autre chose fait échouer le démarrage. La VM doit tourner pour que SSH se connecte.',
+              'Un port fixé avec `--ssh-port` reste jusqu\'à `--reset` ou `rm`. Un port déjà fixé pour une autre VM Lima est refusé ; un port pris par autre chose fait échouer le démarrage. La VM doit tourner pour que SSH se connecte.',
               '`doctor` n\'affiche aucun secret : sa sortie peut aller telle quelle dans une issue. Il sort avec le code `1` quand une vérification échoue.',
             ],
             list: [],
@@ -629,10 +628,10 @@ export const fr: Dictionary = {
       'Chaque VM s\'authentifie de son côté : le `claude login` se fait dedans. Les identifiants survivent aux redémarrages de cette VM et ne sont partagés ni avec l\'hôte ni avec les autres VM. Le réseau, lui, est partagé : voir [Réseau et ports](#network-and-ports).',
     contentsTitle: 'Ce qu\'il y a dans la VM',
     contentsLede:
-      'La sélection par défaut de l\'assistant et `--preinstall=default` donnent le même résultat : tout ce qui suit, sauf les langages facultatifs.',
+      'La sélection par défaut de l\'assistant et `--preinstall=default` donnent le même résultat : tout ce qui suit, sauf les lignes marquées non.',
     contentsHeaders: ['Catégorie', 'Paquets', 'Nom', 'Par défaut'],
     contents: [
-      ['Base', 'git, curl, wget, jq, zsh, ca-certificates, build-essential, unzip, zip, ripgrep, fd-find, htop', 'toujours', 'oui'],
+      ['Base', 'git, curl, wget, jq, zsh, ca-certificates, sshfs, build-essential, pkgconf, patch, unzip, zip, ripgrep, fd-find, htop', 'toujours', 'oui'],
       ['Bibliothèques de compilation', 'libssl-dev, libreadline-dev, zlib1g-dev, libyaml-dev, libffi-dev', 'toujours', 'oui'],
       ['Gestionnaire de versions', 'mise', 'toujours', 'oui'],
       ['Python', 'python3, pip, venv', 'python', 'oui'],
@@ -717,7 +716,7 @@ export const fr: Dictionary = {
     shellsTitle: 'Tester avec les shells qui comptent',
     shellsBody:
       'macOS fournit encore bash 3.2, plus strict qu\'un bash récent sur l\'expansion d\'un tableau vide sous `set -u`. Un changement qui passe sous bash 5 peut très bien casser sur un Mac tel qu\'il sort du carton. L\'image `bash:3.2` n\'a pas git, donc les tests qui en ont besoin y sont sautés : ajoute-le avec `apk`.',
-    shellsCode: 'docker run --rm -v "$PWD:/w" -w /w bash:3.2 ./test.sh\ndocker run --rm -v "$PWD:/w" -w /w bash:3.2 sh -c \'apk add -q git && git config --global safe.directory "*" && ./test.sh\'\nzsh ./test.sh',
+    shellsCode: 'docker run --rm -v "$PWD:/w" -w /w bash:3.2 ./test.sh\ndocker run --rm -v "$PWD:/w" -w /w bash:3.2 sh -c \'apk add -q git && git config --global safe.directory "*" && ./test.sh\'',
     structureTitle: 'Où se trouve quoi',
     structureHeaders: ['Fichier', 'Ce que c\'est'],
     structure: [
@@ -737,7 +736,7 @@ export const fr: Dictionary = {
     guidelines: [
       'Reste compatible avec bash 3.2, et lance `./test.sh` sous `bash:3.2` en plus de ton propre shell.',
       'Tout le code doit pouvoir être relancé : vérifie l\'état avant d\'agir plutôt que de supposer une machine vierge.',
-      'Tout nouveau comportement a son test dans `test.sh`. Le `limactl` factice rend ça peu coûteux.',
+      'Tout nouveau comportement a son test dans `tests/` (un nouveau domaine a son propre `NN-*.sh`). Le `limactl` factice rend ça peu coûteux.',
       'Les commandes destinées aux intégrateurs (`info`, `env`, `version`) sont des contrats. Ajouter des clés, oui ; en changer le sens, non.',
       'Aucun secret, jeton ou chemin personnel dans un commit, une fixture de test ou une issue.',
     ],
@@ -758,7 +757,7 @@ export const fr: Dictionary = {
       {
         title: 'La machine',
         items: [
-          { name: 'Lima', note: 'Des VM Linux sur macOS et Linux. La seule dépendance hôte.', href: 'https://lima-vm.io/' },
+          { name: 'Lima', note: 'Des VM Linux sur macOS, Linux et Windows. La seule dépendance hôte, avec QEMU sous Windows.', href: 'https://lima-vm.io/' },
           { name: 'Debian', note: 'La distribution invitée. Debian 13.', href: 'https://www.debian.org/' },
           { name: 'mise', note: 'Gestionnaire de versions de runtimes dans la VM.', href: 'https://mise.jdx.dev/' },
         ],

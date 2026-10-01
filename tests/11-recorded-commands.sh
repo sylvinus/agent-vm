@@ -8,6 +8,7 @@ section "commands against a recording limactl"
 # lists it as stopped, as does a `stop` until the next `start`, and
 # AGENT_VM_TEST_RO makes the project write probe fail, as a read-only share
 # would. AGENT_VM_TEST_STOP_FAIL makes `stop` leave it running.
+# AGENT_VM_TEST_SSHFS_FAIL fails the sshfs install of a 0.1.0 VM.
 # AGENT_VM_TEST_RUNTIME_FOUND makes the probe find the project's runtime
 # script. What is piped into the env push goes to AGENT_VM_TEST_STDIN.
 # `validate` answers like stock Lima 2.2 does to readonlyNames, or, while the
@@ -59,6 +60,7 @@ case "$1" in
     case "$*" in
       # A guest asked for its mount type lies: agent-vm must not ask it.
       *findmnt*) echo 9p ;;
+      *"/usr/local/bin/sshfs"*) [ -z "${AGENT_VM_TEST_SSHFS_FAIL:-}" ] || { echo "E: no sshfs" >&2; exit 1; } ;;
       *agent-vm-write-probe*)
         case "$*" in *'.agent-vm.env'*)
           cat >> "${AGENT_VM_TEST_STDIN:-/dev/null}"
@@ -77,6 +79,7 @@ STUB
 chmod +x "$SB/bin/limactl"
 mkdir -p "$HOME/.agent-vm"
 echo 1 > "$HOME/.agent-vm/.agent-vm-base-version"
+echo 0.2.0 > "$HOME/.agent-vm/.agent-vm-base-built-by"
 PV="$(_agent_vm_name "$PROJ")"
 # Re-sourced by an earlier section, so stubbed again: no KVM and no QEMU on
 # a test runner. Both checks: host probing is covered in lib/host.sh and
@@ -116,6 +119,8 @@ rec_has "shell --workdir $PROJ --tty $PV" && pass "run --tty still allocates a P
   || fail "run --tty lost: $(grep ' zsh ' "$REC")"
 rec run -- --weird-name >/dev/null
 rec_has "agent-vm --weird-name" && pass "-- ends the options" || fail "-- not honoured"
+rec_has "exec env -- \"\$@\"" && pass "the guest's env takes no option from the command (run -i foo)" \
+  || fail "env options reachable: $(grep ' zsh ' "$REC")"
 
 rec pi -p hi --rm >/dev/null
 rec_has "shell --workdir $PROJ --tty $PV" && rec_has "agent-vm pi -p hi --rm" \

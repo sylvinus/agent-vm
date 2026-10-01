@@ -132,13 +132,13 @@ export const en = {
         id: 'windows',
         label: 'Windows',
         code: '# in Git Bash (experimental)\nwinget install SoftwareFreedom.QEMU\ncurl -fsSL https://www.agent-vm.org/install.sh | sh',
-        note: 'Experimental. Run it in Git Bash: it is the curl installer, and `agent-vm setup` then offers a Lima build for Windows. VMs also need Windows’ own hypervisor, the Windows Hypervisor Platform feature. It is off by default and only an administrator can turn it on, once (Windows Features, or `DISM /Online /Enable-Feature /FeatureName:HypervisorPlatform /All`, then a reboot). On a managed laptop, that is a request to IT. Without it, VMs do not start.',
+        note: 'Experimental. Run it in Git Bash: it is the curl installer, and `agent-vm setup` then offers a Lima build for Windows. Take it: with Lima’s own, the shares use `reverse-sshfs`, which does not keep the VM to them, and root in the VM may reach your SSH keys and the rest of your disk (a start says so, and asks). VMs also need Windows’ own hypervisor, the Windows Hypervisor Platform feature. It is off by default and only an administrator can turn it on, once (Windows Features, or `DISM /Online /Enable-Feature /FeatureName:HypervisorPlatform /All`, then a reboot). On a managed laptop, that is a request to IT. Without it, VMs do not start.',
       },
     ],
     steps: [
       {
         title: 'Build the base template',
-        body: 'Run once. It first checks that Lima can keep `.git` read-only for the VMs, and offers to install a Lima build that can if not. Then it creates a Debian 13 VM, installs the toolchain and the agents, and keeps it, stopped, as a reusable template. The wizard offers a default set; press Enter to accept it.',
+        body: 'Run once. Without Lima, it first offers to install it, the build that keeps `.git` read-only for the VMs. Its wizard then offers a default set; press Enter to accept it. After it, a Lima that cannot keep `.git` read-only gets the same offer. Then it creates a Debian 13 VM, installs the toolchain and the agents, and keeps it, stopped, as a reusable template.',
         code: 'agent-vm setup',
       },
       {
@@ -163,7 +163,7 @@ export const en = {
     ],
     updateTitle: 'Updating',
     updateBody:
-      'Installed with curl: run the installer again. With Homebrew: `brew upgrade agent-vm`. From a clone: `git pull`, nothing to reinstall. `agent-vm uninstall` removes the link that curl and git installs make.',
+      'Installed with curl: run the installer again. With Homebrew: `brew upgrade agent-vm`. From a clone: `git pull`, nothing to reinstall. `agent-vm uninstall` removes the link that curl and git installs make. From 0.1.0, run `agent-vm setup` once: a VM from a base 0.1.0 built boots once more on its next start to install `sshfs`, which keeping `.git` read-only needs, and `--reset` gives it the new base. That migration will be removed in a future release.',
   },
 
 
@@ -195,17 +195,17 @@ export const en = {
       },
       {
         title: 'Manage the fleet',
-        body: 'The current directory is marked with `>` in `status`. If a directory is renamed, `list` is the only way to find its VM again.',
-        code: 'agent-vm status        # all VMs, current one marked\nagent-vm list          # names only\nagent-vm stop          # stop, keep the disk\nagent-vm rm            # stop and delete\nagent-vm destroy-all   # every VM, base template included\nagent-vm doctor        # what is wrong, and what to run',
+        body: 'The current directory’s VM is marked with `>` in `list`. If a directory is renamed, `list` is the only way to find its VM again.',
+        code: 'agent-vm list          # all VMs, current one marked, base of each\nagent-vm stop          # stop, keep the disk\nagent-vm rm            # stop and delete\nagent-vm destroy-all   # every VM, base template included\nagent-vm doctor        # what is wrong, and what to run',
       },
       {
         title: 'Tighten the session',
-        body: 'Useful for review and audit work, where the agent has no business writing anything. `--readonly` makes every host share read-only: the project and the [`~/.agent-vm/volumes`](#customisation-files) entries, `rw` ones included, since a writable volume containing the project would be a second way in. It is set on the Lima shares, so the host refuses the writes (the hypervisor, or Lima’s SFTP server on the shares that protect `.git`) and root in the VM cannot lift it. Where Lima would only apply it inside the guest, agent-vm refuses the flag: `reverse-sshfs` without `readonlyNames`, and virtiofs under QEMU. Changing the mode restarts a running VM. The VM’s own disk, `$HOME` and `/tmp` stay writable, so the agent can still install packages and write caches. Anything it writes inside the project fails, including `node_modules`, its own state directory, and whatever a runtime script writes: the mode is applied before those run. `--scratch` goes further: a new VM with nothing of yours mounted, which the agent fills from the network (a `git clone` with a token from `agent-vm env`), deleted when the command ends; on a terminal it asks first, and a no opens a shell in the VM. Its work leaves the same way, as a push or a pull request. Logins do not survive it, so agents need their token in `agent-vm env`: `ANTHROPIC_API_KEY`, or `CLAUDE_CODE_OAUTH_TOKEN` from `claude setup-token`.',
+        body: 'Useful for review and audit work, where the agent has no business writing anything. `--readonly` makes every host share read-only: the project and the [`~/.agent-vm/volumes`](#customisation-files) entries, `rw` ones included, since a writable volume containing the project would be a second way in. It is set on the Lima shares, so the host refuses the writes (the hypervisor, or Lima’s SFTP server on the shares that protect `.git`) and root in the VM cannot lift it. Where Lima would only apply it inside the guest, agent-vm refuses the flag: `reverse-sshfs` without `readonlyNames`, and virtiofs under QEMU. A running VM in the other mode is restarted, asked first (no by default): declined, or with no terminal, the command fails, in either direction, so another session’s read-only VM is not made writable under it. The VM’s own disk, `$HOME` and `/tmp` stay writable, so the agent can still install packages and write caches. Anything it writes inside the project fails, including `node_modules`, its own state directory, and whatever a runtime script writes: the mode is applied before those run. `--scratch` goes further: a new VM with nothing of yours mounted, which the agent fills from the network (a `git clone` with a token from `agent-vm env`), deleted when the command ends; on a terminal it asks first, and a no opens a shell in the VM. Its work leaves the same way, as a push or a pull request. Logins do not survive it, so agents need their token in `agent-vm env`: `ANTHROPIC_API_KEY`, or `CLAUDE_CODE_OAUTH_TOKEN` from `claude setup-token`.',
         code: 'agent-vm --readonly shell     # nothing on the host is writable\nagent-vm --scratch claude     # nothing of yours mounted, deleted on exit\nagent-vm --rm run npm test    # destroy the VM on exit',
       },
       {
         title: 'Resize on the fly',
-        body: 'Defaults are 10 GB of disk, 3 GB of memory and 1 CPU. Pass the flag again and the VM is stopped, reconfigured and restarted. Disk can grow, never shrink. CPU and memory are clamped to half the host per VM, which is not a budget across all of them: VMs persist, so several running at once add up. `agent-vm status` shows what you have, `rm` and `destroy-all` reclaim it.',
+        body: 'A new VM gets the base template’s: 10 GB of disk, 3 GB of memory and 1 CPU, unless `setup` was given others. Pass a flag with another value and the VM is stopped, reconfigured and restarted; a running one is asked about first (no by default), and declined, or with no terminal, it keeps its settings. Disk can grow, never shrink. CPU and memory are clamped to half the host per VM, which is not a budget across all of them: VMs persist, so several running at once add up. `agent-vm list` shows what you have, `rm` and `destroy-all` reclaim it.',
         code: 'agent-vm --disk 50 opencode\nagent-vm --memory 16 --cpus 8 shell\nagent-vm --reset claude   # re-clone from the base template',
       },
       {
@@ -215,7 +215,7 @@ export const en = {
       },
       {
         title: 'Ask from a script',
-        body: 'If you wrap agent-vm from another tool, use these rather than parsing human-facing output or reading `~/.agent-vm` directly: VM naming, the template name and the state files are implementation details and will change. `version --min` exits `0` when the engine is recent enough, `1` with a message when it is older, and `2` when the call itself is malformed, so a typo in the required version cannot read as "engine too old". One catch: an engine predating `--min` ignores the flag and exits `0`. In `info`, booleans are `1` or `0` and anything undeterminable reads `unknown`; all four commands work without Lima installed. A start with no terminal stops where it would ask a security question: `security_questions` in `info` lists them beforehand, and `--unsafe-disable-security-prompts` accepts them, or `--readonly` avoids them.',
+        body: 'If you wrap agent-vm from another tool, use these rather than parsing human-facing output or reading `~/.agent-vm` directly: VM naming, the template name and the state files are implementation details and will change. `version --min` exits `0` when the engine is recent enough, `1` with a message when it is older, and `2` when the call itself is malformed, so a typo in the required version cannot read as "engine too old". One catch: an engine predating `--min` ignores the flag and exits `0`. In `info`, booleans are `1` or `0` and anything undeterminable reads `unknown`; all four commands work without Lima installed. A start with no terminal stops where it would ask a security question: `security_questions` in `info` lists them beforehand, and `--unsafe-disable-security-prompts` accepts them, or `--readonly` avoids them. A restart it would ask about fails too: `--readonly` on a running writable VM, or the other way round, and a resize of a running VM is left unapplied.',
         code: 'agent-vm version --min 0.2.0 || exit 1  # silent when OK\nagent-vm name [dir]    # VM name for a directory\nagent-vm info [dir]    # one key=value per line\nagent-vm help          # the built-in help\n\n# info keys: version, template, state_dir,\n# project_env, dir, vm_name, base_exists,\n# vm_exists, vm_running, vm_stale,\n# ssh_host, ssh_config, git_protected,\n# security_questions',
       },
     ],
@@ -288,8 +288,7 @@ export const en = {
       {
         title: 'Manage the fleet',
         rows: [
-          ['status', 'Status of all VMs, current directory marked with `>`.'],
-          ['list', 'List all agent-vm VMs.'],
+          ['list, status', 'List all agent-vm VMs, the current directory’s marked with `>`, with the agent-vm version that built the base each was cloned from, and when.'],
           ['stop [vm-name]', 'Stop this directory’s VM, or the named one. The disk survives.'],
           ['rm [vm-name]', 'Stop and delete. A name from `list` reaches a VM whose directory is gone.'],
           ['destroy-all', 'Stop and delete every agent-vm VM, the base template included. `setup` rebuilds it.'],
@@ -320,12 +319,12 @@ export const en = {
     optionsNote: 'For `claude`, `opencode`, `codex`, `vibe`, `pi`, `shell` and `run`, placed before the command or right after its name. Anything later belongs to the command: in `agent-vm run docker run --rm x`, `--rm` is docker’s.',
     optionsHeaders: ['Flag', 'What it does', 'Default'],
     options: [
-      ['--disk GB', 'VM disk size. Can grow, never shrink.', '10'],
-      ['--memory GB', 'VM memory. Clamped to half the host, per VM.', '3'],
-      ['--cpus N', 'CPU count. Clamped to half the host, per VM.', '1'],
-      ['--ssh-port N', 'Fixed host port for the VM’s SSH, for tools that save it. `0` goes back to a new one on each start. Restarts the VM.', 'a new one per start'],
+      ['--disk GB', 'VM disk size. Can grow, never shrink.', 'the template’s (10)'],
+      ['--memory GB', 'VM memory. Clamped to half the host, per VM.', 'the template’s (3)'],
+      ['--cpus N', 'CPU count. Clamped to half the host, per VM.', 'the template’s (1)'],
+      ['--ssh-port N', 'Fixed host port for the VM’s SSH, for tools that save it. `0` goes back to a new one on each start. Restarts a running VM, asked first.', 'a new one per start'],
       ['--reset', 'Destroy and re-clone the VM from the base template.', 'off'],
-      ['--readonly', 'Every host share read-only (project and volumes), host-side. Restarts a running VM.', 'off'],
+      ['--readonly', 'Every host share read-only (project and volumes), host-side. Restarts a running VM, asked first.', 'off'],
       ['--unsafe-writable-git', 'Leave every `.git` writable so the agent can commit, with a warning. See [Protecting .git](#git).', 'off'],
       ['--unsafe-disable-security-prompts', 'Go on where a start would stop to ask a security question (see [Protecting .git](#git)), without offering to change your git config. The warnings are still printed. For scripts with no terminal; `AGENT_VM_UNSAFE_DISABLE_SECURITY_PROMPTS=1` in your shell does the same.', 'off'],
       ['--rm', 'Destroy the VM once the command exits.', 'off'],
@@ -347,7 +346,7 @@ export const en = {
             title: 'Installer options',
             paras: [
               'Options go after `sh -s --`: `--version X.Y.Z`, `--git` for a clone of `main`, `--dir DIR` for another place than `~/.local/share/agent-vm` (or `$XDG_DATA_HOME/agent-vm`). To read the installer first, download it, then run it with `sh`.',
-              'It ends with `agent-vm install`, which links `agent-vm` into `~/.local/bin` (`AGENT_VM_BIN_DIR` changes it), or writes a two-line launcher where Git Bash makes no symlinks. The command works from any shell, fish included: the `source .../agent-vm.sh` line earlier versions added to your shell rc is no longer needed, and `install` says so when it finds one. `./install.sh` remains as a wrapper, for now.',
+              'It ends with `agent-vm install`, which links `agent-vm` into `~/.local/bin` (`AGENT_VM_BIN_DIR` changes it), or writes a small launcher where Git Bash makes no symlinks. The command works from any shell, fish included: the `source .../agent-vm.sh` line earlier versions added to your shell rc is no longer needed, and `install` says so when it finds one. `./install.sh` remains as a wrapper, for now.',
             ],
             list: [],
             code: 'curl -fsSL https://www.agent-vm.org/install.sh | sh -s -- --dir ~/tools/agent-vm\ncurl -fsSLO https://www.agent-vm.org/install.sh && sh install.sh',
@@ -426,7 +425,7 @@ export const en = {
             title: 'Setup and runtime scripts',
             paras: [
               '`~/.agent-vm/setup.sh` runs once, in the template, at the end of `setup`, as the VM user with sudo. `~/.agent-vm/runtime.sh` runs in the VM on every command that enters one, then the project’s `.agent-vm.runtime.sh`: both must be safe to run again. [`runtime.example.sh`](https://github.com/sylvinus/agent-vm/blob/main/runtime.example.sh) covers git identity, `gh auth setup-git`, skills, MCP servers and a status line. Keep private keys out: the agent can read whatever they set up.',
-              'A script runs under the shell its shebang names (bash or sh, zsh otherwise), fed on standard input: `$0` is the shell, and a command in it that reads standard input reads the rest of the script, so give it `</dev/null`.',
+              '`setup.sh` runs under zsh. A runtime script runs under the shell its shebang names (bash or sh, zsh otherwise). Both are fed on standard input: `$0` is the shell, and a command in it that reads standard input reads the rest of the script, so give it `</dev/null`.',
               '`AGENT_VM_PROJECT_RUNTIME` moves the project’s script, relative to the project or absolute, `..` resolved as `cd` does. Inside the project, the VM reads it; outside, the host. mise picks up `.ruby-version`, `.python-version`, `.node-version` and `.tool-versions`.',
             ],
             list: [],
@@ -441,7 +440,7 @@ export const en = {
             title: 'Resources, ports, doctor',
             paras: [
               'CPU and memory are clamped to half the host per VM, with a notice. `AGENT_VM_HOST_SHARE` changes the divisor (`1` for the whole host); when the host capacity cannot be read, nothing is clamped.',
-              'A port set with `--ssh-port` stays until `--reset` or `rm`. One another agent-vm VM has is refused; one used by anything else makes the start fail. The VM must run for SSH to connect.',
+              'A port set with `--ssh-port` stays until `--reset` or `rm`. One another Lima VM is set to is refused; one used by anything else makes the start fail. The VM must run for SSH to connect.',
               '`doctor` prints no secret, so its output can go into an issue as is. It exits `1` when a check fails.',
             ],
             list: [],
@@ -627,10 +626,10 @@ export const en = {
       'Each VM authenticates on its own: `claude login` happens inside it. Credentials persist across restarts of that VM and are shared with neither the host nor any other VM. The network is shared, though: see [Network and ports](#network-and-ports).',
     contentsTitle: 'What is in the VM',
     contentsLede:
-      'The wizard’s default install and `--preinstall=default` produce the same set: everything below except the opt-in languages.',
+      'The wizard’s default install and `--preinstall=default` produce the same set: everything below except the rows marked no.',
     contentsHeaders: ['Category', 'Packages', 'Name', 'Default'],
     contents: [
-      ['Core', 'git, curl, wget, jq, zsh, ca-certificates, build-essential, unzip, zip, ripgrep, fd-find, htop', 'always', 'yes'],
+      ['Core', 'git, curl, wget, jq, zsh, ca-certificates, sshfs, build-essential, pkgconf, patch, unzip, zip, ripgrep, fd-find, htop', 'always', 'yes'],
       ['Build libs', 'libssl-dev, libreadline-dev, zlib1g-dev, libyaml-dev, libffi-dev', 'always', 'yes'],
       ['Version manager', 'mise', 'always', 'yes'],
       ['Python', 'python3, pip, venv', 'python', 'yes'],
@@ -715,7 +714,7 @@ export const en = {
     shellsTitle: 'Test the shells that matter',
     shellsBody:
       'macOS still ships bash 3.2, which is stricter about empty array expansion under `set -u` than modern bash. A change that passes on bash 5 can still break on a stock Mac. The `bash:3.2` image has no git, so the tests that need it skip there: add it with `apk`.',
-    shellsCode: 'docker run --rm -v "$PWD:/w" -w /w bash:3.2 ./test.sh\ndocker run --rm -v "$PWD:/w" -w /w bash:3.2 sh -c \'apk add -q git && git config --global safe.directory "*" && ./test.sh\'\nzsh ./test.sh',
+    shellsCode: 'docker run --rm -v "$PWD:/w" -w /w bash:3.2 ./test.sh\ndocker run --rm -v "$PWD:/w" -w /w bash:3.2 sh -c \'apk add -q git && git config --global safe.directory "*" && ./test.sh\'',
     structureTitle: 'Where things live',
     structureHeaders: ['File', 'What it is'],
     structure: [
@@ -735,7 +734,7 @@ export const en = {
     guidelines: [
       'Keep it bash 3.2 compatible, and run `./test.sh` under `bash:3.2` as well as your own shell.',
       'Every code path should be safe to re-run: check state before acting rather than assuming a clean machine.',
-      'New behaviour gets a test in `test.sh`. The stub `limactl` makes that cheap.',
+      'New behaviour gets a test in `tests/` (a new area gets its own `NN-*.sh`). The stub `limactl` makes that cheap.',
       'Integrator-facing surfaces (`info`, `env`, `version`) are contracts. Adding keys is fine, changing meanings is not.',
       'No secret, token or personal path in a commit, a test fixture or an issue.',
     ],
@@ -756,7 +755,7 @@ export const en = {
       {
         title: 'The machine',
         items: [
-          { name: 'Lima', note: 'Linux VMs on macOS and Linux. The only host dependency.', href: 'https://lima-vm.io/' },
+          { name: 'Lima', note: 'Linux VMs on macOS, Linux and Windows. The only host dependency, with QEMU on Windows.', href: 'https://lima-vm.io/' },
           { name: 'Debian', note: 'The guest distribution. Debian 13.', href: 'https://www.debian.org/' },
           { name: 'mise', note: 'Runtime version manager inside the VM.', href: 'https://mise.jdx.dev/' },
         ],

@@ -1,6 +1,6 @@
 # --- host capacity ------------------------------------------------------------
 # A VM handed more CPU or RAM than the host can spare makes the host unusable
-# for as long as the agent runs — and agents are meant to run unattended, for
+# for as long as the agent runs, and agents are meant to run unattended, for
 # a while. So a --cpus/--memory above this host's share is clamped to it, out
 # loud rather than silently. Nothing new to type: the flags stay plain
 # integers, and a request that fits is applied as asked.
@@ -30,7 +30,7 @@ _agent_vm_host_mem_gib() {
   fi
 }
 
-# _agent_vm_host_share <total> <floor> — the share of <total> this host will
+# _agent_vm_host_share <total> <floor>: the share of <total> this host will
 # give a VM, never below <floor>. An AGENT_VM_HOST_SHARE that is not a positive
 # integer falls back to 2: it goes into arithmetic, where 0 divides by zero,
 # "08" is bad octal and a name is evaluated as a variable.
@@ -45,7 +45,7 @@ _agent_vm_host_share() {
   printf '%s\n' "$share"
 }
 
-# _agent_vm_cap_resource <cpus|memory> <value> — the value to actually apply.
+# _agent_vm_cap_resource <cpus|memory> <value>: the value to actually apply.
 # Above this host's share it comes back clamped, with a notice; at or below it
 # comes back untouched. An empty value (nothing requested) and an unreadable
 # host both mean "don't touch": guessing low on an unknown machine would hand
@@ -73,15 +73,21 @@ _agent_vm_cap_resource() {
   printf '%s\n' "$val"
 }
 
+# Free space in GiB where Lima keeps the VMs' disks. Fails when df cannot say.
+_agent_vm_free_gib() {
+  local kib
+  kib=$(df -Pk "${LIMA_HOME:-$HOME}" 2>/dev/null | awk 'NR==2 {print $4}')
+  case "$kib" in ''|*[!0-9]*) return 1 ;; esac
+  echo $((kib / 1048576))
+}
+
 # Warn when the host has less free space than the disk being asked for. Lima
 # images are sparse, so this is a warning and not an error: the disk is
 # allocated as it fills, and a smaller host can still work for a while.
 _agent_vm_warn_disk_space() {
-  local want="$1" avail_kib avail_gib
+  local want="$1" avail_gib
   [[ -n "$want" ]] || return 0
-  avail_kib=$(df -Pk "${LIMA_HOME:-$HOME}" 2>/dev/null | awk 'NR==2 {print $4}')
-  case "$avail_kib" in ''|*[!0-9]*) return 0 ;; esac
-  avail_gib=$((avail_kib / 1048576))
+  avail_gib="$(_agent_vm_free_gib)" || return 0
   if [[ "$avail_gib" -lt "$want" ]]; then
     echo "Warning: ~${avail_gib} GiB free for a ${want} GiB VM disk (sparse: allocated as used)." >&2
   fi
@@ -89,7 +95,7 @@ _agent_vm_warn_disk_space() {
 
 # Check Linux prerequisites Lima needs to spin up a QEMU+KVM VM. macOS uses
 # different backends (vz/qemu-via-brew) so this is a no-op there. Returns
-# non-zero with actionable install/permission hints when something's missing —
+# non-zero with actionable install/permission hints when something's missing:
 # without this, the user gets a generic `Error: Failed to create base VM` and
 # has to dig into `~/.lima/<vm>/ha.stderr.log` to figure out why.
 _agent_vm_check_linux_prereqs() {
@@ -170,11 +176,7 @@ fi
 # Path of the limactl binary, empty when there is none. `command -v` cannot
 # answer where the function above shadows it.
 _agent_vm_limactl_path() {
-  if [[ -n "${ZSH_VERSION:-}" ]]; then
-    whence -p limactl 2>/dev/null
-  else
-    type -P limactl 2>/dev/null
-  fi
+  type -P limactl 2>/dev/null
 }
 
 # A host path as Lima reads it: C:/Users/... on Windows, unchanged elsewhere.
@@ -238,17 +240,20 @@ _agent_vm_check_windows_prereqs() {
   return 1
 }
 
+# What an administrator runs, once, then reboots, for QEMU to use WHPX.
+AGENT_VM_WHPX_ON="DISM /Online /Enable-Feature /FeatureName:HypervisorPlatform /All"
+
 # Printed after a failed VM start on Windows when one of the <log>s shows QEMU
 # could not use WHPX, Windows' hypervisor API. Lima uses it unconditionally on
 # Windows, with no slower fallback, and turning it on takes an administrator.
 _agent_vm_windows_start_hint() {
   _agent_vm_on_windows || return 0
   grep -qi 'whpx' "$@" 2>/dev/null || return 0
-  cat >&2 <<'EOF'
+  cat >&2 <<EOF
 QEMU could not use the Windows hypervisor. It needs the "Windows Hypervisor
 Platform" Windows feature, which an administrator turns on once, followed by
 a reboot: in Windows Features, or from an administrator terminal:
-  DISM /Online /Enable-Feature /FeatureName:HypervisorPlatform /All
+  $AGENT_VM_WHPX_ON
 On a managed laptop, that is a request to your IT department.
 EOF
 }

@@ -21,7 +21,8 @@
 #      checksum does not depend on how GitHub generates archives.
 #   6. the url and sha256 lines for the Homebrew formula. With
 #      AGENT_VM_TAP=<path to a homebrew-tap clone>, Formula/agent-vm.rb there
-#      is updated too, and the commands to commit it are printed.
+#      (checked to exist before step 1) is updated too, and the commands to
+#      commit it are printed.
 #
 # Needs git, gh (logged in) and shasum or sha256sum. A dry run reads origin
 # without fetching, and without gh skips the checks that need it, with a
@@ -109,6 +110,12 @@ if ! command -v gh >/dev/null 2>&1 || ! gh auth status >/dev/null 2>&1; then
   warn "gh is missing or not logged in: the checks that need it are skipped"
 fi
 
+# Checked now, not at step 6: by then the tag is pushed and the release out.
+if [ -n "${AGENT_VM_TAP:-}" ]; then
+  FORMULA="$AGENT_VM_TAP/Formula/agent-vm.rb"
+  [ -f "$FORMULA" ] || die "no formula at $FORMULA (AGENT_VM_TAP): create it first, or unset AGENT_VM_TAP"
+fi
+
 # --- 1. the repository ---------------------------------------------------------
 echo "Checking the repository"
 dirty="$(git status --porcelain)"
@@ -168,7 +175,7 @@ NOTES="$(changelog_notes "$VERSION")"
 ok "CHANGELOG.md has a $VERSION section ($(printf '%s\n' "$NOTES" | wc -l | tr -d ' ') lines)"
 
 # --- 3. tests ------------------------------------------------------------------
-# CI is the authority: it runs bash 3.2 and zsh, which this machine may lack.
+# CI is the authority: it runs bash 3.2, which this machine may lack.
 echo "Checking the tests"
 ci="skipped"
 [ -z "$GH" ] || ci="$(gh run list --workflow test.yml --commit "$head" --limit 1 \
@@ -241,15 +248,17 @@ echo "  url \"$URL\""
 echo "  sha256 \"$SHA\""
 
 if [ -n "${AGENT_VM_TAP:-}" ]; then
-  formula="$AGENT_VM_TAP/Formula/agent-vm.rb"
-  [ -f "$formula" ] || die "no formula at $formula"
   if [ -n "$DRY_RUN" ]; then
-    echo "Dry run: $formula would be updated."
+    echo "Dry run: $FORMULA would be updated."
   else
-    sed -e "s|^\\([[:space:]]*url \\).*|\\1\"$URL\"|" \
-        -e "s|^\\([[:space:]]*sha256 \\).*|\\1\"$SHA\"|" "$formula" > "$WORK/formula.rb"
-    mv "$WORK/formula.rb" "$formula"
-    ok "updated $formula"
+    # The first url and sha256 only: those of the source. A `bottle do`
+    # block below has sha256 lines of its own.
+    awk -v url="$URL" -v sha="$SHA" '
+      !u && /^[[:space:]]*url / { sub(/url .*/, "url \"" url "\""); u = 1 }
+      !s && /^[[:space:]]*sha256 / { sub(/sha256 .*/, "sha256 \"" sha "\""); s = 1 }
+      { print }' "$FORMULA" > "$WORK/formula.rb"
+    mv "$WORK/formula.rb" "$FORMULA"
+    ok "updated $FORMULA"
     echo "  Review and publish it:"
     echo "  git -C \"$AGENT_VM_TAP\" diff"
     echo "  git -C \"$AGENT_VM_TAP\" commit -am \"agent-vm $VERSION\" && git -C \"$AGENT_VM_TAP\" push"

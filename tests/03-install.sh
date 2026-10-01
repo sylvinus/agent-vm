@@ -24,28 +24,55 @@ fi
 check "no symlink (the historical sourcing)" "$(script_dir_of "$AGENT_VM_SH")"     "$REALDIR"
 
 # Sourced from a shell rc, the current directory is anyone's: a project where
-# the agent may have written a lib/ui.sh. In zsh, a function's $0 is its own
-# name, and the directory of that was ".": lib/ was loaded from there.
+# the agent may have written a lib/ui.sh.
 ELSEWHERE="$SB/elsewhere"; mkdir -p "$ELSEWHERE/lib"
 printf 'touch "%s/planted-lib-ran"\n' "$SB" > "$ELSEWHERE/lib/ui.sh"
-source_from_elsewhere() {  # <shell> <file>
-  ( cd "$ELSEWHERE" && "$1" -c '. "$1" >/dev/null 2>&1; printf "%s" "$AGENT_VM_SCRIPT_DIR"' _ "$2" )
+source_from_elsewhere() {  # <file>
+  ( cd "$ELSEWHERE" && bash -c '. "$1" >/dev/null 2>&1; printf "%s" "$AGENT_VM_SCRIPT_DIR"' _ "$1" )
 }
-for sh in bash zsh; do
-  if ! command -v "$sh" >/dev/null 2>&1; then
-    printf '  skip sourced by %s from another directory (%s is not installed)\n' "$sh" "$sh"
-    continue
-  fi
-  check "sourced by $sh from another directory: lib/ next to agent-vm.sh" \
-    "$(source_from_elsewhere "$sh" "$AGENT_VM_SH")" "$REALDIR"
+check "sourced by bash from another directory: lib/ next to agent-vm.sh" \
+  "$(source_from_elsewhere "$AGENT_VM_SH")" "$REALDIR"
+if [[ -n "$AGENT_VM_HAS_SYMLINKS" ]]; then
+  check "sourced by bash through a symlink, from another directory" \
+    "$(source_from_elsewhere "$SB/link2/agent-vm")" "$REALDIR"
+fi
+check "sourced by bash: a lib/ in the current directory never runs" \
+  "$([ -e "$SB/planted-lib-ran" ] && echo ran || echo no)" "no"
+rm -f "$SB/planted-lib-ran"
+
+# zsh (the ~/.zshrc line of 0.1.0's installer): a function running the file
+# with bash, and nothing else, whatever the user's options. From another
+# directory, through links, and from a path with a space and a quote.
+if command -v zsh >/dev/null 2>&1; then
+  zsh_source() {  # <file>: sourced, then `agent-vm version`
+    ( cd "$ELSEWHERE" && zsh -fc 'setopt noclobber ksh_arrays sh_word_split nounset
+      . "$1"; print -r -- "${AGENT_VM_SCRIPT_DIR-unset} $(whence -w agent-vm)"; agent-vm version' _ "$1" 2>&1 )
+  }
+  check "sourced by zsh: only an agent-vm function, which runs the command" \
+    "$(zsh_source "$AGENT_VM_SH")" "unset agent-vm: function
+$AGENT_VM_VERSION"
   if [[ -n "$AGENT_VM_HAS_SYMLINKS" ]]; then
-    check "sourced by $sh through a symlink, from another directory" \
-      "$(source_from_elsewhere "$sh" "$SB/link2/agent-vm")" "$REALDIR"
+    check "sourced by zsh through a symlink, from another directory" \
+      "$(zsh_source "$SB/link2/agent-vm")" "unset agent-vm: function
+$AGENT_VM_VERSION"
   fi
-  check "sourced by $sh: a lib/ in the current directory never runs" \
+  ODD="$SB/it's odd"; mkdir -p "$ODD"; cp -R "$REALDIR/agent-vm.sh" "$REALDIR/lib" "$ODD/"
+  check "sourced by zsh from a path with a space and a quote" \
+    "$(zsh_source "$ODD/agent-vm.sh")" "unset agent-vm: function
+$AGENT_VM_VERSION"
+  rm -rf "$ODD"
+  check "sourced by zsh by a relative path: still found from another directory" \
+    "$(cd "$REALDIR" && zsh -fc '. ./agent-vm.sh; cd "$1" && agent-vm version' _ "$ELSEWHERE" 2>&1)" "$AGENT_VM_VERSION"
+  out="$(cd "$ELSEWHERE" && zsh -fc '. "$1"; agent-vm nosuchcmd' _ "$AGENT_VM_SH" 2>&1; echo "st=$?")"
+  case "$out" in *"st=0") fail "sourced by zsh: a failing command returns 0: $out" ;;
+    *) pass "sourced by zsh: a failing command's status comes back" ;; esac
+  check "sourced by zsh: a lib/ in the current directory never runs" \
     "$([ -e "$SB/planted-lib-ran" ] && echo ran || echo no)" "no"
   rm -f "$SB/planted-lib-ran"
-done
+  check "run by zsh: runs under bash" "$(zsh "$AGENT_VM_SH" version 2>&1)" "$AGENT_VM_VERSION"
+else
+  printf '  skip sourced by zsh (zsh is not installed)\n'
+fi
 
 # lib/ is found next to the real file; a copy without it says so and stops.
 if [[ -n "$AGENT_VM_HAS_SYMLINKS" ]]; then

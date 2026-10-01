@@ -33,12 +33,7 @@ _agent_vm_volume_matches() {
     echo "Warning: Project filter '$1' (from ~/.agent-vm/volumes) is not an absolute path, skipping the entry." >&2
     return 1
   fi
-  if [[ -n "${ZSH_VERSION:-}" ]]; then
-    # zsh takes a pattern from a parameter literally unless asked with ~.
-    [[ "$dir" == ${~filter} ]]
-  else
-    [[ "$dir" == $filter ]]
-  fi
+  [[ "$dir" == $filter ]]
 }
 
 # A relative destination in ~/.agent-vm/volumes is inside the project. Prints
@@ -87,37 +82,21 @@ _agent_vm_project_mountpoint() {
   printf '%s\n' "$p"
 }
 
-# Build the .mounts JSON array for a VM. The first entry is always the project
-# dir; $3 ("true"/"false", default "true") decides whether it is writable.
-# Additional entries come from ~/.agent-vm/volumes, parsed as Docker-Compose-ish
-# `source[:destination][:mode][:project]` (mode ∈ {ro,rw}, default ro).
-#
-# $3 = false is --readonly, and it makes EVERY share read-only, `rw` volumes
-# included. The hypervisor enforces read-only per share, not per host file: a
-# writable volume containing the project (`~/work:/mnt/work:rw`) would let the
-# agent write the project through /mnt/work. With no writable share at all,
-# there is no such path to find.
-#
-# `writable: false` is not a guest-side mount option: Lima turns it into a
-# read-only flag on the host side of the share, so root inside the VM cannot
-# undo it. That holds for the two mount types Lima defaults to since v1.0 —
-# virtiofs on vz (readOnly passed to Virtualization.framework) and 9p on QEMU
-# (`readonly=on` on -virtfs) — and for reverse-sshfs with the builtin SFTP
-# server of a Lima that has readonlyNames, which is what $4 selects. It does
-# NOT hold for reverse-sshfs otherwise, which only passes `-o ro` to the
-# guest's sshfs; _agent_vm_mount_is_host_enforced checks for that case.
-#
-# $4 keeps names read-only for the guest (see _agent_vm_lima_protects_git):
-# a readonlyNames JSON array, or 1 for the project's default one (see
-# _agent_vm_readonly_names). Each entry then gets the builtin SFTP driver and
-# those names. The caller also has to set the mount type, see
-# _agent_vm_mounts_expr.
-#
-# Side effects: stages any file mounts as hardlinks under
-# ~/.agent-vm/file-mounts/<vm>/ and persists the file mount metadata to
-# ~/.agent-vm/.agent-vm-file-mounts-<vm> so subsequent starts can re-apply the
-# inside-VM bind mounts without re-parsing the volumes file. Stdout: the
-# mounts JSON array (consumed by `limactl edit --set ".mounts = ..."`).
+# _agent_vm_build_mounts_json <vm> <dir> [<writable>] [<names>]: the .mounts
+# JSON array for `limactl edit --set`. The project <dir> first, writable
+# unless <writable> is false, then the entries of ~/.agent-vm/volumes
+# (`source[:destination][:ro|rw[:project]]`, ro by default).
+# - <writable> false is --readonly, for every share, rw volumes included: a
+#   writable volume holding the project would be a second way to write it.
+#   Lima enforces `writable: false` on the host side, where root in the VM
+#   cannot undo it, except on reverse-sshfs without readonlyNames (see
+#   _agent_vm_mount_is_host_enforced).
+# - <names> keeps names read-only on every share: a readonlyNames JSON array,
+#   or 1 for the project's (see _agent_vm_readonly_names). The caller sets the
+#   mount type that goes with it (see _agent_vm_mounts_expr).
+# Single files are hardlinked into ~/.agent-vm/file-mounts/<vm>/, shared from
+# there and listed in ~/.agent-vm/.agent-vm-file-mounts-<vm> for the bind in
+# the VM.
 _agent_vm_build_mounts_json() {
   local vm_name="$1" host_dir="$2" project_writable="${3:-true}" sshfs=""
   case "${4:-}" in
@@ -164,7 +143,7 @@ _agent_vm_build_mounts_json() {
       fi
       # Parse source[:destination][:mode] syntax (like docker compose volumes).
       # The trailing mode segment is only recognized when it equals "ro" or
-      # "rw" — anything else is treated as a destination path.
+      # "rw": anything else is treated as a destination path.
       local src="$line" dst="" mode="ro"
       if [[ "$line" == *:ro || "$line" == *:rw ]]; then
         mode="${line##*:}"
@@ -207,7 +186,7 @@ _agent_vm_build_mounts_json() {
         # the VM sees only this file (never the source's parent). Lima mounts
         # the staging dir; a bind mount inside the VM (applied after boot)
         # exposes the file at its final destination.
-        local filename
+        local filename=""
         filename="$(basename "$src")"
         local file_staging_dir="$AGENT_VM_STATE_DIR/file-mounts/${vm_name}/${staging_idx}"
         local host_staging="${file_staging_dir}/${filename}"
@@ -242,7 +221,7 @@ _agent_vm_build_mounts_json() {
 
   rm -f "$file_mounts_cache"
   if [[ ${#file_mount_entries[@]} -gt 0 ]]; then
-    printf '%s\n' "${file_mount_entries[@]}" > "$file_mounts_cache"
+    printf '%s\n' "${file_mount_entries[@]}" >| "$file_mounts_cache"
   fi
 
   printf '%s' "$mounts_json"
@@ -251,9 +230,15 @@ _agent_vm_build_mounts_json() {
 # The mounts JSON last applied to <vm>, kept so --readonly can tell whether
 # any share is still writable: the guest cannot be asked, since after a mode
 # change it still believes the old one (see _agent_vm_push_env_and_probe).
+# A record that could not be written goes: an old one would keep claiming the
+# protection or the mode the VM had before (a protected .git, read-only
+# shares), and the next start would trust it. With none, it rebuilds them.
 _agent_vm_record_mounts() {
-  mkdir -p "$AGENT_VM_STATE_DIR" 2>/dev/null
-  printf '%s\n' "$2" > "$AGENT_VM_STATE_DIR/.agent-vm-mounts-$1"
+  local record="$AGENT_VM_STATE_DIR/.agent-vm-mounts-$1"
+  mkdir -p "$AGENT_VM_STATE_DIR" 2>/dev/null && printf '%s\n' "$2" >| "$record" && return 0
+  rm -f "$record"
+  echo "Error: could not record the shares of VM '$1' in $record." >&2
+  return 1
 }
 
 # 0 when <vm> is recorded with no writable share at all. A missing record
@@ -279,32 +264,15 @@ _agent_vm_mounts_have_readonly_names() {
   [[ -f "$record" ]] && grep -qF "\"readonlyNames\": $2" "$record"
 }
 
-# _agent_vm_push_env_and_probe <vm> <dir> <payload> [<env> [<runtime>]]:
-# can the guest actually write into the project share? Asked in the same
-# `limactl shell` as the env push every start makes: each one is a round trip.
-# Prints env-ok once the env file is written, and runtime-found when <runtime>
-# is a file; returns the probe's answer, 0 when the write succeeded.
-#
-# `test -w` cannot answer this. Lima writes the guest's /etc/fstab from
-# cloud-init, whose `mounts` module runs on the FIRST boot only, while the
-# host-side share config (virtiofs readOnly, 9p readonly=on) is rebuilt on
-# every start. So after a mode change on an existing VM the guest still
-# believes the old mode — `test -w` consults that stale belief and says
-# "writable" while the VMM is already refusing the writes.
-#
-# Only attempting a write goes through the whole path, which is also exactly
-# the property --readonly claims.
-#
-# The payload (~/.agent-vm/env, then the project's env when it is outside the
-# project, see _agent_vm_env_payload), then <env>, becomes
-# $HOME/.agent-vm.env, which the base VM's ~/.zshenv sources with `set -a`:
-# plain KEY=value lines, the project's last so it wins. On every start, so
-# edits on the host need no --reset, and when empty too, so env removed on the
-# host goes from the VM. `umask 077`: it usually holds secrets.
-#
-# <env> and <runtime> are the project's files when they are inside the
-# project: the VM reads them, not the host (see _agent_vm_in_project). CRs are
-# dropped from <env> here, as the host does for the payload.
+# _agent_vm_push_env_and_probe <vm> <dir> <payload> [<env> [<runtime>]], in
+# one round trip:
+# - writes ~/.agent-vm.env in the VM (mode 600, sourced by its ~/.zshenv):
+#   <payload> (see _agent_vm_env_payload), then the project's <env>, read by
+#   the VM, CRs dropped; empty too, so env removed on the host goes. Prints
+#   env-ok.
+# - prints runtime-found when the project's <runtime> is there.
+# - returns whether a write into the project <dir> succeeds. A real write, not
+#   `test -w`: after a mode change the guest's fstab still shows the old one.
 _agent_vm_push_env_and_probe() {
   local vm_name="$1" host_dir="$2" payload="$3"
   { [ -z "$payload" ] || printf '%s\n' "$payload"; } \
@@ -328,34 +296,64 @@ _agent_vm_push_env_and_probe() {
 # applied. Otherwise it only gets `-o ro` inside the guest, where root can
 # remount it rw. Returns 0 (enforced), 1 (not enforced), or 2 (could not tell).
 _agent_vm_mount_is_host_enforced() {
-  local types vmtype mtype ver
+  local types vmtype mtype
   types="$(limactl list --format '{{.VMType}} {{.Config.MountType}}' "$1" 2>/dev/null)" || return 2
   vmtype="${types%% *}"
   mtype="${types#* }"
   [[ "$types" == *" "* ]] || mtype=""
-  # Left unset (as agent-vm leaves it without the .git protection), Lima's
-  # driver picks it at start, and `limactl list` shows it unset. The same
-  # choice as Lima's drivers: virtiofs on vz, 9p on QEMU except on Windows or
-  # for a VM made by a Lima before 1.0 (no lima-version file before 0.20).
   case "$mtype" in
-    ""|default|"<nil>"|"<no value>")
-      case "$vmtype" in
-        vz) mtype=virtiofs ;;
-        qemu)
-          ver="$(cat "$(_agent_vm_lima_home)/$1/lima-version" 2>/dev/null)"
-          if _agent_vm_on_windows || [[ -z "$ver" ]] || ! _agent_vm_ver_ge "$ver" 1.0.0; then
-            mtype=reverse-sshfs
-          else
-            mtype=9p
-          fi ;;
-      esac ;;
+    ""|default|"<nil>"|"<no value>") mtype="$(_agent_vm_default_mount_type "$1" "$vmtype")" ;;
   esac
   case "$vmtype $mtype" in
     "vz virtiofs"|"qemu 9p") return 0 ;;
     "qemu virtiofs") return 1 ;;
+    # The record says agent-vm gave it readonlyNames, and the Lima installed
+    # now serves them: a stock limactl started by hand would not.
     ?*" reverse-sshfs")
-      _agent_vm_mounts_protect_git "$1" && return 0
+      _agent_vm_mounts_protect_git "$1" && _agent_vm_lima_protects_git && return 0
       return 1 ;;
     *) return 2 ;;
   esac
+}
+
+# The mount type Lima gives <vm> (of VM type <vmtype>) when its config leaves
+# it unset, as agent-vm does without the .git protection: the one Lima's
+# _config/override.yaml or default.yaml sets, if any, else the one its driver
+# picks at start (and `limactl list` shows unset): virtiofs on vz, 9p on QEMU
+# except on Windows or for a VM made by a Lima before 1.0 (no lima-version
+# file before 0.20). Nothing for another.
+_agent_vm_default_mount_type() {
+  local ver f t
+  for f in override default; do
+    t="$(awk '/^mountType:/ { v = $2; gsub(/["\047]/, "", v); print v; exit }' \
+      "$(_agent_vm_lima_home)/_config/$f.yaml" 2>/dev/null)"
+    if [[ -n "$t" ]]; then
+      echo "$t"
+      return 0
+    fi
+  done
+  case "$2" in
+    vz) echo virtiofs ;;
+    qemu)
+      ver="$(cat "$(_agent_vm_lima_home)/$1/lima-version" 2>/dev/null)"
+      if _agent_vm_on_windows || [[ -z "$ver" ]] || ! _agent_vm_ver_ge "$ver" 1.0.0; then
+        echo reverse-sshfs
+      else
+        echo 9p
+      fi ;;
+  esac
+}
+
+# 0 when <vm>, without the .git protection, would share through reverse-sshfs
+# served by a Lima without readonlyNames. Lima's mount documentation says a
+# compromised guest may then reach host paths outside the shares, through the
+# SFTP server: not only .git is at stake, the rest of the disk is. On Windows
+# always; elsewhere for a QEMU VM made by a Lima before 1.0. A VM not made yet
+# is asked about the base template it is cloned from.
+_agent_vm_unprotected_mount_is_sshfs() {
+  local vm="$1" vmtype
+  _agent_vm_on_windows && return 0
+  _agent_vm_exists "$vm" || vm="$AGENT_VM_TEMPLATE"
+  vmtype="$(limactl list --format '{{.VMType}}' "$vm" 2>/dev/null)" || return 1
+  [[ "$(_agent_vm_default_mount_type "$vm" "${vmtype%% *}")" == reverse-sshfs ]]
 }

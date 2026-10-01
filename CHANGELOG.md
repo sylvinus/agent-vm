@@ -4,52 +4,42 @@
 
 ### Security
 
-- The host no longer reads the project's `.agent-vm.env` and
-  `.agent-vm.runtime.sh` by their path. The VM can write the project and
-  make either a symlink to any file of yours: the host followed it on every
-  start and handed the content to the VM (`ln -s ~/.ssh/id_ed25519
-  .agent-vm.env` got the key on the next command), and `project-env set`
-  copied it into the project. The VM now reads both itself, where a link only
-  reaches the VM's own files, and `project-env` refuses a file that is a
-  link, or reached through one, without a window the VM could race; it needs
-  `perl` for that. A file kept outside the project with an absolute
-  `AGENT_VM_PROJECT_ENV` or `AGENT_VM_PROJECT_RUNTIME` is read on the host,
-  as before.
-- `agent-vm.sh` sourced from zsh loaded `lib/` from the current directory:
-  in a zsh function, `$0` is the function's name. Every new shell opened in a
-  project where the agent had written a `lib/ui.sh` ran it on the host.
-- The git commands agent-vm runs in a project (the "not ignored" warning of
-  `project-env set` and `doctor`) refuse a bare repository and run no
-  `core.fsmonitor` or pager: the VM could plant a repository there whose
-  config names a command, run on the host whatever the user's
-  `safe.bareRepository`.
-- A relative destination in `~/.agent-vm/volumes` is created in the project
-  without following a symlink the VM swaps in after the check. `mkdir -p`
-  followed it, and made directories or an empty file anywhere on the host.
+- The host no longer reads the project's `.agent-vm.runtime.sh` by its
+  path. The VM can write the project and make it a symlink to any file of
+  yours: the host followed it on every start and handed the content to the
+  VM (`ln -s ~/.ssh/id_ed25519 .agent-vm.runtime.sh` got the key on the next
+  command). The VM now reads it itself, where a link only reaches the VM's
+  own files. The project's `.agent-vm.env`, new here, is read the same way,
+  and `project-env` refuses a file that is a link, or reached through one,
+  without a window the VM could race; it needs `perl` for that. Whether a
+  file is in the project is decided by where its path leads, not by how it
+  is spelled (the project's real path while it is used through a link). A
+  file kept outside the project with `AGENT_VM_PROJECT_ENV` or
+  `AGENT_VM_PROJECT_RUNTIME` is read on the host.
 - The home directory, `/`, agent-vm's own directory, its state directory,
-  Lima's, and any directory containing one of them are refused as a project:
-  `cd ~ && agent-vm shell` shared `~/.ssh` and every dotfile read-write.
+  Lima's, any directory containing one of them, and any directory inside one
+  of the last three are refused as a project: `cd ~ && agent-vm shell`
+  shared `~/.ssh` and every dotfile read-write, and from inside agent-vm's
+  folder the VM could change the files the host runs next.
 - `--readonly` on a stopped VM that last ran writable makes it read-only
   before it boots. It used to start it writable, then stop it and apply the
   change.
 - Whether `--readonly` is enforced on the host is decided from what Lima
   reports for the VM, not by asking the guest, which could lie.
 - A `limactl stop` that did not stop the VM is caught before its shares are
-  changed. The record then said read-only while the running VM kept its
-  writable shares.
-- The Lima build for Windows is checked against checksums pinned in
-  agent-vm, not against the `SHA256SUMS` of the release that serves it.
-- `env get/has` refuse a key named after a line they do not understand: after
-  an open quote or a trailing backslash, the shell reads the next lines
-  differently than they look, so `get` could answer a value the VM does not
-  have.
+  changed.
 - Every `.git` in the shared folders is read-only for the VMs, at any depth,
   when Lima has `sshfs.readonlyNames`. Before, a VM could write a project's
   `.git/config` or hooks, and git on the host (editors and shell prompts
   included) would run what they name: commands on your machine. Lima's SFTP
   server enforces it on the host, so root in the VM cannot lift it. The shares
   then use `reverse-sshfs` with the builtin SFTP driver, and existing VMs
-  switch on their next start. The field is not in upstream Lima yet
+  switch on their next start. A VM made by agent-vm 0.1.0, or cloned from a
+  base it built, has no `sshfs`: it boots once without shares to install it,
+  with a warning, before it gets them. Without it, Lima installed Debian's at
+  boot, which needs apt then and breaks symlinks (see #22 below). `doctor`
+  reports a base built by 0.1.0. This migration will be removed in a future
+  release: `setup`, then `--reset`. The field is not in upstream Lima yet
   (lima-vm/lima#5529): `setup` checks for it, says what is at stake without
   it, and offers to install `sylvinus/tap/lima-sylvinus` with Homebrew.
   `doctor` reports it too. `--unsafe-writable-git`, or
@@ -67,8 +57,10 @@
 - Before a VM boots with writable shares, agent-vm stops on each risk it
   cannot remove and asks whether to go on; Enter, or no terminal, aborts,
   and nothing has changed. The risks: a Lima that cannot keep `.git`
-  read-only; hooks that cannot be protected, or a name declined; a git
-  config file included from the project, or a setting (`core.fsmonitor`, a
+  read-only (on Windows, where the shares are then `reverse-sshfs`, the
+  rest of the disk is at stake, and the box says so); hooks that cannot be
+  protected, or a name declined; a git config file included from the
+  project, there yet or not, or a setting (`core.fsmonitor`, a
   filter, a `!` alias...) whose command is a file in it; and
   `safe.bareRepository=explicit` missing from the global git config, which
   it offers to set, or ignored by a git older than 2.38. Without that
@@ -79,16 +71,18 @@
   a terminal too, so a caller capturing it gets "no" rather than a question
   nobody sees. For a VM that already runs, the warnings are printed without
   a question; one that lacks a protection it should have is offered a
-  restart, and continuing without it is the same kind of risk. `--readonly`
-  asks nothing, and `--unsafe-writable-git` nothing about `.git`.
+  restart, and continuing without it is the same kind of risk. A running VM
+  that is stopped to boot again (new resources, a protection, a repair) is
+  asked once stopped, as any VM about to boot. `--readonly` asks none of
+  these questions, and `--unsafe-writable-git` none about `.git`.
   `--unsafe-disable-security-prompts`, or
   `AGENT_VM_UNSAFE_DISABLE_SECURITY_PROMPTS=1` in the shell, goes on without
   asking, and without offering to change the git config; the warnings are
   still printed.
 - A Lima whose answer to the `readonlyNames` probe cannot be read (a failing
   `limactl validate`, a wording agent-vm does not know) stops the start with
-  an error. It was taken for a Lima without `readonlyNames`, and a stopped
-  VM then lost its protection on its next start.
+  an error, rather than being taken for a Lima without `readonlyNames`,
+  which would drop the protection of a stopped VM on its next start.
 - The home directory and agent-vm's directories are refused as a project
   whatever the case they are typed in, on macOS and Windows: Git Bash keeps
   the spelling typed, so `cd /c/users/me` got past the check.
@@ -96,17 +90,22 @@
   and root in the VM cannot lift it. It used to be a remount inside the
   guest. Under `reverse-sshfs` without `readonlyNames`, where Lima only passes
   the flag to the guest, agent-vm refuses `--readonly` instead of pretending.
-  Switching the mode restarts a running VM.
+  Switching the mode of a running VM restarts it, asked first (no by
+  default): declined, or with no terminal, the command fails, in both
+  directions, so another session's `--readonly` VM is not made writable
+  under it.
 - `--readonly` is refused on virtiofs under QEMU, where Lima's virtiofsd has no
   read-only mode and the flag only reaches the guest. It was accepted there as
   enforced on the host. 9p, QEMU's default, and virtiofs on `vz` are enforced.
 - `--readonly` covers every share, `rw` entries of `~/.agent-vm/volumes`
   included. Read-only is enforced per share, so a writable volume containing
   the project was a second way to write it.
-- `agent-vm env get/has` and `project-env get/has` read the file instead of
-  sourcing it. The project env file sits in a directory the VM can write to,
-  so sourcing it on the host could run code the agent wrote there. Values that
-  need a shell to be interpreted are refused with exit status 2.
+- `agent-vm env get/has` read the file instead of sourcing it, as the new
+  `project-env get/has` do: the project env file sits in a directory the VM
+  can write to. Values that need a shell to be interpreted are refused with
+  exit status 2, and so is every key once one line is: after an open quote,
+  a trailing backslash or a command, the shell reads the file differently
+  than it looks, and could assign any key.
 - A project path containing a quote, a backslash or a control character is
   refused. It was spliced into the Lima mount config and could add mounts of
   its own (the home directory, read-write).
@@ -145,6 +144,11 @@ has passwordless sudo, so anything enforced there is advisory at best.
   with the name of the missing file when it is not there: a copy of
   `agent-vm.sh` on its own no longer works. Clones, the curl installer and
   release tarballs have it.
+- Sourced by zsh (the `~/.zshrc` line of the 0.1.0 installer), `agent-vm.sh`
+  only defines an `agent-vm` function that runs it with bash, like the
+  command on `PATH`: agent-vm no longer runs inside zsh, with its semantics
+  and your options. Its internal `_agent_vm_*` functions are no longer
+  defined there. Sourcing it from bash is unchanged.
 - agent-vm's options are read the same way before the command and right after
   its name: `agent-vm claude --disk=50` resizes the VM instead of passing
   `--disk=50` to Claude, and `agent-vm claude --disk 10G` is refused with the
@@ -279,10 +283,28 @@ has passwordless sudo, so anything enforced there is advisory at best.
   skills, which `pi -p` would skip otherwise. Pi has no MCP support, so the
   `mcp-*` servers are not wired into it.
 - Starting a VM prints when its base VM was built (`Base VM: built
-  2026-09-28, 3 days ago`): its agents and packages are that old.
+  2026-09-28`): its agents and packages are that old.
+- `list` adds a BASE column: the agent-vm version that built the base each
+  VM was cloned from, and the day (`0.2.0 2026-09-28`). A base built before
+  0.2.0 shows `0.1.0`. It marks the current directory's VM with `>`, as
+  `status` did: `status` is now the same command.
 
 ### Fixed
 
+- With zsh, two or more files in `~/.agent-vm/volumes` no longer break the
+  VM's shares: a variable of the loop was printed into the mounts config
+  (agent-vm now runs under bash, see Changed).
+- `agent-vm run -i foo` (any command starting with `-`) runs it, instead of
+  handing the option to `env` in the VM.
+- Sourced into a shell with `noclobber` (`set -C`), agent-vm rewrites its
+  files: `env set` failed, and the record of a VM's shares kept its old
+  value.
+- `env set KEY a b`, and `get`, `has`, `unset` or `list` with a word too
+  many, are refused instead of keeping the first word.
+- `list` fails, saying so, when Lima cannot be queried, instead of printing
+  "(no VMs)".
+- `info` and `name` refuse a directory whose name holds a control
+  character: a newline added lines of its own to `info`'s output.
 - `setup` only marks the base ready once it has stopped: Lima cannot clone a
   running instance, so every new project VM failed after a stop that did not
   take.
@@ -305,6 +327,11 @@ has passwordless sudo, so anything enforced there is advisory at best.
 - VM names fall back to `sha256sum` when `shasum` is missing, and naming fails
   rather than dropping the hash (two projects with the same directory name
   would have shared one VM).
+- When an agent, a shell or `run` in the VM ends, the terminal's mouse
+  tracking, focus reports, bracketed paste and keyboard modes are turned off.
+  A program that did not restore them (a crash, a dropped connection) left
+  the host shell typing escape sequences on every mouse move. The screen is
+  not cleared.
 - `status` says "(no VMs)" when there are none.
 - A new VM prints its resources once instead of twice.
 - `destroy-all` no longer risks skipping VMs when `limactl` reads stdin.

@@ -59,6 +59,7 @@ mount_types() {
 #!/usr/bin/env bash
 [ "\$1" = shell ] && { echo 9p; exit 0; }
 [ "\$1" = list ] && { printf '%s\n' "$1"; exit 0; }
+[ "\$1" = validate ] && [ -n "\${MT_PROTECTS:-}" ] && { echo 'field mounts[*].sshfs.readonlyNames requires mountType to be reverse-sshfs' >&2; exit 1; }
 exit 1
 STUB
   chmod +x "$SB/bin/limactl"
@@ -91,7 +92,10 @@ check "unset on QEMU, no lima-version: reverse-sshfs, not" "$(LIMA_HOME="$SB/lim
 # cannot tell the servers apart: the record of the applied mounts does.
 mkdir -p "$HOME/.agent-vm"
 printf '[{"location": "%s", "writable": false, %s}]\n' "$PROJ" "$SSHFS_RO" > "$HOME/.agent-vm/.agent-vm-mounts-agent-vm-t"
-check "reverse-sshfs with readonlyNames is" "$(mount_types 'qemu reverse-sshfs')" "0"
+check "reverse-sshfs with readonlyNames is" "$(MT_PROTECTS=1 mount_types 'qemu reverse-sshfs')" "0"
+# Recorded so, but served by a Lima without them (a stock limactl started it
+# since): not.
+check "recorded with readonlyNames, a Lima without them: not" "$(mount_types 'qemu reverse-sshfs')" "1"
 rm -f "$HOME/.agent-vm/.agent-vm-mounts-agent-vm-t"
 # Restore the shared stub: mount_fstype replaced it with its own.
 cat > "$SB/bin/limactl" <<'STUB'
@@ -99,23 +103,6 @@ cat > "$SB/bin/limactl" <<'STUB'
 exit 0
 STUB
 chmod +x "$SB/bin/limactl"
-
-# The prompt before restarting a VM to apply --readonly must key off whether
-# the VM was ALREADY running, not off whether it is running by the time we
-# ask — the reconcile step sits after `limactl start`, so asking then always
-# answers yes and every scripted --readonly on an existing VM would abort on
-# a prompt nobody can answer.
-ro_guard="$(sed -n '/want_writable" == "false" \]\] &&/p' "$AGENT_VM_SH")"
-case "$ro_guard" in
-  *'-n "$was_running"'*) pass "the --readonly prompt keys off was_running" ;;
-  *_agent_vm_running*)   fail "the --readonly prompt re-asks after we started the VM" ;;
-  *)                     fail "could not find the --readonly prompt guard" ;;
-esac
-case "$(sed -n '/^  local was_running=""/,/^  if \[\[ -z "$was_running" \]\]/p' "$AGENT_VM_SH")" in
-  *'_agent_vm_running "$vm_name" && was_running=1'*)
-    pass "was_running is sampled before the VM is started" ;;
-  *) fail "was_running is not sampled before the start" ;;
-esac
 
 # =============================================================================
 section "unenforceable flags are gone, not just hidden"

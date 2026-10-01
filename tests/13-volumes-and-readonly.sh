@@ -101,7 +101,11 @@ vols "$SB/vol-file.toml:conf/app.toml" >/dev/null
 grep -q "|$PROJ/conf/app.toml\$" "$HOME/.agent-vm/.agent-vm-file-mounts-$PV" \
   && pass "relative, a file: bound at that path" || fail "relative file: $(cat "$HOME/.agent-vm/.agent-vm-file-mounts-$PV")"
 fi
-rm -rf "$PROJ/.claude" "$PROJ/a" "$PROJ/planted" "$PROJ/conf" "$SB/outside" "$SB/vol-file.toml"
+# Two file entries: the JSON is only JSON.
+echo y > "$SB/vol-file2.toml"
+out="$(vols "$SB/vol-file.toml:/etc/a.toml" "$SB/vol-file2.toml:/etc/b.toml")"
+case "$out" in \[*\]) pass "two file entries: the mounts JSON alone" ;; *) fail "two file entries: $out" ;; esac
+rm -rf "$PROJ/.claude" "$PROJ/a" "$PROJ/planted" "$PROJ/conf" "$SB/outside" "$SB/vol-file.toml" "$SB/vol-file2.toml"
 check "no filter: every project, as before" "$(has_vol "$(vols "$SB/vol-f:/mnt/f:ro")")" yes
 check "no filter, no mode: as before" \
   "$(vols "$SB/vol-f:/mnt/f" | grep -c "\"mountPoint\": \"/mnt/f\", \"writable\": false")" 1
@@ -143,10 +147,19 @@ _agent_vm_mounts_all_readonly "$PV" && pass "the new record has no writable shar
 ro_run
 rec_has "edit $PV" && fail "an all read-only VM was remounted again" \
   || pass "an all read-only VM is left alone"
-# Back to writable: the end of a --readonly session is said as such, not as a
-# broken mount being repaired.
-out="$(AGENT_VM_TEST_RO=1 rec run true)"
-case "$out" in *"left read-only by --readonly; making it writable again"*) pass "after --readonly: says it is making the VM writable again" ;; *) fail "after --readonly: $out" ;; esac
+# Back to writable while it runs: another terminal may be using it under
+# --readonly, so it is asked (no by default), not taken for a broken mount.
+out="$(AGENT_VM_TEST_RO=1 rec run true; echo "rc=$?")"
+case "$out" in *"runs read-only (--readonly)"*"not restarted"*"rc=1") pass "after --readonly, running, no terminal: not restarted" ;; *) fail "after --readonly, running: $out" ;; esac
+rec_has "stop $PV" && fail "after --readonly, running: stopped unasked" || pass "and it was not stopped"
+out="$( _agent_vm_can_ask() { return 0; }; _agent_vm_ask_yn() { echo 1; }; AGENT_VM_TEST_RO=1 rec run true )"
+rec_has "stop $PV" && rec_has "edit $PV" && pass "after --readonly, running, restart accepted: made writable" || fail "after --readonly, accepted: $out"
+_agent_vm_mounts_all_readonly "$PV" && fail "after --readonly, accepted: still recorded read-only" || pass "and recorded writable"
+# Stopped: the end of a --readonly session is said as such, not as a broken
+# mount being repaired.
+printf '%s\n' "[{\"location\": \"$PROJ\", \"writable\": false}]" > "$REC_MOUNTS"
+out="$(AGENT_VM_TEST_STOPPED=1 rec run true)"
+case "$out" in *"left read-only by --readonly; making it writable again"*) pass "after --readonly, stopped: says it is making the VM writable again" ;; *) fail "after --readonly, stopped: $out" ;; esac
 printf '[{"location": "%s", "writable": true}]\n' "$PROJ" > "$REC_MOUNTS"
 out="$(AGENT_VM_TEST_RO=1 rec run true)"
 case "$out" in *"Project mount is not writable; repairing"*) pass "a writable VM that cannot write: a repair" ;; *) fail "broken mount: $out" ;; esac
@@ -236,6 +249,13 @@ check "/"                           "$(refused /)" "refused"
 check "agent-vm's own directory"    "$(refused "$AGENT_VM_SCRIPT_DIR")" "refused"
 check "a parent of agent-vm's"      "$(refused "$(dirname "$AGENT_VM_SCRIPT_DIR")")" "refused"
 check "agent-vm's state"            "$(refused "$HOME/.agent-vm")" "refused"
+# Inside them: the VM would write what the host runs (lib/), or every VM's
+# config (Lima's _config/override.yaml).
+mkdir -p "$HOME/.agent-vm/inside" "$(_agent_vm_lima_home)/_config"
+check "a folder inside agent-vm"    "$(refused "$AGENT_VM_SCRIPT_DIR/lib")" "refused"
+check "a folder inside its state"   "$(refused "$HOME/.agent-vm/inside")" "refused"
+check "a folder inside Lima's"      "$(refused "$(_agent_vm_lima_home)/_config")" "refused"
+check "and says which"              "$(_agent_vm_unsafe_project "$AGENT_VM_SCRIPT_DIR/lib")" "is inside agent-vm itself"
 case "$(refused "$PROJ")" in accepted*) pass "a project directory is shared" ;; *) fail "a project directory was refused" ;; esac
 case "$(_agent_vm_unsafe_project "$HOME/proj-under-home" 2>/dev/null || echo none)" in
   none) pass "a project inside the home directory is fine" ;;

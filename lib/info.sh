@@ -1,8 +1,9 @@
 # --- version and info: what integrators read ----------------------------------
-# _agent_vm_ver_ge <a> <b> — status 0 when version a >= b. Components compare
+# _agent_vm_ver_ge <a> <b>: status 0 when version a >= b. Components compare
 # one by one as base-10 numbers: a string comparison gets "1.10.0" < "1.9.0"
 # wrong, and "08" must not be read as octal. Missing components count as 0, a
-# "-rc1" suffix is ignored. No arrays: this file is also sourced by zsh.
+# "-rc1" suffix is ignored. Compared as digit strings, leading zeros dropped,
+# the longer the larger: shell arithmetic overflows past 19 digits.
 _agent_vm_ver_ge() {
   local a="${1%%-*}" b="${2%%-*}" x y
   while [[ -n "$a" || -n "$b" ]]; do
@@ -10,9 +11,11 @@ _agent_vm_ver_ge() {
     if [[ "$a" == *.* ]]; then a="${a#*.}"; else a=""; fi
     if [[ "$b" == *.* ]]; then b="${b#*.}"; else b=""; fi
     x="${x//[!0-9]/}"; y="${y//[!0-9]/}"
-    x=$((10#${x:-0})); y=$((10#${y:-0}))
-    [[ "$x" -gt "$y" ]] && return 0
-    [[ "$x" -lt "$y" ]] && return 1
+    x="${x#"${x%%[!0]*}"}"; y="${y#"${y%%[!0]*}"}"
+    [[ "${#x}" -gt "${#y}" ]] && return 0
+    [[ "${#x}" -lt "${#y}" ]] && return 1
+    [[ "$x" > "$y" ]] && return 0
+    [[ "$x" < "$y" ]] && return 1
   done
   return 0
 }
@@ -26,7 +29,7 @@ _agent_vm_update_command() {
   # Physical, as AGENT_VM_SCRIPT_DIR is.
   default="$(CDPATH= cd -P -- "$default" 2>/dev/null && pwd)" || default=""
   if [[ -e "$AGENT_VM_SCRIPT_DIR/.git" ]]; then
-    printf 'git -C "%s" pull\n' "$AGENT_VM_SCRIPT_DIR"
+    printf "git -C '%s' pull\n" "$(_agent_vm_sq_escape "$AGENT_VM_SCRIPT_DIR")"
   elif [[ "$AGENT_VM_SCRIPT_DIR" == */Cellar/agent-vm/* ]]; then
     echo "brew upgrade agent-vm"
   elif [[ "$AGENT_VM_SCRIPT_DIR" == "$default" ]]; then
@@ -87,7 +90,7 @@ _agent_vm_version() {
 
 # Machine-readable state, one key=value per line. This is the supported way for
 # another tool to ask what agent-vm knows, instead of reverse-engineering VM
-# naming, the template name, or the state-dir version markers — all of which
+# naming, the template name, or the state-dir version markers, all of which
 # are internal and free to change.
 #
 # Keys: version, template, state_dir, project_env, dir, vm_name, base_exists,
@@ -162,6 +165,8 @@ _agent_vm_info() {
   _agent_vm_lima_protects_git || lima_st=$?
   if _agent_vm_writable_git_optout; then
     protected=0
+    # The opt-out leaves .git, not the rest of the disk: still asked there.
+    _agent_vm_unprotected_mount_is_sshfs "$vm_name" && questions="lima"
   else
     case "$lima_st" in
       0) protected=1 ;;

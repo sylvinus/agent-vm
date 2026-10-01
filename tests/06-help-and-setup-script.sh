@@ -2,11 +2,11 @@
 section "release hygiene"
 # =============================================================================
 # Every dispatched command must appear in `help`: a command nobody can discover
-# is a command nobody uses. (`sh`/`destroy` are aliases documented inline.)
+# is a command nobody uses. (`sh`/`destroy`/`status` are aliases documented inline.)
 help_text="$(agent-vm help)"
 missing=""
 for verb in setup claude opencode codex vibe pi shell run stop rm destroy-all \
-            list status name info env version help; do
+            list name info env version help; do
   case "$help_text" in
     *"  $verb"*) ;;
     *) missing="$missing $verb" ;;
@@ -95,7 +95,7 @@ else
   fail "apt_get no longer passes DEBIAN_FRONTEND through sudo"
 fi
 # Recommends pull in Samba, avahi-daemon, printer config... via Chromium.
-if grep -E '^[^#]*apt_get install' "$SETUP_SH" | grep -qv -- '--no-install-recommends'; then
+if grep -qv -- '--no-install-recommends' <<< "$(grep -E '^[^#]*apt_get install' "$SETUP_SH")"; then
   fail "an install pulls in Recommends: $(grep -nE '^[^#]*apt_get install' "$SETUP_SH" | grep -v -- '--no-install-recommends' | head -1)"
 else
   pass "every apt install skips Recommends"

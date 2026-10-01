@@ -91,6 +91,96 @@ else
   fail "restart accepted: stop '${s:-none}', edit '${e:-none}', start '${t:-none}': $out"
 fi
 
+# From a base built by agent-vm 0.1.0 (no version of it recorded for the VM):
+# no sshfs in it, so it boots once with no shares to get it, then gets the
+# protected ones. Line numbers of the calls, in the order they must come.
+BUILT_BY="$HOME/.agent-vm/.agent-vm-built-by-$PV"
+MIGRATED="$HOME/.agent-vm/.agent-vm-sshfs-$PV"
+old_vm() { rm -f "$BUILT_BY" "$MIGRATED" "$REC_MOUNTS"; }
+at() { grep -n -- "$1" "$REC" | head -1 | cut -d: -f1; }
+in_order() {
+  local prev=0 n
+  for n in "$@"; do
+    [ -n "$n" ] && [ "$n" -gt "$prev" ] || return 1
+    prev="$n"
+  done
+}
+migration_order() {
+  in_order "$(at "^edit $PV --set del(.mountType) | .mounts = \[\]")" "$(at "^start $PV")" \
+    "$(at "/usr/local/bin/sshfs")" "$(at "^stop $PV")" \
+    "$(at "^edit $PV --set .mountType = \"reverse-sshfs\"")"
+}
+old_vm
+out="$(AGENT_VM_TEST_STOPPED=1 rec run true)"
+migration_order && pass "0.1.0 VM: booted without shares, sshfs installed, stopped, then protected" \
+  || fail "0.1.0 VM: $(grep -E '^(edit|start|stop|shell)' "$REC" | cut -c1-80)"
+check "0.1.0 VM: started twice in all" "$(grep -c "^start $PV" "$REC")" "2"
+case "$out" in *"base built by agent-vm 0.1.0"*"removed in a future release"*) pass "0.1.0 VM: warned" ;; *) fail "0.1.0 VM: no warning: $out" ;; esac
+_agent_vm_mounts_protect_git "$PV" && pass "0.1.0 VM: recorded as protected" || fail "0.1.0 VM: not recorded"
+[ -e "$MIGRATED" ] && pass "0.1.0 VM: recorded as migrated" || fail "0.1.0 VM: not recorded as migrated"
+unprotected_rec
+AGENT_VM_TEST_STOPPED=1 rec run true >/dev/null
+rec_has "/usr/local/bin/sshfs" && fail "0.1.0 VM: migrated again" || pass "0.1.0 VM: migrated once"
+
+old_vm
+out="$(AGENT_VM_TEST_STOPPED=1 AGENT_VM_TEST_SSHFS_FAIL=1 rec run true; echo "rc=$?")"
+case "$out" in *"could not install sshfs"*"E: no sshfs"*"rc=1") pass "0.1.0 VM, install failed: stops with the reason" ;; *) fail "0.1.0 VM, install failed: $out" ;; esac
+rec_has "reverse-sshfs" && fail "0.1.0 VM, install failed: shares changed" || pass "0.1.0 VM, install failed: no protected shares"
+rec_has "agent-vm-write-probe" && fail "0.1.0 VM, install failed: the command ran" || pass "0.1.0 VM, install failed: the command did not run"
+[ -e "$MIGRATED" ] && fail "0.1.0 VM, install failed: recorded as migrated" || pass "0.1.0 VM, install failed: tried again next time"
+
+old_vm
+rm -f "$PROTECTS"
+AGENT_VM_TEST_STOPPED=1 rec run true >/dev/null
+touch "$PROTECTS"
+rec_has "/usr/local/bin/sshfs" && fail "0.1.0 VM on stock Lima: migrated" || pass "0.1.0 VM on stock Lima: its shares stay as they were"
+
+# Cloned by 0.2.0 from a 0.1.0 base on stock Lima: its shares are recorded,
+# unprotected. With readonlyNames later, it is migrated all the same.
+old_vm
+unprotected_rec
+AGENT_VM_TEST_STOPPED=1 rec run true >/dev/null
+migration_order && pass "recorded VM from a 0.1.0 base: migrated before it is protected" \
+  || fail "recorded VM from a 0.1.0 base: $(grep -E '^(edit|start|stop|shell)' "$REC" | cut -c1-80)"
+
+# Running, under --readonly: no question before the start, the shares change
+# in the restart that applies --readonly. Migrated there too.
+old_vm
+out="$( _agent_vm_can_ask() { return 0; }; _agent_vm_ask_yn() { echo 1; }; AGENT_VM_TEST_RO=1 rec --readonly run true )"
+in_order "$(at "^stop $PV")" "$(at "^edit $PV --set del(.mountType) | .mounts = \[\]")" \
+  "$(at "/usr/local/bin/sshfs")" "$(at "^edit $PV --set .mountType = \"reverse-sshfs\"")" \
+  && pass "running 0.1.0 VM, --readonly: migrated in the restart, before it is protected" \
+  || fail "running 0.1.0 VM, --readonly: $(grep -E '^(edit|start|stop|shell)' "$REC" | cut -c1-80): $out"
+
+# Its base recorded: no migration, with or without a record of its shares.
+rm -f "$MIGRATED" "$REC_MOUNTS"
+echo 0.2.0 > "$BUILT_BY"
+AGENT_VM_TEST_STOPPED=1 rec run true >/dev/null
+rec_has "/usr/local/bin/sshfs" && fail "VM from a current base: migrated" || pass "VM from a current base: not migrated"
+
+# A new VM from a base 0.1.0 built: the same, on the bare clone, before its
+# shares are set.
+mv "$HOME/.agent-vm/.agent-vm-base-built-by" "$SB/built-by.saved"
+echo 0.2.0 > "$HOME/.agent-vm/.agent-vm-built-by-$PV"
+CLONED="$SB/cloned-old-base"; rm -f "$CLONED" "$REC_MOUNTS"
+out="$(AGENT_VM_TEST_CLONED="$CLONED" rec run true)"
+in_order "$(at "^clone ")" "$(at "/usr/local/bin/sshfs")" "$(at "^edit $PV --set .mountType = \"reverse-sshfs\"")" \
+  && migration_order && pass "new VM from a 0.1.0 base: sshfs installed before its shares are set" \
+  || fail "new VM from a 0.1.0 base: $(grep -E '^(clone|edit|start|stop|shell)' "$REC" | cut -c1-80)"
+case "$out" in *"base built by agent-vm 0.1.0"*"agent-vm setup"*) pass "new VM from a 0.1.0 base: warned" ;; *) fail "new VM from a 0.1.0 base: $out" ;; esac
+[ -e "$HOME/.agent-vm/.agent-vm-built-by-$PV" ] && fail "new VM from a 0.1.0 base: given a version" || pass "new VM from a 0.1.0 base: no version of its own"
+rm -f "$CLONED" "$REC_MOUNTS"
+out="$(AGENT_VM_TEST_CLONED="$CLONED" AGENT_VM_TEST_SSHFS_FAIL=1 rec run true; echo "rc=$?")"
+case "$out" in *"could not install sshfs"*"rc=1") pass "new VM from a 0.1.0 base, install failed: stops" ;; *) fail "new VM, install failed: $out" ;; esac
+rec_has "delete $PV" && pass "and the clone is deleted" || fail "new VM, install failed: clone kept"
+mv "$SB/built-by.saved" "$HOME/.agent-vm/.agent-vm-base-built-by"
+rm -f "$CLONED" "$REC_MOUNTS"
+AGENT_VM_TEST_CLONED="$CLONED" rec run true >/dev/null
+rec_has "/usr/local/bin/sshfs" && fail "new VM from a current base: migrated" || pass "new VM from a current base: not migrated"
+check "new VM from a current base: its base version recorded" "$(cat "$HOME/.agent-vm/.agent-vm-built-by-$PV" 2>/dev/null)" "0.2.0"
+rm -f "$CLONED"
+protected_rec
+
 # Back to a Lima without readonlyNames: reverse-sshfs goes, before the start.
 rm -f "$PROTECTS"
 protected_rec
@@ -99,6 +189,55 @@ rec_has "edit $PV --set del(.mountType) | .mounts = [{$(mnt "$PROJ"), \"writable
   && pass "Lima without readonlyNames: the VM goes back to the default mount type" \
   || fail "reverse-sshfs kept without readonlyNames: $(grep '^edit' "$REC")"
 _agent_vm_mounts_protect_git "$PV" && fail "the record still says protected" || pass "and the record says so"
+
+# A running VM asks nothing at the start, but stopped to apply new settings,
+# it boots again: asked then, as any VM about to boot. Declined, it stays
+# stopped and unchanged.
+protected_rec
+out="$( unset AGENT_VM_UNSAFE_DISABLE_SECURITY_PROMPTS; _agent_vm_can_ask() { return 0; }
+        _agent_vm_ask_yn() { if [[ "$1" == "Stop the VM and apply changes?" ]]; then echo 1; else echo 0; fi; }
+        rec --ssh-port 2299 run true; echo "rc=$?" )"
+case "$out" in *"Lima cannot keep .git read-only"*"Aborted."*"is stopped"*"rc=1") pass "resize of a running VM: the questions are asked once it is stopped" ;; *) fail "resize of a running VM: $out" ;; esac
+rec_has "stop $PV" && ! rec_has "start $PV" && ! rec_has "edit $PV" \
+  && pass "declined: stopped, not changed, not started" || fail "declined: $(grep -E '^(stop|edit|start)' "$REC")"
+
+# Where the shares would be reverse-sshfs (Windows, a QEMU VM of a Lima before
+# 1.0), a Lima without readonlyNames does not keep the VM to its shares: the
+# box says so, not only .git.
+out="$( unset AGENT_VM_UNSAFE_DISABLE_SECURITY_PROMPTS; _agent_vm_can_ask() { return 1; }
+        _agent_vm_unprotected_mount_is_sshfs() { return 0; }
+        AGENT_VM_TEST_STOPPED=1 rec run true; echo "rc=$?" )"
+case "$out" in *"Lima cannot keep the VM to its shares"*"SSH keys"*"Aborted."*"--scratch"*"rc=1") pass "reverse-sshfs without readonlyNames: the box says the disk is at stake" ;; *) fail "reverse-sshfs box: $out" ;; esac
+# --unsafe-writable-git gives up .git, not the rest of the disk: still asked.
+out="$( unset AGENT_VM_UNSAFE_DISABLE_SECURITY_PROMPTS; _agent_vm_can_ask() { return 1; }
+        _agent_vm_unprotected_mount_is_sshfs() { return 0; }
+        AGENT_VM_TEST_STOPPED=1 rec --unsafe-writable-git run true; echo "rc=$?" )"
+case "$out" in *"Lima cannot keep the VM to its shares"*"Aborted."*"rc=1") pass "reverse-sshfs, --unsafe-writable-git: still asked" ;; *) fail "reverse-sshfs opt-out: $out" ;; esac
+case "$( _agent_vm_unprotected_mount_is_sshfs() { return 0; }; AGENT_VM_UNSAFE_WRITABLE_GIT=1 rec info | grep '^security_questions=' )" in
+  *lima*) pass "info: the same question with the opt-out" ;; *) fail "info: opt-out on reverse-sshfs asks nothing" ;;
+esac
+# --readonly cannot be enforced there: refused before the VM is touched.
+out="$( _agent_vm_unprotected_mount_is_sshfs() { return 0; }
+        AGENT_VM_TEST_STOPPED=1 rec --readonly run true; echo "rc=$?" )"
+case "$out" in *"--readonly cannot be enforced here"*"rc=1") pass "reverse-sshfs, --readonly: refused" ;; *) fail "reverse-sshfs --readonly: $out" ;; esac
+grep -Eq '^(edit|start|clone) ' "$REC" && fail "reverse-sshfs --readonly: the VM was touched" || pass "and nothing was touched"
+sshfs_default() {
+  ( export AGENT_VM_TEST_REC="$REC" AGENT_VM_TEST_VM="$PV" AGENT_VM_TEST_VMTYPE=qemu LIMA_HOME="$SB/old-lima"
+    mkdir -p "$SB/old-lima/$PV"; echo "$1" > "$SB/old-lima/$PV/lima-version"
+    _agent_vm_unprotected_mount_is_sshfs "$PV" && echo yes || echo no )
+}
+check "a QEMU VM of a Lima before 1.0: reverse-sshfs" "$(sshfs_default 0.23.2)" "yes"
+check "a QEMU VM of Lima 2: 9p" "$(sshfs_default 2.1.0)" "$(_agent_vm_on_windows && echo yes || echo no)"
+# Lima's own config can set the type for every VM: override.yaml first.
+mkdir -p "$SB/old-lima/_config"
+printf 'mountType: "reverse-sshfs"\n' > "$SB/old-lima/_config/default.yaml"
+check "default.yaml setting reverse-sshfs" "$(sshfs_default 2.1.0)" "yes"
+printf 'mountType: 9p # mine\n' > "$SB/old-lima/_config/override.yaml"
+check "override.yaml wins over it" "$(sshfs_default 2.1.0)" "$(_agent_vm_on_windows && echo yes || echo no)"
+rm -rf "$SB/old-lima/_config"
+check "a VM on vz: not" \
+  "$( AGENT_VM_TEST_REC="$REC" AGENT_VM_TEST_VM="$PV" _agent_vm_unprotected_mount_is_sshfs "$PV" && echo yes || echo no )" \
+  "$(_agent_vm_on_windows && echo yes || echo no)"
 
 # --readonly on reverse-sshfs: enforced on the host by the builtin server of a
 # Lima with readonlyNames, and refused otherwise.
@@ -312,6 +451,18 @@ if command -v git >/dev/null 2>&1; then
   case "$risks" in *"filter.x.clean = scripts/clean.sh %f"*) pass "config: a relative command path" ;; *) fail "config: filter: $risks" ;; esac
   case "$risks" in *"alias.t = !./t.sh"*) pass "config: a shell alias" ;; *) fail "config: alias: $risks" ;; esac
   case "$risks" in *"core.pager"*|*sshcommand*|*"alias.st"*) fail "config: false positive: $risks" ;; *) pass "config: PATH commands, options and plain aliases left out" ;; esac
+  check "config: an included file listed once" "$(grep -c 'config file .gitconfig' <<< "$risks")" "1"
+  # An include of a file not there yet: git skips it, and the VM can create
+  # it. includeIf too, and relative to the file holding it.
+  ( git -C "$PROJ" config includeIf.gitdir:/.path ../later.gitconfig
+    git -C "$PROJ" config --add include.path ../.git/x.gitconfig
+    git -C "$PROJ" config --add include.path "$SB/outside.gitconfig" )
+  risks="$(_agent_vm_project_config_risks "$PROJ")"
+  case "$risks" in *"config file later.gitconfig"*) pass "config: an include of a file not there yet" ;; *) fail "config: missing include: $risks" ;; esac
+  case "$risks" in *x.gitconfig*|*outside.gitconfig*) fail "config: an include in .git or outside the project listed: $risks" ;; *) pass "config: includes in .git or outside left out" ;; esac
+  ( git -C "$PROJ" config --unset-all includeIf.gitdir:/.path
+    git -C "$PROJ" config --unset-all include.path
+    git -C "$PROJ" config include.path ../.gitconfig )
   names_rec '[".git", ".hg"]'
   out="$( unset AGENT_VM_UNSAFE_DISABLE_SECURITY_PROMPTS; _agent_vm_can_ask() { return 1; }; AGENT_VM_TEST_STOPPED=1 rec run true )"
   case "$out" in *"git on this machine uses these"*".gitconfig"*"Aborted."*) pass "config: a start stops on it" ;; *) fail "config: start: $out" ;; esac
@@ -397,7 +548,7 @@ out="$( noprompt; AGENT_VM_TEST_STOPPED=1 rec --unsafe-disable-security-prompts 
 case "$out" in *"Lima cannot keep .git read-only"*"Continuing: --unsafe-disable-security-prompts."*) pass "--unsafe-disable-security-prompts: the warning, then on" ;; *) fail "--unsafe-disable-security-prompts: $out" ;; esac
 out="$( noprompt; AGENT_VM_TEST_STOPPED=1 rec run --unsafe-disable-security-prompts true )"
 case "$out" in *"Aborted."*) fail "run --unsafe-disable-security-prompts: not taken: $out" ;; *) pass "run --unsafe-disable-security-prompts: taken" ;; esac
-rec_has "agent-vm-write-probe" && ! rec_has " true --unsafe" && ! grep -v '^edit' "$REC" | grep -q "unsafe-disable-security-prompts" \
+rec_has "agent-vm-write-probe" && ! rec_has " true --unsafe" && ! grep -q "unsafe-disable-security-prompts" <<< "$(grep -v '^edit' "$REC")" \
   && pass "and the flag does not reach the command" || fail "the flag reached the command: $(grep -v '^edit' "$REC" | tail -2)"
 out="$( noprompt; export AGENT_VM_UNSAFE_DISABLE_SECURITY_PROMPTS=1; AGENT_VM_TEST_STOPPED=1 rec run true )"
 case "$out" in *"Continuing: AGENT_VM_UNSAFE_DISABLE_SECURITY_PROMPTS=1."*) pass "AGENT_VM_UNSAFE_DISABLE_SECURITY_PROMPTS=1: on, and says so" ;; *) fail "the env var: $out" ;; esac
@@ -412,5 +563,5 @@ esac
 # typed), is still refused.
 upper_home="$(printf '%s' "$HOME" | tr '[:lower:]' '[:upper:]')"
 check "the home directory in other capitals is refused where case is ignored" \
-  "$( _agent_vm_fs_nocase() { return 0; }; _agent_vm_unsafe_project "$upper_home" )" "your home directory"
+  "$( _agent_vm_fs_nocase() { return 0; }; _agent_vm_unsafe_project "$upper_home" )" "is, or contains, your home directory"
 _agent_vm_cleanup_state "$PV"

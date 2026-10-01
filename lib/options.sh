@@ -1,6 +1,6 @@
 # --- options: agent-vm's own, for the commands that start a VM ----------------
 
-# Validate a positive-integer arg from the CLI (no retry — fail fast).
+# Validate a positive-integer arg from the CLI (no retry: fail fast).
 _agent_vm_validate_int() {
   local name="$1" val="$2"
   if [[ ! "$val" =~ ^[1-9][0-9]*$ ]]; then
@@ -21,7 +21,7 @@ _agent_vm_validate_port() {
 }
 
 # Reads the option at the start of "$@", if it is one of agent-vm's, and sets
-# in the caller's scope (bash and zsh both scope locals dynamically):
+# in the caller's scope (bash scopes locals dynamically):
 #   taken    the number of words it used, 0 when "$1" is not an option
 #   vm_opts  the option appended, as _agent_vm_ensure_running takes it
 #   rm       1 for --rm

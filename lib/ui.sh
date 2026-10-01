@@ -44,6 +44,19 @@ _agent_vm_can_ask() {
   _agent_vm_have_tty && [[ -t 2 ]]
 }
 
+# Turn off the input modes a full-screen program in the VM may have left on
+# the terminal, when it was killed or the SSH session dropped before it
+# restored them: mouse tracking (1000, 1002, 1003, with the 1006 and 1015
+# encodings), focus reports (1004), bracketed paste (2004), the kitty keyboard
+# protocol (a pop, which resets the flags when it empties the stack) and
+# xterm's modifyOtherKeys. Each one types escape sequences into the host
+# shell otherwise. Also shows the cursor. No clear, no leaving the alternate
+# screen: 1049l restores a saved cursor position, which moves the prompt.
+_agent_vm_reset_term_modes() {
+  [[ -t 1 ]] || return 0
+  printf '\033[?1000l\033[?1002l\033[?1003l\033[?1006l\033[?1015l\033[?1004l\033[?2004l\033[<u\033[>4;0m\033[?25h'
+}
+
 # What turned the security questions off, when something did:
 # --unsafe-disable-security-prompts (_agent_vm_ensure_running sets
 # _agent_vm_unsafe_no_prompts, as a local, for the flag), or
@@ -70,7 +83,7 @@ _agent_vm_confirm_unsafe() {
   _agent_vm_can_ask && [[ "$(_agent_vm_ask_yn "Continue anyway?" N)" == "1" ]]
 }
 
-# _agent_vm_wrap <width> — word-wrap stdin to <width> columns. Lines indented
+# _agent_vm_wrap <width>: word-wrap stdin to <width> columns. Lines indented
 # by two spaces are commands, kept whole so they can be copied.
 _agent_vm_wrap() {
   awk -v w="$1" '
@@ -86,15 +99,15 @@ _agent_vm_wrap() {
     }'
 }
 
-# _agent_vm_box <title> — print stdin on stderr as a boxed notice, for the
+# _agent_vm_box <title>: print stdin on stderr as a boxed notice, for the
 # warnings and offers of setup and of a start: one paragraph per line,
 # wrapped to the terminal (72 columns at most). A question asked right after reads as being about the box.
 # No right border: it would need every line padded to its display width, which
-# bash and zsh count differently for non-ASCII text.
+# the shell does not know for non-ASCII text.
 _agent_vm_box() {
   local title="$1" size width rule n
   # Probed first: asking stty outright prints the shell's own open error on
-  # stderr when there is no terminal (zsh names it), which a bare 2>/dev/null
+  # stderr when there is no terminal, which a bare 2>/dev/null
   # does not silence, since it is the redirection itself that fails.
   if _agent_vm_have_tty; then
     size="$(stty size 2>/dev/null </dev/tty)"
@@ -126,6 +139,6 @@ _agent_vm_ask_int() {
       printf '%s\n' "$reply"
       return 0
     fi
-    printf '  (must be a positive integer, e.g. 10 — got: %s)\n' "$reply" >&2
+    printf '  (must be a positive integer, e.g. 10; got: %s)\n' "$reply" >&2
   done
 }

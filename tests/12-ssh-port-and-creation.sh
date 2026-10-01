@@ -33,10 +33,12 @@ case "$?:$out" in
   *) fail "claude --ssh-port 80 accepted: $out" ;;
 esac
 CLONED="$SB/cloned-port"; rm -f "$CLONED"
-AGENT_VM_TEST_CLONED="$CLONED" rec --ssh-port 2224 run true >/dev/null
-grep '^edit' "$REC" | head -1 | grep -qF -- "--set .ssh.localPort = 2224" \
-  && pass "new VM: the port is set with the mounts, before the first start" \
-  || fail "new VM: $(grep '^edit' "$REC")"
+AGENT_VM_TEST_CLONED="$CLONED" AGENT_VM_TEST_STOPPED=1 rec --ssh-port 2224 run true >/dev/null
+p="$(grep -n -m1 -- "^edit $PV --set .ssh.localPort = 2224" "$REC" | cut -d: -f1)"
+s="$(grep -n -m1 "^start $PV" "$REC" | cut -d: -f1)"
+[ -n "$p" ] && [ -n "$s" ] && [ "$p" -lt "$s" ] \
+  && pass "new VM: the port is set before the first start" \
+  || fail "new VM: $(grep -E '^(edit|start)' "$REC")"
 
 section "a VM that cannot be configured is not kept (#21)"
 # The edit giving a new VM its shares and resources used to fail in silence:
@@ -44,7 +46,7 @@ section "a VM that cannot be configured is not kept (#21)"
 CLONED="$SB/cloned-fail"; rm -f "$CLONED"
 out="$(AGENT_VM_TEST_CLONED="$CLONED" AGENT_VM_TEST_EDIT_FAIL=1 rec --memory 2 run true)"
 case "$?:$out" in
-  1:*"could not configure the new VM '$PV'"*"edit boom"*) pass "a failed edit is said, with Lima's message" ;;
+  1:*"could not set the shares of VM '$PV'"*"edit boom"*) pass "a failed edit is said, with Lima's message" ;;
   *) fail "a failed edit: $out" ;;
 esac
 rec_has "delete $PV --force" && pass "and the half-made VM is deleted" || fail "the half-made VM is kept"

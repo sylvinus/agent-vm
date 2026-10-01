@@ -13,10 +13,8 @@
 # (the recording limactl of 11-recorded-commands.sh, for one).
 #
 # Also worth running under bash 3.2 (what macOS ships), which is stricter about
-# empty array expansion under `set -u`, and under zsh, which is how agent-vm is
-# usually sourced:
+# empty array expansion under `set -u`:
 #   docker run --rm -v "$PWD:/w" -w /w bash:3.2 ./test.sh
-#   zsh ./test.sh
 
 set -uo pipefail
 

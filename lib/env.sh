@@ -2,7 +2,7 @@
 
 # Escape a value for a single-quoted shell literal: ' becomes '"'"'.
 #
-# Via sed, NOT `${v//\'/\'\"\'\"\'}`: bash 3.2 — what macOS ships — keeps the
+# Via sed, NOT `${v//\'/\'\"\'\"\'}`: bash 3.2, what macOS ships, keeps the
 # backslashes in the replacement half of that substitution and emits
 # `O\'"\'"\'Brien`. The resulting line is a syntax error, and a shell sourcing
 # ~/.agent-vm.env then abandons the WHOLE file, losing every secret in it, not
@@ -11,7 +11,7 @@ _agent_vm_sq_escape() {
   printf '%s' "$1" | sed "s/'/'\"'\"'/g"
 }
 
-# _agent_vm_env_read <file> <key> — print the value the file assigns to <key>,
+# _agent_vm_env_read <file> <key>: print the value the file assigns to <key>,
 # as a shell would, without running the shell.
 # 0 = found (value on stdout) · 1 = not assigned · 3 = assigned with syntax
 # this reader refuses to interpret.
@@ -22,11 +22,11 @@ _agent_vm_sq_escape() {
 # $ ` \ ; & | < > ( ) ~. A trailing `# comment` is allowed. The last
 # assignment wins, like in the shell.
 #
-# From the first line refused, the rest of the file is unreadable: a quote
-# left open or a trailing backslash makes the shell read the next lines as part
-# of that value, and any other syntax can change what comes after. A key named
-# anywhere in that rest gets status 3, not what its lines seem to say. A line
-# that is not an assignment, a comment or blank counts as refused.
+# One line refused, and no key can be answered: a quote left open or a
+# trailing backslash makes the shell read the next lines as part of that
+# value, and other syntax can run anything, an assignment to any key before
+# or after it included (eval, typeset, a sourced file). A line that is not an
+# assignment, a comment or blank counts as refused.
 _agent_vm_env_read() {
   awk -v k="$2" -v q="'" '
     function parse(s,    v, c, e, more) {
@@ -57,32 +57,20 @@ _agent_vm_env_read() {
       VAL = v
       return 0
     }
-    function names(s) {
-      return s ~ ("(^|[^A-Za-z0-9_])" k "([^A-Za-z0-9_]|$)")
-    }
     {
-      if (broken) { if (names($0)) tainted = 1; next }
+      if (broken) next
       line = $0
       sub(/^[ \t]+/, "", line)
       if (line ~ /^(#.*)?\r?$/) next
       sub(/^export[ \t]+/, "", line)
-      if (line !~ /^[A-Za-z_][A-Za-z0-9_]*=/) {
-        broken = 1
-        if (names(line)) tainted = 1
-        next
-      }
+      if (line !~ /^[A-Za-z_][A-Za-z0-9_]*=/) { broken = 1; next }
       eq = index(line, "=")
-      rc = parse(substr(line, eq + 1))
-      if (substr(line, 1, eq - 1) == k) { found = 1; bad = rc; val = VAL }
-      if (rc) {
-        broken = 1
-        if (names(substr(line, eq + 1))) tainted = 1
-      }
+      if (parse(substr(line, eq + 1))) { broken = 1; next }
+      if (substr(line, 1, eq - 1) == k) { found = 1; val = VAL }
     }
     END {
-      if (tainted) exit 3
+      if (broken) exit 3
       if (!found) exit 1
-      if (bad) exit 3
       printf "%s", val
     }
   ' "$1"
@@ -104,12 +92,19 @@ _agent_vm_env_lines() {
       for (i = 1; i <= n; i++) {
         c = substr(s, i, 1)
         if (q == "\047") { if (c == "\047") q = ""; continue }
+        # $'"'"'...'"'"': backslash escapes, a quote among them included.
+        if (q == "$") {
+          if (c == "\\") i++
+          else if (c == "\047") q = ""
+          continue
+        }
         if (q == "\"") {
           if (c == "\\") i++
           else if (c == "\"") q = ""
           continue
         }
         if (c == "\\") i++
+        else if (c == "$" && substr(s, i + 1, 1) == "\047") { q = "$"; i++ }
         else if (c == "\047" || c == "\"") q = c
         else if (c == "#" && i > 1 && substr(s, i - 1, 1) ~ /[ \t]/) return
       }
@@ -135,26 +130,22 @@ _agent_vm_env_lines() {
   ' "$2"
 }
 
-# Where this project's env file lives. Same shape as the runtime script
-# (_agent_vm_project_runtime_path), same override rule: AGENT_VM_PROJECT_ENV holds it somewhere else (typically
-# an integrator's own directory, ".mytool/env"), relative paths resolve against
-# the project, absolute ones are used as-is.
-#
-# In the project, not in the state dir: a per-project value belongs with the
-# project. It follows a clone, a move and a delete without the engine having to
-# track which directory was which — and nothing outlives a project that is
-# gone.
-#
-# The flip side, and it is on the integrator: this file is inside a git
-# repository. Put a secret in it and it is one `git add` away from being
-# published. Secrets shared by every VM belong in `agent-vm env`, which lives
-# outside any repository.
-_agent_vm_project_env_file() {
-  local host_dir="${1:-$(pwd)}" rel="${AGENT_VM_PROJECT_ENV:-.agent-vm.env}"
-  case "$rel" in
-    /*) _agent_vm_path_join / "$rel" ;;
-    *)  _agent_vm_path_join "$host_dir" "$rel" ;;
+# _agent_vm_project_path <dir> <path>: a project file's path, <path> taken
+# relative to the project <dir> unless absolute. An integrator moves the env
+# file and the runtime script into its own directory (".mytool/env") with
+# AGENT_VM_PROJECT_ENV and AGENT_VM_PROJECT_RUNTIME.
+_agent_vm_project_path() {
+  case "$2" in
+    /*) _agent_vm_path_join / "$2" ;;
+    *)  _agent_vm_path_join "$1" "$2" ;;
   esac
+}
+
+# This project's env file: in the project, so it follows a clone, a move and
+# a delete, and one `git add` away from being published (secrets shared by
+# every VM belong in `agent-vm env`).
+_agent_vm_project_env_file() {
+  _agent_vm_project_path "${1:-$(pwd)}" "${AGENT_VM_PROJECT_ENV:-.agent-vm.env}"
 }
 
 # _agent_vm_path_join <dir> <path>: <dir>/<path>, with `.` and `..` resolved in
@@ -176,22 +167,10 @@ _agent_vm_path_join() {
   printf '%s\n' "${out:-/}"
 }
 
-# A project env file is a file in someone's repository, so the failure that
-# matters is committing it. Say so when it is WRITTEN — the only moment the
-# user is thinking about this file — and give the exact line that prevents it:
-# a warning without the fix is just noise someone learns to scroll past.
-#
-# `git check-ignore` is the authority here: it accounts for .gitignore at every
-# level, .git/info/exclude and the user's global excludes, none of which a grep
-# over .gitignore would see. Exit 1 means "not ignored"; anything else (no
-# repository, git missing, an error) is not something to lecture about.
-#
-# Already tracked is the worse case and a different fix: ignoring a tracked
-# file changes nothing, git keeps staging its edits. Saying "add this line"
-# there would be wrong advice.
-#
-# git runs here in a directory the VM can write, so on a repository the VM may
-# have planted: see _agent_vm_git_untrusted.
+# After `project-env set`: warns, with the line that fixes it, when the file
+# is tracked by git (rm --cached, then ignore) or not ignored (ignore), as
+# `git check-ignore` sees it. Silent without a repository or git. git runs in
+# a directory the VM can write: see _agent_vm_git_untrusted.
 _agent_vm_warn_unignored() {
   local file="$1" top rel rc=0 drive rest alt
   command -v git >/dev/null 2>&1 || return 0
@@ -217,30 +196,82 @@ _agent_vm_warn_unignored() {
   q_top="$(_agent_vm_sq_escape "$top")"
   q_rel="$(_agent_vm_sq_escape "$rel")"
   if _agent_vm_git_untrusted -C "$top" ls-files --error-unmatch "$file" >/dev/null 2>&1; then
-    echo "Warning: $rel is tracked by git — its contents are in the repository." >&2
+    echo "Warning: $rel is tracked by git: its contents are in the repository." >&2
     echo "         git -C '$q_top' rm --cached '$q_rel' && echo '/$q_rel' >> '$q_top/.gitignore'" >&2
     return 0
   fi
 
   _agent_vm_git_untrusted -C "$top" check-ignore -q "$file" 2>/dev/null || rc=$?
   [ "$rc" -eq 1 ] || return 0
-  echo "Warning: $rel is not ignored by git — it can be committed by accident." >&2
+  echo "Warning: $rel is not ignored by git: it can be committed by accident." >&2
   echo "         echo '/$q_rel' >> '$q_top/.gitignore'" >&2
 }
 
-# 0 when <path> is inside the project directory <dir>, where the VM can write.
-# The host must not read such a file by its path: the VM can make it a symlink,
-# and the host would follow it to any file of the user's and hand the content
-# over. It is read in the VM instead, where a link resolves among the VM's own
-# files (see _agent_vm_push_env_and_probe), or with _agent_vm_nofollow.
+# _agent_vm_project_rel <dir> <path>: when <path> is inside the project
+# directory <dir>, where the VM can write, print it relative to <dir> and
+# return 0. The host must not read such a file by its path: the VM can make it
+# a symlink, and the host would follow it to any file of the user's and hand
+# the content over. It is read in the VM instead, by <dir>/<rel>, where a link
+# resolves among the VM's own files (see _agent_vm_push_env_and_probe), or
+# with _agent_vm_nofollow.
+#
+# Inside by its spelling, or by where it leads: the project reached through a
+# link of the user's, the other spelling of a linked directory (/tmp and
+# /private/tmp on macOS), another case where the file system ignores it. So
+# <path> is resolved one component at a time, links followed one hop at a
+# time, and the first step that reaches the project decides, before anything
+# in it is followed: the rest is in the project, and goes through
+# _agent_vm_nofollow or the VM, which follow none of the VM's links on the
+# host. Before that point, every link is outside the project, where the VM
+# cannot change it.
+_agent_vm_project_rel() {
+  local dir="${1%/}" target="$2" pdir cur="" next cmp rest comp t hops=0 r
+  if [[ "$target" == "$dir/"* ]]; then
+    printf '%s\n' "${target#"$dir"/}"
+    return 0
+  fi
+  pdir="$(CDPATH= cd -P -- "$dir" 2>/dev/null && pwd)" || return 1
+  [[ -n "$pdir" ]] || return 1
+  pdir="$(_agent_vm_fold "$pdir")"
+  rest="${target#/}/"
+  while [[ -n "$rest" ]]; do
+    comp="${rest%%/*}"
+    rest="${rest#*/}"
+    case "$comp" in
+      ""|.) continue ;;
+      ..) cur="${cur%/*}"; continue ;;
+    esac
+    next="$cur/$comp"
+    cmp="$(_agent_vm_fold "$next")"
+    if [[ "$cmp" == "$pdir" || "$cmp" == "$pdir/"* ]]; then
+      r="${next:$((${#pdir} + 1))}/${rest%/}"
+      r="${r#/}"
+      printf '%s\n' "${r%/}"
+      return 0
+    fi
+    if [[ -L "$next" ]]; then
+      hops=$((hops + 1))
+      [[ $hops -gt 40 ]] && return 1
+      t="$(readlink "$next")" || return 1
+      [[ "$t" == /* ]] && cur=""
+      rest="${t#/}/$rest"
+      continue
+    fi
+    cur="$next"
+  done
+  return 1
+}
+
+# 0 when <path> is inside the project directory <dir> (see
+# _agent_vm_project_rel).
 _agent_vm_in_project() {
-  [[ "$2" == "${1%/}/"* ]]
+  _agent_vm_project_rel "$1" "$2" >/dev/null
 }
 
 # What gets pushed into a VM: the shared file first, this project's next.
 # The guest sources it, so the last assignment wins and the project's value
 # overrides the shared one. A function of its own so that order is testable
-# without starting a VM — it is the whole meaning of "per project".
+# without starting a VM: it is the whole meaning of "per project".
 #
 # The project's file is only in here when AGENT_VM_PROJECT_ENV puts it outside
 # the project. Inside, the VM reads it and appends it (see
@@ -357,7 +388,7 @@ _agent_vm_env_file() {
   mkdir -p "$(dirname "$file")" || return 2
   tmp="$(mktemp "${file}.XXXXXX")" || return 2
   chmod 600 "$tmp"
-  if cat > "$tmp" && mv "$tmp" "$file"; then
+  if cat >| "$tmp" && mv "$tmp" "$file"; then
     chmod 600 "$file"
     return 0
   fi
@@ -365,31 +396,13 @@ _agent_vm_env_file() {
   return 2
 }
 
-# Read, write and delete entries in ~/.agent-vm/env, the dotenv file pushed
-# into the VM on every agent-vm command and auto-sourced there.
-#
-# Exists so integrators don't hand-roll the quoting: the file is *sourced* by a
-# shell, so one bad escape costs every secret in it (see _agent_vm_sq_escape).
-#
-#   agent-vm env set KEY [VALUE] replace or add KEY (value never echoed; read
-#                                from stdin when not given)
-#   agent-vm env get KEY         print KEY's value
-#   agent-vm env has KEY         exit 0 if KEY is set, 1 otherwise (no output)
-#   agent-vm env unset KEY       remove KEY
-#   agent-vm env list            print the key NAMES only, never the values
-#
-# Writes are atomic (temp file then mv) and the file is kept mode 600. Lines
-# that do not assign KEY are preserved untouched.
-#
-# The same verbs serve `env` (one file for every VM) and `project-env`
-# (one file per project). Same code for both on purpose: this file is SOURCED
-# by the VM's shell, so the quoting and the atomic replace below are the whole
-# point of the engine owning it. A second copy would be a second set of bugs.
-#
-# Usage: _agent_vm_env <verb> <file> <top> [action [KEY [VALUE]]], where <top>
-# is the project directory when <file> is inside it (see _agent_vm_env_file),
-# empty otherwise. The file is read once, into a variable: never into a
-# temporary file, since it holds secrets.
+# `env` (~/.agent-vm/env) and `project-env`: set, get, has, unset, list, on a
+# file the VM's shell sources, so the quoting is done here, once (see
+# _agent_vm_sq_escape). Writes are atomic and mode 600, other lines kept as
+# they are; list prints names, never values.
+# Usage: _agent_vm_env <verb> <file> <top> [action [KEY [VALUE]]], <top> being
+# the project directory when <file> is inside it (see _agent_vm_env_file).
+# The file is read into a variable, never a temporary file: it holds secrets.
 _agent_vm_env() {
   local verb="$1" file="$2" top="$3"; shift 3
   local action="${1:-list}"
@@ -412,11 +425,20 @@ _agent_vm_env() {
       echo "Usage: agent-vm $verb {set KEY [VALUE]|get KEY|has KEY|unset KEY|list}" >&2
       return 1 ;;
   esac
+  # A word too many is refused: `set TOKEN my secret` would store "my".
+  local max=2
+  case "$action" in
+    set) max=3 ;;
+    list) max=1 ;;
+  esac
+  if [[ $# -gt $max ]]; then
+    echo "Error: too many arguments for 'agent-vm $verb $action'. Quote a value with spaces." >&2
+    echo "Usage: agent-vm $verb {set KEY [VALUE]|get KEY|has KEY|unset KEY|list}" >&2
+    return 1
+  fi
   # Without VALUE, `set` reads it from stdin, typed without echo on a
   # terminal: a value on the command line lands in the shell history and in
   # `ps`. From a pipe, one trailing newline goes, as `echo` adds it.
-  # A name of its own: zsh prints a local declared twice in one function, and
-  # `get` declares `value`.
   local set_value=""
   if [[ "$action" == set ]]; then
     if [[ $# -ge 3 ]]; then
@@ -465,7 +487,7 @@ _agent_vm_env() {
         new="$new$(printf "%s='%s'" "$key" "$(_agent_vm_sq_escape "$set_value")")"$'\n'
       fi
       # A silently-dropped write here means the caller is told the secret was
-      # stored when it was not — the worst possible failure for this file.
+      # stored when it was not, the worst possible failure for this file.
       if ! printf '%s' "$new" | _agent_vm_env_file write "$file" "$top"; then
         echo "Error: could not write $file" >&2
         return 1
@@ -492,7 +514,7 @@ _agent_vm_env() {
       ;;
     list)
       [[ -n "$have" ]] || return 0
-      # Names only — never values, so this stays safe to paste into an issue.
+      # Names only, never values: safe to paste into an issue.
       printf '%s' "$content" | _agent_vm_env_lines list - | awk '!seen[$0]++'
       ;;
   esac

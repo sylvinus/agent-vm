@@ -18,7 +18,7 @@ Commands:
                      setup: --preinstall=default,pi)
   shell, sh          Open a shell in the VM. Add -c "..." to run a one-shot
                      command via login zsh and exit.
-  run <cmd> [args]   Run a command in the VM (no shell — for pipes/redirects
+  run <cmd> [args]   Run a command in the VM (no shell: for pipes/redirects
                      use 'shell -c "..."' instead; pass --tty for TUIs like
                      opencode, vibe, htop, etc.)
   stop [vm-name]     Stop the VM for the current directory, or the named one
@@ -28,8 +28,9 @@ Commands:
                      hash of the old path, so no 'cd' can name it any more.
   destroy-all        Stop and delete every agent-vm VM, the base template
                      included ('agent-vm setup' rebuilds it)
-  list               List all agent-vm VMs
-  status             Show status of all VMs (current dir marked with >)
+  list, status       List all agent-vm VMs, the current directory's marked
+                     with >, with the agent-vm version and date of the base
+                     each was cloned from
   doctor             Check the host, Lima, the base template and this
                      directory, and say how to fix what is wrong. Read-only.
   name [dir]         Print the VM name for a directory (default: cwd)
@@ -51,7 +52,7 @@ Commands:
                      values are pushed after the shared ones, so a key set in
                      both takes the project's value. Stored IN the project
                      (.agent-vm.env by default, AGENT_VM_PROJECT_ENV to put it
-                     elsewhere) — so it follows the project and dies with it.
+                     elsewhere): so it follows the project and dies with it.
                      Being in a repository, it is the wrong place for a secret:
                      `agent-vm env` is outside any. `set` warns, with the line
                      to run, when the file is not ignored by git. `info` prints
@@ -66,11 +67,14 @@ Commands:
 VM options (for claude, opencode, codex, vibe, pi, shell, run), read before the
 command or right after its name, never later: in 'agent-vm run docker run
 --rm x', --rm belongs to docker.
-  --disk GB          VM disk size (default: 10)
-  --memory GB        VM memory (default: 3)
-  --cpus N           Number of CPUs (default: 1)
-                     Both are clamped to a share of the host (half of it, with
-                     a notice) so the VM cannot starve the machine it runs on.
+  --disk GB          VM disk size
+  --memory GB        VM memory
+  --cpus N           Number of CPUs
+                     Without them, a new VM has the base template's: 10, 3
+                     and 1 unless 'setup' was given others.
+                     Memory and CPUs are clamped to a share of the host (half
+                     of it, with a notice) so the VM cannot starve the
+                     machine it runs on.
                      AGENT_VM_HOST_SHARE overrides the divisor.
   --ssh-port N       Fixed host port for the VM's SSH, for tools that save the
                      port (default: a new one on each start; 0 goes back)
@@ -78,7 +82,10 @@ command or right after its name, never later: in 'agent-vm run docker run
   --readonly         Make every host share read-only: the project and the
                      ~/.agent-vm/volumes entries, rw ones included. Enforced
                      on the host side, so root in the VM cannot lift it.
-                     Changing the mode restarts a running VM.
+                     A running VM in the other mode is restarted, asked first
+                     (no by default; declined or with no terminal, the
+                     command fails). The resource options ask the same, and
+                     declined, the VM keeps its settings.
   --unsafe-writable-git
                      Leave every .git writable, so the agent can commit (see
                      below). Also accepted as --unsafe-writable-git=1.
@@ -132,7 +139,8 @@ commands it names in files of the project, and git ignoring
 safe.bareRepository=explicit (which it offers to set: git would otherwise use
 a folder with HEAD, objects/ and refs/ as a repository, under any name). A
 VM that already runs gets the warnings only, and a restart when it lacks a
-protection. 'agent-vm info' lists what a start would ask
+protection; once stopped to boot again, it is asked like any other.
+'agent-vm info' lists what a start would ask
 (security_questions=).
 --unsafe-writable-git, or AGENT_VM_UNSAFE_WRITABLE_GIT=1 in your shell, leaves
 .git writable anyway, so the agent can commit in the project; a warning is
@@ -141,9 +149,15 @@ printed on every run. Changing it applies when the VM is next started.
 Customization:
   ~/.agent-vm/env                   Shared env vars / tokens (dotenv-style;
                                     pushed into every VM, loaded in its shells)
-  ~/.agent-vm/volumes               Extra host paths to mount in VMs (one per
-                                    line, supports both directories and files)
-  ~/.agent-vm/setup.sh              Per-user setup (runs during "agent-vm setup")
+  ~/.agent-vm/volumes               Extra host paths to mount in VMs, one per
+                                    line, directories or files:
+                                    source[:destination][:ro|rw[:project]]
+                                    (ro by default; a relative destination is
+                                    in the project; project, after an explicit
+                                    mode, limits the entry to the projects it
+                                    matches, * as wildcard)
+  ~/.agent-vm/setup.sh              Per-user setup (runs under zsh during
+                                    "agent-vm setup")
   <project>/.agent-vm.env           Per-project env (agent-vm project-env)
                                     Override the path with AGENT_VM_PROJECT_ENV
   ~/.agent-vm/runtime.sh            Per-user runtime (runs on every command

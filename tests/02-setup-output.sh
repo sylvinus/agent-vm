@@ -29,23 +29,25 @@ check "omitting mcp-chrome disables it"   "$(preinstall_exports node,gh,chromium
 check "naming mcp-chrome enables it"      "$(preinstall_exports node,chromium,opencode,mcp-chrome MCP_CHROME)" "1"
 check "naming mcp-playwright enables it"  "$(preinstall_exports node,chromium,opencode,mcp-playwright MCP_PLAYWRIGHT)" "1"
 
-section "startup: the base VM's age"
+section "startup: when the VM's base was built"
 ( AGENT_VM_STATE_DIR="$SB/base-age"; mkdir -p "$AGENT_VM_STATE_DIR"
   _agent_vm_resources() { echo '1|3|10'; }
-  echo $(( $(date +%s) - 3 * 86400 - 60 )) > "$AGENT_VM_STATE_DIR/.agent-vm-version-vmx"
+  echo 1790803800 > "$AGENT_VM_STATE_DIR/.agent-vm-version-vmx"
   out="$(_agent_vm_print_resources vmx)"
-  case "$out" in
-    *"Base VM: built "[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]", 3 days ago") echo ok ;;
-    *) echo "3 days: $out" ;;
-  esac
-  date +%s > "$AGENT_VM_STATE_DIR/.agent-vm-version-vmx"
-  case "$(_agent_vm_print_resources vmx)" in *", today") echo ok ;; *) echo "today: wrong" ;; esac
+  case "$out" in *"Base VM: built $(_agent_vm_epoch_date 1790803800 +%F)") echo ok ;; *) echo "date: $out" ;; esac
   case "$(_agent_vm_print_resources agent-vm-base)" in *"Base VM"*) echo "base: said" ;; *) echo ok ;; esac
   echo junk > "$AGENT_VM_STATE_DIR/.agent-vm-version-vmx"
   case "$(_agent_vm_print_resources vmx)" in *"Base VM"*) echo "junk: said" ;; *) echo ok ;; esac
 ) > "$SB/base-age.out" 2>&1
-check "the date and age of the VM's base, nothing without a record" \
-  "$(cat "$SB/base-age.out")" "$(printf 'ok\nok\nok\nok')"
+check "the date of the VM's base, nothing without a record" \
+  "$(cat "$SB/base-age.out")" "$(printf 'ok\nok\nok')"
+
+section "terminal modes after a session"
+check "nothing written when stdout is not a terminal" "$(_agent_vm_reset_term_modes | wc -c | tr -d ' ')" "0"
+if command -v script >/dev/null 2>&1 && script -qc true /dev/null >/dev/null 2>&1; then
+  check "mouse tracking and kitty keyboard turned off on a terminal" \
+    "$(AGENT_VM_SH="$AGENT_VM_SH" script -qc 'bash -c ". \"\$AGENT_VM_SH\"; _agent_vm_reset_term_modes"' /dev/null | grep -c $'\033\\[?1003l.*\033\\[<u')" "1"
+fi
 
 section "boxed notices"
 check "a paragraph wraps at the width" \

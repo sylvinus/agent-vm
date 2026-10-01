@@ -24,7 +24,7 @@ agent-vm shell                 # a shell in this project's VM
 agent-vm run npm test          # one command in it
 agent-vm --readonly shell      # nothing on the host writable from the VM
 agent-vm --scratch claude      # nothing of yours mounted, VM deleted on exit
-agent-vm stop                  # or rm; status and list for all VMs
+agent-vm stop                  # or rm; list for all VMs
 agent-vm doctor                # what is wrong, and what to run
 ```
 
@@ -43,7 +43,6 @@ The agent is root in its VM and has the network. What it can reach on your machi
 ```bash
 ./test.sh                                              # stub limactl, no VM, no network
 docker run --rm -v "$PWD:/w" -w /w bash:3.2 ./test.sh  # what macOS ships
-zsh ./test.sh
 ./test-e2e.sh                                          # a real VM, needs Lima
 ```
 

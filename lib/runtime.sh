@@ -1,18 +1,10 @@
 # --- runtime scripts ----------------------------------------------------------
-# Interpreter a runtime script asks for, read from its shebang: bash, sh or
-# zsh. Anything else — another language, or no shebang at all — falls back to
-# zsh, which is what every runtime script got before this existed.
-#
-# Only shells are honoured because the script is fed on stdin, and `-s` (read
-# the program from stdin) is a shell convention. A python runtime piped into
-# zsh was already broken; it stays broken, loudly, rather than being executed
-# by the wrong thing in a new way.
-#
-# An awk program, so the VM runs the same one on a project's runtime script,
-# which only the VM reads (see _agent_vm_run_project_runtime). The program is
-# the first word of the shebang ("#!/bin/bash -e") or, through env, the first
-# word after env's own options and VAR=value assignments
-# ("#!/usr/bin/env -S bash -e"). A CRLF file ends its shebang with a CR.
+# Interpreter a runtime script asks for, read from its shebang: bash or sh,
+# zsh otherwise. Only shells: the script is fed on stdin, read with -s. The
+# program is the shebang's first word ("#!/bin/bash -e"), or after env, its
+# options and assignments ("#!/usr/bin/env -S bash -e"). An awk program, so
+# the VM runs the same one on a project's script, which only it reads (see
+# _agent_vm_run_project_runtime).
 _AGENT_VM_SHEBANG_AWK='
   NR == 1 {
     sub(/\r$/, "")
@@ -31,37 +23,15 @@ _agent_vm_runtime_interpreter() {
   awk "$_AGENT_VM_SHEBANG_AWK" "$1"
 }
 
-# Where this project's runtime script lives.
-#
-# AGENT_VM_PROJECT_RUNTIME lets an integrator keep it in its own directory
-# (".mytool/runtime.sh") instead of cluttering the project root. A relative
-# path is resolved against the project directory; an absolute one is used
-# as-is. Unset, the historical location applies, so nothing changes for anyone
-# who never heard of the variable.
+# This project's runtime script (see _agent_vm_project_path).
 _agent_vm_project_runtime_path() {
-  local host_dir="$1" rel="${AGENT_VM_PROJECT_RUNTIME:-.agent-vm.runtime.sh}"
-  case "$rel" in
-    /*) _agent_vm_path_join / "$rel" ;;
-    *)  _agent_vm_path_join "$host_dir" "$rel" ;;
-  esac
+  _agent_vm_project_path "$1" "${AGENT_VM_PROJECT_RUNTIME:-.agent-vm.runtime.sh}"
 }
 
-# Run a runtime script inside the VM, with the interpreter it declares.
-#
-# It goes through a login zsh first, so the script sees the VM's PATH and the
-# auto-sourced ~/.agent-vm.env, then execs the declared shell. Before this,
-# every runtime ran under zsh whatever its shebang said: a script starting
-# with `#!/usr/bin/env bash` silently got zsh's arrays and globbing, which
-# differ where it matters.
-#
-# This one pipes a script the host reads: the per-user runtime lives in
-# ~/.agent-vm on the host and is not mounted inside the VM, so its path means
-# nothing there. A project's runtime is the other way round, see
-# _agent_vm_run_project_runtime.
-#
-# Line-ending CRs are dropped on the way: Git for Windows checks files out
-# with CRLF by default, and the shells in the VM read the CR as part of each
-# command.
+# Run a runtime script the host reads (~/.agent-vm/runtime.sh, or a project's
+# kept outside it) in the VM, piped in, CRs dropped (Git for Windows checks
+# out CRLF), under the shell it declares, from a login zsh: the VM's PATH and
+# ~/.agent-vm.env apply.
 _agent_vm_run_runtime() {
   local vm_name="$1" host_dir="$2" file="$3" interp
   interp="$(_agent_vm_runtime_interpreter "$file")"

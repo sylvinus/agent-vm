@@ -1,57 +1,67 @@
 # --- vm: naming, state, resources, SSH port -----------------------------------
 
-# Lima leaves a partial state dir behind if `limactl create` is interrupted
-# (Ctrl-C before lima.yaml is written). After that every subsequent limactl
-# call on that name dies with `open ~/.lima/<vm>/lima.yaml: no such file or
-# directory` — pre-emptively clean the dir so the next setup/start works.
+# An interrupted `limactl create` leaves ~/.lima/<vm> without lima.yaml, and
+# every later limactl call on that name fails: removed first.
 _agent_vm_clean_partial_state() {
   local vm_name="$1"
   local lima_dir
   lima_dir="$(_agent_vm_lima_home)/$vm_name"
   if [[ -d "$lima_dir" ]] && [[ ! -f "$lima_dir/lima.yaml" ]]; then
-    echo "Detected partial VM state at $lima_dir (no lima.yaml) — cleaning up." >&2
+    echo "Detected partial VM state at $lima_dir (no lima.yaml): cleaning up." >&2
     rm -rf "$lima_dir"
   fi
 }
 
-# Resolve a user-supplied directory argument to the same absolute form the
-# VM-running commands use.
-#
-# Those commands all derive the name from `$(pwd)`, so they never see a relative
-# or trailing-slash path. `name` and `info` do take a directory argument, and the
-# name is a hash of that *string*: without this, `agent-vm name /tmp` and
-# `agent-vm name /tmp/` return two different VMs for one directory, and neither
-# need match what `cd /tmp && agent-vm opencode` produces.
-#
-# Logical pwd (no `-P`), to agree with the `$(pwd)` the other commands use.
-# A directory that does not exist is rejected rather than hashed: a name derived
-# from an unresolvable path is wrong in a way nothing downstream would catch.
-#
-# `CDPATH=` is not cosmetic. With CDPATH set in the environment, `cd <relative>`
-# searches it *before* the current directory and prints where it landed — so
-# this would both emit a stray line into the captured value and resolve a
-# DIFFERENT directory than the `-d` test above just validated. Clearing it keeps
-# the argument meaning "relative to cwd", like every other path-taking tool.
+# The directory argument of `name` and `info` as the other commands spell
+# theirs, `$(pwd)` (logical): the VM name hashes that string, so `/tmp/` and
+# `/tmp` must give one. A directory that does not exist is refused.
 _agent_vm_abs_dir() {
   local dir="${1:-$(pwd)}"
   if [[ ! -d "$dir" ]]; then
     echo "Error: no such directory: $dir" >&2
     return 1
   fi
-  (CDPATH= cd -- "$dir" >/dev/null && pwd)
+  dir="$(CDPATH= cd -- "$dir" >/dev/null && pwd)" || return 1
+  # A newline in it would forge lines of `info`'s key=value output (a folder
+  # the VM made, named "x<newline>security_questions=none"). Checked on the
+  # whole path, the current directory's included. Starting a VM there is
+  # refused anyway.
+  if [[ "$dir" == *[[:cntrl:]]* ]]; then
+    echo "Error: the directory name contains a control character." >&2
+    return 1
+  fi
+  printf '%s\n' "$dir"
 }
 
-# Prints why <dir> must not be shared with a VM, and returns 0, when it is or
-# contains your home directory (dotfiles, SSH keys, every other project),
+# Why Lima cannot be given <dir> as a share, on stdout; fails when it can.
+# Whitespace: the mount fails silently, leaving a bare, root-owned mount
+# point where every write fails. A quote, a backslash or a control character:
+# the path is spliced into the mounts JSON of `limactl edit --set`, where it
+# would end the string and add mounts of its own.
+_agent_vm_unmountable_path() {
+  if [[ "$1" == *[[:space:]]* ]]; then
+    echo "contains whitespace, which Lima cannot mount"
+  elif [[ "$1" == *[\"\\]* || "$1" == *[[:cntrl:]]* ]]; then
+    echo "contains a quote, a backslash or a control character"
+  else
+    return 1
+  fi
+}
+
+# Prints why <dir> must not be shared with a VM ("is, or contains, ..." or "is
+# inside ..."), and returns 0, when it is or contains your home directory
+# (dotfiles, SSH keys, every other project), or is, contains or is inside
 # agent-vm itself (the host runs its files), agent-vm's state (every VM's env)
-# or Lima's (the VMs' SSH key and disks). Returns 1 when it is none of them.
+# or Lima's (the VMs' SSH key and disks, override.yaml adding mounts to every
+# VM). A project inside the home directory is what is expected. Returns 1
+# when it is none of them.
 # Compared as physical paths: a share is the directory a path resolves to.
 # And whatever the case where the file system ignores it: `cd /c/users/me`
 # reaches the home directory in Git Bash, which keeps the spelling typed.
 _agent_vm_unsafe_project() {
-  local dir p what
+  local dir p rp what
   dir="$(CDPATH= cd -P -- "$1" 2>/dev/null && pwd)" || dir="$1"
-  _agent_vm_fs_nocase && dir="$(printf '%s' "$dir" | tr '[:upper:]' '[:lower:]')"
+  dir="$(_agent_vm_fold "$dir")"
   for what in "your home directory" "agent-vm itself" "agent-vm's state" "Lima's state"; do
     case "$what" in
       "your home directory") p="$HOME" ;;
@@ -60,11 +70,24 @@ _agent_vm_unsafe_project() {
       *)                     p="$(_agent_vm_lima_home)" ;;
     esac
     [[ -n "$p" ]] || continue
-    p="$(CDPATH= cd -P -- "$p" 2>/dev/null && pwd)" || p="${p%/}"
-    _agent_vm_fs_nocase && p="$(printf '%s' "$p" | tr '[:upper:]' '[:lower:]')"
+    # Not resolved when it does not exist: as typed, never emptied, or every
+    # path would be inside it.
+    if rp="$(CDPATH= cd -P -- "$p" 2>/dev/null && pwd)" && [[ -n "$rp" ]]; then
+      p="$rp"
+    else
+      p="${p%/}"
+    fi
+    [[ -n "$p" ]] || continue
+    p="$(_agent_vm_fold "$p")"
     case "${p%/}/" in
       "${dir%/}/"*)
-        printf '%s\n' "$what"
+        printf 'is, or contains, %s\n' "$what"
+        return 0 ;;
+    esac
+    [[ "$what" == "your home directory" ]] && continue
+    case "${dir%/}/" in
+      "${p%/}/"*)
+        printf 'is inside %s\n' "$what"
         return 0 ;;
     esac
   done
@@ -143,14 +166,9 @@ _agent_vm_scratch_leftovers() {
       done
 }
 
-# Exact-line match against an already-captured string, with no pipe.
-#
-# `cmd | grep -q needle` is unsafe for anyone who sources this file from a
-# script running under `set -o pipefail`: grep -q closes the pipe as soon as it
-# matches, limactl takes a SIGPIPE and exits 141, and pipefail fails the whole
-# pipeline. The result is an intermittent false negative that depends on how
-# much limactl still had to write — it looks like "the VM doesn't exist". So
-# capture the output first, then match it in the shell.
+# Exact-line match against an already-captured string, with no pipe: under a
+# caller's pipefail, `limactl list | grep -q` fails when grep exits before
+# limactl is done (SIGPIPE), a VM then read as missing.
 _agent_vm_has_line() {
   case $'\n'"$1"$'\n' in
     *$'\n'"$2"$'\n'*) return 0 ;;
@@ -175,16 +193,9 @@ _agent_vm_running() {
   _agent_vm_has_line "$list" "$1 Running"
 }
 
-# Check if the base VM template exists AND is usable. Kept as a named helper so
-# integrators don't have to hardcode the template name to answer "do I need to
-# run setup?". Same three statuses as _agent_vm_exists.
-#
-# Usable, not merely present: a setup interrupted while provisioning (apt
-# failing behind a proxy, a Ctrl-C) leaves the template in Lima with none of
-# the packages, and a clone of it answers every command with
-# `zsh: command not found`. The version marker is written only at the very end
-# of a successful setup, so it says the base can be cloned from, which Lima's
-# inventory does not.
+# Whether the base template exists and can be cloned from, with the statuses
+# of _agent_vm_exists. An interrupted setup leaves a template without its
+# packages: only its marker, written at the very end, says it is usable.
 _agent_vm_base_exists() {
   _agent_vm_exists "$AGENT_VM_TEMPLATE" || return $?
   [[ -f "$AGENT_VM_STATE_DIR/.agent-vm-base-version" ]]
@@ -201,7 +212,7 @@ _agent_vm_tristate() {
 
 # Was <vm_name> cloned from an older base than the current one?
 # Prints 1 (stale), 0 (up to date), or "unknown" when there is nothing recorded
-# to compare against — never guess from a missing file. A VM with no version
+# to compare against, never a guess from a missing file. A VM with no version
 # marker but a known base predates the marker, which makes it stale.
 _agent_vm_stale_state() {
   local vm_name="$1"
@@ -224,6 +235,8 @@ _agent_vm_stale_state() {
 _agent_vm_cleanup_state() {
   local vm_name="$1"
   rm -f "$AGENT_VM_STATE_DIR/.agent-vm-version-${vm_name}"
+  rm -f "$AGENT_VM_STATE_DIR/.agent-vm-built-by-${vm_name}"
+  rm -f "$AGENT_VM_STATE_DIR/.agent-vm-sshfs-${vm_name}"
   rm -f "$AGENT_VM_STATE_DIR/.agent-vm-term-${vm_name}"
   rm -f "$AGENT_VM_STATE_DIR/.agent-vm-file-mounts-${vm_name}"
   rm -f "$AGENT_VM_STATE_DIR/.agent-vm-mounts-${vm_name}"
@@ -231,7 +244,7 @@ _agent_vm_cleanup_state() {
   rm -rf "$AGENT_VM_STATE_DIR/file-mounts/${vm_name}"
   # Deleting the template retires the marker that says it is usable.
   if [[ "$vm_name" == "$AGENT_VM_TEMPLATE" ]]; then
-    rm -f "$AGENT_VM_STATE_DIR/.agent-vm-base-version"
+    rm -f "$AGENT_VM_STATE_DIR/.agent-vm-base-version" "$AGENT_VM_STATE_DIR/.agent-vm-base-built-by"
   fi
 }
 
@@ -287,7 +300,7 @@ _agent_vm_resources() {
 # Print VM resource details (CPUs, memory, disk), and when the base the VM was
 # cloned from was built: its agents and packages are that old.
 _agent_vm_print_resources() {
-  local res cpus mem_gib disk_gib built day age
+  local res cpus mem_gib disk_gib built day
   if res="$(_agent_vm_resources "$1")"; then
     IFS='|' read -r cpus mem_gib disk_gib <<< "$res"
     echo "  Resources: CPUs: ${cpus}, Memory: ${mem_gib} GiB, Disk: ${disk_gib} GiB"
@@ -296,20 +309,109 @@ _agent_vm_print_resources() {
   # itself, or for a VM cloned before it was recorded.
   built="$(cat "$AGENT_VM_STATE_DIR/.agent-vm-version-$1" 2>/dev/null)"
   [[ "$built" =~ ^[0-9]+$ ]] || return 0
-  # BSD date first: GNU date takes -r for a file, and fails on a number.
-  day="$(date -r "$built" +%F 2>/dev/null || date -d "@$built" +%F 2>/dev/null)" || return 0
-  age=$(( ($(date +%s) - built) / 86400 ))
-  case "$age" in
-    0) age="today" ;;
-    1) age="1 day ago" ;;
-    *) age="$age days ago" ;;
-  esac
-  echo "  Base VM: built $day, $age"
+  day="$(_agent_vm_epoch_date "$built" +%F)" || return 0
+  echo "  Base VM: built $day"
+}
+
+# Epoch <t> formatted with <format>, in the local zone. GNU date takes -r for
+# a file: a file named <t> in the current directory, which the VM can write,
+# would answer. So -d there, -r for BSD date, and either for busybox.
+_agent_vm_epoch_date() {
+  if date --version >/dev/null 2>&1; then
+    date -d "@$1" "$2" 2>/dev/null
+  else
+    date -r "$1" "$2" 2>/dev/null || date -d "@$1" "$2" 2>/dev/null
+  fi
+}
+
+# The base <vm> was cloned from, for `list`: the agent-vm version that built
+# it and the day. The base template describes itself. 0.1.0 recorded no
+# version: a base without one was built by it.
+_agent_vm_base_label() {
+  local ver_file="$AGENT_VM_STATE_DIR/.agent-vm-version-$1"
+  local by_file="$AGENT_VM_STATE_DIR/.agent-vm-built-by-$1"
+  local built by day=""
+  if [[ "$1" == "$AGENT_VM_TEMPLATE" ]]; then
+    ver_file="$AGENT_VM_STATE_DIR/.agent-vm-base-version"
+    by_file="$AGENT_VM_STATE_DIR/.agent-vm-base-built-by"
+  fi
+  built="$(cat "$ver_file" 2>/dev/null)"
+  by="$(cat "$by_file" 2>/dev/null)"
+  [[ "$by" =~ ^[0-9A-Za-z.+-]+$ ]] || by=0.1.0
+  [[ "$built" =~ ^[0-9]+$ ]] && day="$(_agent_vm_epoch_date "$built" +%F)"
+  printf '%s %s\n' "$by" "${day:--}"
+}
+
+# agent-vm 0.1.0 made its VMs, and its bases, without sshfs and without the
+# wrapper agent-vm.setup.sh installs, and gave them Lima's default mount type.
+# Moved to reverse-sshfs to keep .git read-only, such a VM would get Debian's
+# sshfs from Lima's boot scripts, which refuses absolute and ".." symlinks
+# (node_modules/.bin), and only with apt reachable during the boot. So it
+# boots once with no shares (nothing writable before its shares are
+# protected), gets both, and stops. To be removed in a future release.
+_agent_vm_migrate_0_1() {
+  local vm_name="$1" out
+  if ! out=$(cd /tmp && limactl edit "$vm_name" --set 'del(.mountType) | .mounts = []' 2>&1); then
+    echo "Error: could not remove the shares of '$vm_name' to install sshfs:" >&2
+    echo "$out" >&2
+    return 1
+  fi
+  echo "Starting VM '$vm_name' without shares to install sshfs..."
+  if ! out=$(limactl start "$vm_name" 2>&1); then
+    echo "Error: Failed to start VM '$vm_name' to install sshfs:" >&2
+    echo "$out" >&2
+    return 1
+  fi
+  # The same wrapper as agent-vm.setup.sh. sudo drops the proxy settings on
+  # these VMs (no env_keep before 0.2.0), so they are passed to apt by name.
+  # shellcheck disable=SC2016
+  if ! out=$(limactl shell --workdir / "$vm_name" sh -c '
+    set -e
+    if [ ! -x /usr/bin/sshfs ]; then
+      set -- DEBIAN_FRONTEND=noninteractive
+      for v in http_proxy https_proxy no_proxy HTTP_PROXY HTTPS_PROXY NO_PROXY; do
+        eval "x=\${$v-}"
+        [ -z "$x" ] || set -- "$@" "$v=$x"
+      done
+      sudo env "$@" apt-get -o DPkg::Lock::Timeout=120 update
+      sudo env "$@" apt-get -o DPkg::Lock::Timeout=120 install -y --no-install-recommends sshfs
+    fi
+    sudo tee /usr/local/bin/sshfs > /dev/null <<"EOF"
+#!/bin/sh
+# Installed by agent-vm: see agent-vm.setup.sh.
+if /usr/bin/sshfs -h 2>&1 | grep -q no_contain_symlinks; then
+  exec /usr/bin/sshfs "$@" -o no_contain_symlinks
+fi
+exec /usr/bin/sshfs "$@"
+EOF
+    sudo chmod 755 /usr/local/bin/sshfs' </dev/null 2>&1); then
+    echo "Error: could not install sshfs in VM '$vm_name':" >&2
+    echo "$out" | tail -n 20 >&2
+    _agent_vm_stop_vm "$vm_name"
+    return 1
+  fi
+  if ! _agent_vm_stop_vm "$vm_name"; then
+    echo "Error: could not stop VM '$vm_name' after installing sshfs." >&2
+    return 1
+  fi
+}
+
+# Called on the stopped <vm> before it is given protected shares: migrates it
+# (see above) when it comes from a base built by 0.1.0, which recorded no
+# version, and was not migrated yet. Made by 0.1.0 or cloned by 0.2.0 from
+# such a base: neither has the version of its base recorded.
+_agent_vm_migrate_0_1_if_needed() {
+  local vm_name="$1"
+  [[ -f "$AGENT_VM_STATE_DIR/.agent-vm-built-by-$vm_name" ]] && return 0
+  [[ -f "$AGENT_VM_STATE_DIR/.agent-vm-sshfs-$vm_name" ]] && return 0
+  echo "Warning: VM '$vm_name' comes from a base built by agent-vm 0.1.0, without the sshfs of the shares that keep .git read-only. It boots once without shares to install it. This migration will be removed in a future release: 'agent-vm setup', then '--reset', gives a VM from a current base." >&2
+  _agent_vm_migrate_0_1 "$vm_name" || return 1
+  mkdir -p "$AGENT_VM_STATE_DIR" && : > "$AGENT_VM_STATE_DIR/.agent-vm-sshfs-$vm_name"
 }
 
 # Would the requested resources actually change anything on <vm_name>?
 # Empty request fields mean "not specified". Returns 0 when something differs
-# (or when the current values can't be read — never claim "no change" from
+# (or when the current values can't be read: never claim "no change" from
 # missing information), 1 when the VM already matches the request.
 #
 # Compared in bytes, not in truncated GiB: a VM holding a fractional size

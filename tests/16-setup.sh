@@ -3,6 +3,13 @@ case "$(agent-vm setup --reset 2>&1 </dev/null)" in
   *"Unknown option: --reset"*) pass "setup rejects --reset instead of ignoring it" ;;
   *) fail "setup accepted --reset" ;;
 esac
+for opt in --rm --scratch "--ssh-port=2300"; do
+  case "$(agent-vm setup "$opt" 2>&1 </dev/null)" in
+    *"Unknown option: ${opt%%=*}"*) pass "setup rejects $opt" ;;
+    *) fail "setup accepted $opt" ;;
+  esac
+done
+case "$(agent-vm setup --disk 10G 2>&1 </dev/null)" in *"--disk must be a positive integer"*) pass "setup: a bad value is said" ;; *) fail "setup --disk 10G accepted" ;; esac
 
 # A value option at the end is one clear error, also under a caller's set -u.
 for opt in --disk --memory --cpus; do
@@ -106,6 +113,12 @@ STUB
     *) fail "release.sh resume: $out" ;;
   esac
   case "$out" in *'$ git tag'*|*'$ git push'*) fail "release.sh resume: tags or pushes again" ;; *) pass "release.sh resume: neither tags nor pushes again" ;; esac
+  # A missing formula stops the run before it tags or publishes anything.
+  case "$(AGENT_VM_TAP="$SB/no-tap" relrun; echo "rc=$?")" in
+    *"no formula at $SB/no-tap/Formula/agent-vm.rb"*"rc=1")
+      case "$(AGENT_VM_TAP="$SB/no-tap" relrun)" in *"Checking the repository"*) fail "release.sh: the formula is checked after the repository" ;; *) pass "release.sh: a missing formula stops it first" ;; esac ;;
+    *) fail "release.sh: missing formula: $(AGENT_VM_TAP="$SB/no-tap" relrun)" ;;
+  esac
   touch "$SB/rel-released"
   case "$(relrun)" in *"tag v$AGENT_VM_VERSION already exists"*) pass "release.sh: a released tag is still refused" ;; *) fail "release.sh: a released tag was not refused" ;; esac
   # The tag made here but never pushed: resumed too, and pushed before the
@@ -163,6 +176,8 @@ if command -v setsid >/dev/null 2>&1; then
     0:*) pass "no terminal: the wizard is skipped and setup completes" ;;
     *) fail "setup with no terminal: '$out'" ;;
   esac
+  check "the base records the agent-vm that built it" \
+    "$(cat "$SB/wizard-state/.agent-vm-base-built-by" 2>/dev/null)" "$AGENT_VM_VERSION"
   # A base that did not stop is not marked ready: Lima cannot clone it.
   out="$(AGENT_VM_STATE_DIR="$SB/wizard-state2" AGENT_VM_TEST_REC="$REC" AGENT_VM_TEST_PROTECTS="$PROTECTS" \
          AGENT_VM_TEST_BASE_RUNNING=1 PATH="$SB/fakebrew:$PATH" notty '_agent_vm_check_linux_prereqs() { return 0; }; agent-vm setup')"
@@ -175,6 +190,12 @@ if command -v setsid >/dev/null 2>&1; then
   # Lima's containerd is never installed: Docker brings its own when chosen.
   grep -q "^create .*--containerd=none" "$REC" && pass "Lima's containerd is off" \
     || fail "Lima's containerd stays on: $(grep '^create' "$REC")"
+  # The resources are read as for the other commands, both spellings.
+  : > "$REC"
+  AGENT_VM_STATE_DIR="$SB/wizard-state3" AGENT_VM_TEST_REC="$REC" AGENT_VM_TEST_PROTECTS="$PROTECTS" PATH="$SB/fakebrew:$PATH" \
+    notty '_agent_vm_check_linux_prereqs() { return 0; }; agent-vm setup --disk=20 --memory 2 --cpus=1' >/dev/null
+  grep -q "^create .*--disk=20 --memory=2 --cpus=1" "$REC" && pass "setup: --disk=20 --memory 2 --cpus=1 reach the base" \
+    || fail "setup resources: $(grep '^create' "$REC")"
   # A Lima that cannot keep .git read-only: said, with the command, and setup
   # goes on without installing anything.
   case "$out" in

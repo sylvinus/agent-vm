@@ -9,12 +9,11 @@ _agent_vm_setup_aborted() {
   limactl stop "$AGENT_VM_TEMPLATE" &>/dev/null
 }
 
-# _agent_vm_scroll_window <log> — copy stdin to <log>. On a terminal, show only
+# _agent_vm_scroll_window <log>: copy stdin to <log>. On a terminal, show only
 # the last 10 lines, redrawn in place and cleared at the end; otherwise pass
 # every line through. Lines are cut to the terminal width, since a wrapped line
 # would break the redraw, and colour codes are dropped, since a cut one would
-# leave the terminal coloured. No arrays and no fork per line: this file is also
-# sourced by zsh, and apt prints thousands of lines.
+# leave the terminal coloured. No fork per line: apt prints thousands of lines.
 _agent_vm_scroll_window() {
   local log="$1"
   if [[ ! -t 1 ]]; then
@@ -24,7 +23,7 @@ _agent_vm_scroll_window() {
   local height=10 size width rows line rest buf="" n=0 drawn=0
   # "rows cols". Not tput: with stdout captured and stderr silenced it has no
   # terminal left to ask, and answers 80. Probed first, as in _agent_vm_box:
-  # without a terminal the open itself errors on stderr (zsh names it).
+  # without a terminal the open itself errors on stderr.
   if _agent_vm_have_tty; then
     size="$(stty size 2>/dev/null </dev/tty)"
   else
@@ -62,21 +61,36 @@ _agent_vm_scroll_window() {
   return 0
 }
 
-# _agent_vm_windowed <log> <command> [args...] — run the command, stdin
+# _agent_vm_windowed <log> <command> [args...]: run the command, stdin
 # included, with its output in _agent_vm_scroll_window and appended to <log>.
 # Returns the command's status, which goes through a file: a pipeline returns
-# its last command's, and bash's PIPESTATUS is zsh's pipestatus. On failure,
+# its last command's. On failure,
 # the end of the log is shown again, since the window is gone.
 _agent_vm_windowed() {
   local log="$1" status_file="$1.status" rc
   shift
-  echo 1 > "$status_file"
-  { "$@" 2>&1; echo $? > "$status_file"; } | _agent_vm_scroll_window "$log"
+  echo 1 >| "$status_file"
+  { "$@" 2>&1; echo $? >| "$status_file"; } | _agent_vm_scroll_window "$log"
   rc="$(cat "$status_file" 2>/dev/null)"
   rm -f "$status_file"
   if [[ "$rc" != "0" ]]; then
     [[ -t 1 ]] && tail -n 20 "$log" >&2
     return 1
+  fi
+  return 0
+}
+
+# Why the caller's install_* choices need Node.js, if they do: Codex and Pi
+# install with npm, Chrome DevTools MCP runs with npx for the agents it is
+# wired into.
+_agent_vm_node_needed_by() {
+  if [[ "$install_codex" == 1 ]]; then
+    echo "Codex CLI requires npm"
+  elif [[ "$install_pi" == 1 ]]; then
+    echo "Pi requires npm"
+  elif [[ "$install_chromium" == 1 && "$install_mcp_chrome" == 1 \
+          && ( "$install_claude" == 1 || "$install_opencode" == 1 || "$install_vibe" == 1 ) ]]; then
+    echo "Chrome DevTools MCP uses npx"
   fi
   return 0
 }
@@ -87,37 +101,39 @@ _agent_vm_setup() {
   local cpus=1
   local preinstall=""
   local preinstall_seen=""
-  # Defaults match the "default install" set: every component on EXCEPT the
-  # opt-in languages (Ruby, Rust, Go). These apply when --preinstall isn't
-  # passed and either the wizard's first prompt is accepted or stdin is not a
-  # terminal (e.g. CI). `--preinstall=all` turns everything on;
-  # `--preinstall=default,rust` composes the default set with an opt-in.
+  # The default set, used without --preinstall when the wizard's first
+  # question is accepted or there is no terminal. Opt-in: Ruby, Rust, Go, Pi
+  # (0.x, released several times a week) and Playwright MCP (a second
+  # browser-driving server, whose tools cost context in every agent). Only MCP
+  # servers with something to bake into the image belong here; a remote one
+  # is per-project config.
   local install_python=1 install_node=1
   local install_ruby=0 install_rust=0 install_golang=0
   local install_docker=1 install_chromium=1 install_gh=1
   local install_claude=1 install_opencode=1 install_codex=1 install_vibe=1
-  # Pi is opt-in: still 0.x, with releases several times a week.
   local install_pi=0
-  # MCP servers wired into the agents' configs. Named mcp-* in --preinstall so
-  # future MCP servers share one obvious namespace. Only servers with a
-  # dependency worth baking into the image belong here: a remote MCP server is
-  # a URL (and often a secret), which belongs in per-project config rather than
-  # in an image every VM is cloned from. Both current ones drive the installed
-  # Chromium. mcp-playwright is opt-in like the Ruby/Rust/Go languages: a second
-  # browser-driving server is redundant for most users, and every wired server
-  # costs tool definitions in the agent's context.
   local install_mcp_chrome=1 install_mcp_playwright=0
 
+  local vm_opts=() rm="" taken
   while [[ $# -gt 0 ]]; do
-    # A value-taking option at the end: said here, rather than an "unbound
-    # variable" from $2 under a caller's `set -u`, or zsh's error on `shift 2`.
-    case "$1" in
-      --disk|--memory|--ram|--cpus)
-        if [[ $# -lt 2 ]]; then
-          echo "Error: $1 needs a value." >&2
-          return 1
-        fi ;;
-    esac
+    # The resources are read as for the other commands (see
+    # _agent_vm_take_opt); its other options are not setup's.
+    vm_opts=(); rm=""
+    _agent_vm_take_opt "$@" || return 1
+    if [[ $taken -gt 0 ]]; then
+      local opt="${vm_opts[*]-}"
+      case "$opt" in
+        "--disk "*)   disk="${opt#--disk }" ;;
+        "--memory "*) memory="${opt#--memory }" ;;
+        "--cpus "*)   cpus="${opt#--cpus }" ;;
+        *)
+          echo "Unknown option: ${1%%=*}" >&2
+          echo "Usage: agent-vm setup [--disk GB] [--memory GB] [--cpus N] [--preinstall=LIST]" >&2
+          return 1 ;;
+      esac
+      shift "$taken"
+      continue
+    fi
     case "$1" in
       --help|-h)
         cat << 'EOF'
@@ -155,9 +171,9 @@ Options:
                       both need node and chromium and are skipped, with a
                       notice, without them. Pi has no MCP support, so they
                       are not wired into it. 'mcp-playwright' is opt-in and not
-                      part of 'default' — a second browser-driving server is
+                      part of 'default': a second browser-driving server is
                       redundant for most users. Omit them to leave the agents'
-                      MCP config untouched — useful when MCP servers are
+                      MCP config untouched, for when MCP servers are
                       managed per project rather than baked into the image.
                       Examples:
                         --preinstall=default,rust       # default set plus Rust
@@ -166,36 +182,6 @@ Options:
   --help              Show this help
 EOF
         return 0
-        ;;
-      --disk)
-        disk="$2"
-        shift 2
-        _agent_vm_validate_int --disk "$disk" || return 1
-        ;;
-      --disk=*)
-        disk="${1#*=}"
-        shift
-        _agent_vm_validate_int --disk "$disk" || return 1
-        ;;
-      --memory|--ram)
-        memory="$2"
-        shift 2
-        _agent_vm_validate_int --memory "$memory" || return 1
-        ;;
-      --memory=*|--ram=*)
-        memory="${1#*=}"
-        shift
-        _agent_vm_validate_int --memory "$memory" || return 1
-        ;;
-      --cpus)
-        cpus="$2"
-        shift 2
-        _agent_vm_validate_int --cpus "$cpus" || return 1
-        ;;
-      --cpus=*)
-        cpus="${1#*=}"
-        shift
-        _agent_vm_validate_int --cpus "$cpus" || return 1
         ;;
       --preinstall)
         preinstall_seen=1
@@ -227,7 +213,7 @@ EOF
   # listed. 'default' / 'all' / 'none' are shortcuts. Setting this also
   # bypasses the interactive wizard below. `--preinstall=` with no value
   # (or `--preinstall` swallowed by a following flag) falls back to the
-  # default set — explicitly opting into the wizard's recommended install.
+  # default set, explicitly opting into the wizard's recommended install.
   # Pass `--preinstall=none` if you really want nothing.
   if [[ -n "$preinstall_seen" ]]; then
     install_python=0 install_node=0 install_ruby=0 install_rust=0 install_golang=0
@@ -236,13 +222,13 @@ EOF
     install_pi=0
     install_mcp_chrome=0 install_mcp_playwright=0
     [[ -z "$preinstall" ]] && preinstall="default"
-    # Iterate the comma-list portably across bash and zsh by appending a
-    # trailing comma and peeling off one token per iteration.
+    # Iterate the comma-list by appending a trailing comma and peeling off
+    # one token per iteration.
     local rest="${preinstall}," f
     while [[ -n "$rest" ]]; do
       f="${rest%%,*}"
       rest="${rest#*,}"
-      # Trim whitespace. Use bash/zsh-portable substitutions only.
+      # Trim whitespace.
       f="${f# }"; f="${f% }"
       [[ -z "$f" ]] && continue
       case "$f" in
@@ -335,7 +321,7 @@ EOF
   # any --disk/--memory/--cpus flags the user already passed, so they can
   # confirm or override. Components default to the "default install" set
   # (everything except Ruby/Rust/Go). The first prompt offers that whole set
-  # as a one-tap shortcut — answer 'n' for per-component prompts.
+  # as a one-tap shortcut; 'n' gives per-component prompts.
   if [[ -z "$preinstall_seen" ]] && _agent_vm_have_tty; then
     printf '\nagent-vm setup wizard\n' >&2
     printf '─────────────────────\n\n' >&2
@@ -345,7 +331,7 @@ EOF
     printf 'individual VM later (e.g. via `agent-vm shell`).\n\n' >&2
     printf 'For more: https://www.agent-vm.org/\n\n' >&2
 
-    # Software first — the more interesting choice for most users.
+    # Software first: the more interesting choice for most users.
     printf 'Software\n' >&2
     printf '────────\n' >&2
     printf '  Agents:   Claude Code, OpenCode, Codex CLI, Mistral Vibe\n' >&2
@@ -372,25 +358,14 @@ EOF
       # MCP servers, wired into each installed agent's config. Chrome DevTools
       # drives the Chromium above, so it is only worth asking when that is on.
       # Playwright brings its own browser download, hence the N default.
+      install_mcp_chrome=0 install_mcp_playwright=0
       if [[ "$install_chromium" == "1" ]]; then
         install_mcp_chrome=$(_agent_vm_ask_yn "Chrome DevTools MCP (wired into each agent's config)" Y)
-      else
-        install_mcp_chrome=0
-      fi
-      if [[ "$install_chromium" == "1" ]]; then
         install_mcp_playwright=$(_agent_vm_ask_yn "Playwright MCP (also drives that Chromium)" N)
-      else
-        install_mcp_playwright=0
       fi
 
-      local node_forced_reason=""
-      if [[ "$install_codex" == "1" ]]; then
-        node_forced_reason="Codex CLI requires Node.js"
-      elif [[ "$install_pi" == "1" ]]; then
-        node_forced_reason="Pi requires Node.js"
-      elif [[ "$install_chromium" == "1" && "$install_mcp_chrome" == "1" && ( "$install_claude" == "1" || "$install_opencode" == "1" || "$install_vibe" == "1" ) ]]; then
-        node_forced_reason="Chrome DevTools MCP uses npx"
-      fi
+      local node_forced_reason
+      node_forced_reason="$(_agent_vm_node_needed_by)"
 
       printf '\nLanguages\n' >&2
       printf '─────────\n' >&2
@@ -407,7 +382,7 @@ EOF
       install_golang=$(_agent_vm_ask_yn "Go" N)
     fi
 
-    # Resources second — same pattern, accept-in-one-go shortcut. Current
+    # Resources second, the same way, accepted in one go or not. Current
     # values reflect any --disk/--memory/--cpus already passed on the CLI.
     # These are starting values: any later `agent-vm` command can resize the
     # per-project VM with --disk/--memory/--cpus.
@@ -436,22 +411,11 @@ EOF
   echo "Running security checks..."
   [[ -n "$declined_protection" ]] || _agent_vm_offer_git_protection
 
-  if [[ "$install_chromium" == "1" && "$install_mcp_chrome" == "1" ]]; then
-    local wants_chrome_mcp=0
-    [[ "$install_claude" == "1" || "$install_opencode" == "1" || "$install_codex" == "1" || "$install_vibe" == "1" ]] && wants_chrome_mcp=1
-    if [[ "$wants_chrome_mcp" == "1" && "$install_node" != "1" ]]; then
-      echo "Enabling Node.js because Chrome DevTools MCP uses npx." >&2
-      install_node=1
-    fi
-  fi
-
-  if [[ "$install_codex" == "1" && "$install_node" != "1" ]]; then
-    echo "Enabling Node.js because Codex CLI requires npm." >&2
-    install_node=1
-  fi
-
-  if [[ "$install_pi" == "1" && "$install_node" != "1" ]]; then
-    echo "Enabling Node.js because Pi requires npm." >&2
+  # --preinstall can name what needs node without node.
+  local node_reason
+  node_reason="$(_agent_vm_node_needed_by)"
+  if [[ -n "$node_reason" && "$install_node" != "1" ]]; then
+    echo "Enabling Node.js because $node_reason." >&2
     install_node=1
   fi
 
@@ -460,18 +424,15 @@ EOF
   # Retire the marker with the base it describes, before anything can fail.
   # It is only rewritten at the end of a successful setup, so leaving the old
   # one in place would make an interrupted re-setup look like a ready base.
-  rm -f "$AGENT_VM_STATE_DIR/.agent-vm-base-version"
+  rm -f "$AGENT_VM_STATE_DIR/.agent-vm-base-version" "$AGENT_VM_STATE_DIR/.agent-vm-base-built-by"
 
   limactl stop "$AGENT_VM_TEMPLATE" &>/dev/null
   limactl delete "$AGENT_VM_TEMPLATE" --force &>/dev/null
 
   # Same clamp as the per-project path. Done here rather than at parse time so
   # the wizard above still shows what was asked for.
-  local eff_cpus eff_memory
-  eff_cpus="$(_agent_vm_cap_resource cpus "$cpus")"
-  eff_memory="$(_agent_vm_cap_resource memory "$memory")"
-  [[ -n "$eff_cpus" ]] && cpus="$eff_cpus"
-  [[ -n "$eff_memory" ]] && memory="$eff_memory"
+  cpus="$(_agent_vm_cap_resource cpus "$cpus")"
+  memory="$(_agent_vm_cap_resource memory "$memory")"
   _agent_vm_warn_disk_space "$disk"
 
   echo "Creating base VM..."
@@ -489,7 +450,7 @@ EOF
   # in one log for when something fails.
   mkdir -p "$AGENT_VM_STATE_DIR"
   local setup_log="$AGENT_VM_STATE_DIR/setup.log"
-  : > "$setup_log"
+  : >| "$setup_log"
   if ! _agent_vm_windowed "$setup_log" \
        limactl create --name="$AGENT_VM_TEMPLATE" template:debian-13 "${create_args[@]}" </dev/null; then
     echo "Error: Failed to create base VM. Full log: $setup_log" >&2
@@ -506,13 +467,8 @@ EOF
     return 1
   fi
 
-  # Run the setup script inside the VM. Component selections are passed by
-  # prepending `export` lines to the script on stdin — keeps the integration
-  # to one knob (env vars) and avoids quoting headaches with `limactl shell
-  # env KEY=VAL`. The setup script's defaults for each flag match the host
-  # wizard's "default install" set (Ruby/Rust/Go off, everything else on),
-  # so invoking the in-VM script standalone — without these exports — still
-  # produces the same default install.
+  # The setup script runs in the VM, the choices as `export` lines put before
+  # it on stdin. Without them, it installs the default set.
   echo "Installing packages inside VM..."
   if [[ ! -r "${AGENT_VM_SCRIPT_DIR}/agent-vm.setup.sh" ]]; then
     echo "Error: Setup script not found at ${AGENT_VM_SCRIPT_DIR}/agent-vm.setup.sh" >&2
@@ -555,7 +511,10 @@ EOF
 
   # Record base VM version so we can warn about stale clones
   mkdir -p "$AGENT_VM_STATE_DIR"
-  date +%s > "$AGENT_VM_STATE_DIR/.agent-vm-base-version"
+  # And which agent-vm built it, for `list` and the bases of 0.1.0, which
+  # wrote none (see _agent_vm_migrate_0_1).
+  printf '%s\n' "$AGENT_VM_VERSION" >| "$AGENT_VM_STATE_DIR/.agent-vm-base-built-by"
+  date +%s >| "$AGENT_VM_STATE_DIR/.agent-vm-base-version"
 
   echo ""
   echo "Base VM ready. Try one of these in any project directory:"

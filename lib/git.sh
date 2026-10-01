@@ -88,17 +88,23 @@ _agent_vm_fs_nocase() {
   [[ "$(uname -s 2>/dev/null)" == Darwin ]] || _agent_vm_on_windows
 }
 
+# <s> lowercased on those hosts, as is elsewhere: paths compared as the file
+# system does.
+_agent_vm_fold() {
+  if _agent_vm_fs_nocase; then
+    printf '%s\n' "$1" | tr '[:upper:]' '[:lower:]'
+  else
+    printf '%s\n' "$1"
+  fi
+}
+
 # <path> relative to <dir>, "." for <dir> itself; fails when it is not inside.
 # Compared whatever the case where the file system ignores it, so a path
-# spelled with other capitals is still found inside. (Not `path`: zsh ties
-# that name to PATH.)
+# spelled with other capitals is still found inside.
 _agent_vm_rel_in() {
   local target="${1%/}" dir="${2%/}" p d
-  p="$target"; d="$dir"
-  if _agent_vm_fs_nocase; then
-    p="$(printf '%s' "$p" | tr '[:upper:]' '[:lower:]')"
-    d="$(printf '%s' "$d" | tr '[:upper:]' '[:lower:]')"
-  fi
+  p="$(_agent_vm_fold "$target")"
+  d="$(_agent_vm_fold "$dir")"
   if [[ "$p" == "$d" ]]; then
     printf '.\n'
     return 0
@@ -218,7 +224,8 @@ _agent_vm_hooks_note() {
 
 # What git on this machine takes from files the VM can write, for the
 # repository at <repo> in the project <proj> (git's spelling), one line each:
-# a config file included from the project, and a setting whose command names
+# a config file included from the project (whether it exists yet or not),
+# and a setting whose command names
 # a file in the project. The protected names are excepted, and core.hooksPath,
 # which _agent_vm_repo_hooks covers. A relative path in a command is taken
 # from the top of the repository, where git runs most of them.
@@ -239,6 +246,10 @@ _agent_vm_repo_config_risks() {
             seen[origin] = 1; f = substr(origin, 6); gsub(/^"|"$/, "", f); print "O\t" f
           }
           key = kv; sub(/=.*/, "", key); val = substr(kv, length(key) + 2); lk = tolower(key)
+          if (lk == "include.path" || lk ~ /^includeif\..*\.path$/) {
+            if (origin ~ /^file:/) { f = substr(origin, 6); gsub(/^"|"$/, "", f); print "I\t" f "\t" val }
+            next
+          }
           if (lk !~ /^(core\.(fsmonitor|sshcommand|editor|pager|askpass|gitproxy|alternaterefscommand)|sequence\.editor|gpg\.program|gpg\..*\.program|diff\.external|diff\..*\.(command|textconv)|(difftool|mergetool|browser|man)\..*\.cmd|merge\..*\.driver|filter\..*\.(clean|smudge|process)|credential\.helper|credential\..*\.helper|pager\..*|alias\..*|interactive\.difffilter|uploadpack\.packobjectshook|web\.browser)$/) next
           if (lk ~ /^alias\./ && val !~ /^!/) next
           if (val ~ /\//) print "K\t" key "\t" val
@@ -246,6 +257,17 @@ _agent_vm_repo_config_risks() {
     | while IFS=$'\t' read -r kind a b; do
         if [[ "$kind" == O ]]; then
           rel="$(_agent_vm_rel_in "$(_agent_vm_git_abs "$a" "$base")" "$proj")" \
+            && ! _agent_vm_under_readonly_name "$rel" \
+            && printf 'config file %s\n' "$rel"
+          continue
+        fi
+        # An include, by its value: git skips a file that does not exist, so
+        # --includes does not list it, and the VM can create it once the VM
+        # runs. Relative to the file holding it, as git takes it.
+        if [[ "$kind" == I ]]; then
+          [[ "$b" == "~/"* ]] && b="$HOME/${b#\~/}"
+          a="$(_agent_vm_git_abs "$a" "$base")"
+          rel="$(_agent_vm_rel_in "$(_agent_vm_git_abs "$b" "${a%/*}")" "$proj")" \
             && ! _agent_vm_under_readonly_name "$rel" \
             && printf 'config file %s\n' "$rel"
           continue
@@ -274,6 +296,14 @@ _agent_vm_project_config_risks() {
   done | awk '!seen[$0]++'
 }
 
+# What a Lima without readonlyNames exposes when the shares are reverse-sshfs
+# (see _agent_vm_unprotected_mount_is_sshfs), one paragraph, before
+# _agent_vm_git_protection_hint.
+_agent_vm_sshfs_exposure_note() {
+  echo "Here the shares then use Lima's reverse-sshfs, which this Lima does not confine: root in the VM may reach files outside the shares (Lima's mount documentation says so), your SSH keys and the rest of your disk included, and write the read-only volumes."
+  echo ""
+}
+
 # Why .git is not protected, and how to install a Lima that does it, on stdout.
 # With Homebrew (macOS, or Linux): the formula, which conflicts with brew's own
 # lima, hence the unlink. On Windows: the fork's release zips, which `setup`
@@ -297,10 +327,7 @@ EOF
   fi
 }
 
-# The fork release holding the Windows builds, and this machine's asset names
-# in it. Names follow upstream's `make artifacts-windows` convention:
-# lima-<version>-Windows-<ARCH>.zip, where <version> is the fork tag without
-# its leading v. Fails when the architecture is not one assets are built for.
+# The URL of the fork release holding the Windows builds.
 _agent_vm_lima_fork_release() {
   printf 'https://github.com/sylvinus/lima/releases/download/%s\n' "$AGENT_VM_LIMA_FORK_TAG"
 }
@@ -316,8 +343,9 @@ _agent_vm_lima_fork_arch() {
   esac
 }
 
-# The fork release's files for this machine: both zips. One per line, so the
-# installer loops over it and the tests pin the names.
+# The fork release's files for this machine, one per line: both zips, named
+# as upstream's `make artifacts-windows` does,
+# lima-<tag without v>-Windows-<ARCH>.zip.
 _agent_vm_lima_fork_files() {
   local arch tag
   arch="$(_agent_vm_lima_fork_arch)" || return 1
@@ -326,26 +354,21 @@ _agent_vm_lima_fork_files() {
   printf 'lima-additional-guestagents-%s-Windows-%s.zip\n' "$tag" "$arch"
 }
 
-# Every file named in "$@" inside <dir> must match its SHA256SUMS entry
-# there. Fails closed (a missing tool, an unlisted file, a mismatch) naming
-# the culprit, so a half-downloaded Lima never lands on PATH.
+# Every file named in "$@" inside <dir> must match its entry in <sums>, text
+# in SHA256SUMS format. Fails closed (an unlisted file, a checksum that cannot
+# be computed, a mismatch) naming the culprit, so a half-downloaded Lima never
+# lands on PATH.
 _agent_vm_sha256_sums_check() {
-  local dir="$1" f expected actual
-  shift
-  command -v sha256sum >/dev/null 2>&1 || command -v shasum >/dev/null 2>&1 \
-    || { echo "Error: neither sha256sum nor shasum is installed." >&2; return 1; }
+  local sums="$1" dir="$2" f expected actual
+  shift 2
   for f in "$@"; do
     # A leading * marks binary mode (`sha256sum -b`, and Git Bash's default).
-    expected="$(awk -v f="$f" '{ n = $2; sub(/^\*/, "", n) } n == f { print $1; exit }' "$dir/SHA256SUMS")"
+    expected="$(printf '%s\n' "$sums" | awk -v f="$f" '{ n = $2; sub(/^\*/, "", n) } n == f { print $1; exit }')"
     if [[ -z "$expected" ]]; then
-      echo "Error: SHA256SUMS lists no checksum for $f." >&2
+      echo "Error: no checksum listed for $f." >&2
       return 1
     fi
-    if command -v sha256sum >/dev/null 2>&1; then
-      actual="$(sha256sum "$dir/$f" 2>/dev/null | cut -d' ' -f1)"
-    else
-      actual="$(shasum -a 256 "$dir/$f" 2>/dev/null | cut -d' ' -f1)"
-    fi
+    actual="$(_agent_vm_sha256 < "$dir/$f" 2>/dev/null | cut -d' ' -f1)"
     if [[ -z "$actual" || "$actual" != "$expected" ]]; then
       echo "Error: checksum mismatch for $f (expected $expected, got ${actual:-unreadable})." >&2
       return 1
@@ -396,22 +419,16 @@ _agent_vm_install_fork_windows() {
         rm -rf "$tmp"
         return 1
       fi
+      if ! _agent_vm_sha256_sums_check "$AGENT_VM_LIMA_FORK_SHA256" "$tmp" "$f"; then
+        rm -rf "$tmp"
+        return 1
+      fi
     done <<< "$files"
-    printf '%s\n' "$AGENT_VM_LIMA_FORK_SHA256" > "$tmp/SHA256SUMS"
-    # In a subshell under $tmp, so the glob below names the downloads and not
-    # whatever lima-*.zip the caller's directory happens to hold.
-    if ! ( cd "$tmp" && _agent_vm_sha256_sums_check "$tmp" lima-*.zip ); then
-      rm -rf "$tmp"
-      return 1
-    fi
     stage="$dir.new.$$"
     rm -rf "$stage"
     mkdir -p "$stage" || { rm -rf "$tmp"; return 1; }
-    # The || keeps the last line: command substitution strips its newline.
     while IFS= read -r f || [[ -n "$f" ]]; do
-      case "$f" in lima-*.zip) ;;
-        *) continue ;;
-      esac
+      [[ -n "$f" ]] || continue
       if command -v unzip >/dev/null 2>&1; then
         unzip -q -o "$tmp/$f" -d "$stage" || { echo "Error: could not unpack $f." >&2; rm -rf "$tmp" "$stage"; return 1; }
       elif tar -tf "$tmp/$f" >/dev/null 2>&1; then
@@ -432,7 +449,7 @@ _agent_vm_install_fork_windows() {
     if [[ -e "$dir" ]]; then
       old="$dir.old.$$"
       if ! mv "$dir" "$old" 2>/dev/null; then
-        echo "Error: could not replace the Lima install in $dir: stop the running VMs ('agent-vm status'), then retry." >&2
+        echo "Error: could not replace the Lima install in $dir: stop the running VMs ('agent-vm list'), then retry." >&2
         rm -rf "$stage"
         return 1
       fi
@@ -522,47 +539,41 @@ _agent_vm_offer_git_protection() {
     return 0
   fi
   _agent_vm_git_protection_hint | _agent_vm_box "Lima cannot keep .git read-only"
+  local without="Continuing without .git protection: every start with writable shares will ask first." unlinked=""
   if _agent_vm_on_windows; then
     if ! _agent_vm_have_tty \
        || [[ "$(_agent_vm_ask_yn "Download the Lima build that has it now (both Windows zips, about 60 MB)?" Y)" != "1" ]]; then
-      echo "Continuing without .git protection: every start with writable shares will ask first." >&2
+      echo "$without" >&2
       return 0
     fi
     if ! _agent_vm_install_fork_windows; then
-      echo "Warning: the download failed. Continuing without .git protection: every start with writable shares will ask first." >&2
+      echo "Warning: the download failed. $without" >&2
       return 0
     fi
-    hash -r 2>/dev/null
-    if _agent_vm_lima_protects_git; then
-      echo "Lima now keeps every .git read-only for the VMs."
-    else
-      echo "Warning: the limactl on PATH ($(_agent_vm_limactl_path)) still cannot keep .git read-only." >&2
-      echo "  Another Lima install comes first on PATH. Continuing without .git protection: every start with writable shares will ask first." >&2
+  else
+    if ! command -v brew >/dev/null 2>&1 || ! _agent_vm_have_tty \
+       || [[ "$(_agent_vm_ask_yn "Install $AGENT_VM_LIMA_FORMULA now (built from source, takes a few minutes)?" Y)" != "1" ]]; then
+      echo "$without" >&2
+      return 0
     fi
-    return 0
-  fi
-  if ! command -v brew >/dev/null 2>&1 || ! _agent_vm_have_tty \
-     || [[ "$(_agent_vm_ask_yn "Install $AGENT_VM_LIMA_FORMULA now (built from source, takes a few minutes)?" Y)" != "1" ]]; then
-    echo "Continuing without .git protection: every start with writable shares will ask first." >&2
-    return 0
-  fi
-  local unlinked=""
-  if brew list --formula lima >/dev/null 2>&1; then
-    brew unlink lima && unlinked=1
-  fi
-  if ! brew install "$AGENT_VM_LIMA_FORMULA"; then
-    # Unlinked and nothing in its place would leave no limactl at all.
-    [[ -n "$unlinked" ]] && brew link lima
-    echo "Warning: the install failed. Continuing without .git protection: every start with writable shares will ask first." >&2
-    return 0
+    if brew list --formula lima >/dev/null 2>&1; then
+      brew unlink lima && unlinked=1
+    fi
+    if ! brew install "$AGENT_VM_LIMA_FORMULA"; then
+      # Unlinked and nothing in its place would leave no limactl at all.
+      [[ -n "$unlinked" ]] && brew link lima
+      echo "Warning: the install failed. $without" >&2
+      return 0
+    fi
   fi
   hash -r 2>/dev/null
   if _agent_vm_lima_protects_git; then
     echo "Lima now keeps every .git read-only for the VMs."
   else
     echo "Warning: the limactl on PATH ($(_agent_vm_limactl_path)) still cannot keep .git read-only." >&2
-    echo "  Another Lima install comes first on PATH. Continuing without .git protection: every start with writable shares will ask first." >&2
+    echo "  Another Lima install comes first on PATH. $without" >&2
   fi
+  return 0
 }
 
 # --- git on this machine: repositories not named .git ---------------------------

@@ -107,7 +107,7 @@ rec_has "delete $SCR" && pass "a failed start deletes the VM" || fail "a failed 
 # the repair of a VM with a share mounts the project.
 out="$(AGENT_VM_TEST_RO=1 sc --scratch run true)"
 case "$out" in *"is not writable in VM '$SCR'"*) pass "a scratch folder that cannot be written: an error" ;; *) fail "unwritable scratch folder: $out" ;; esac
-grep "^edit $SCR" "$REC" | grep -q "\"location\"" && fail "the project was mounted into the scratch VM: $(grep "^edit $SCR" "$REC")" \
+grep -q "\"location\"" <<< "$(grep "^edit $SCR" "$REC")" && fail "the project was mounted into the scratch VM: $(grep "^edit $SCR" "$REC")" \
   || pass "and the project is never mounted into it"
 rec_has "delete $SCR" && pass "and the VM is deleted" || fail "not deleted: $out"
 
@@ -143,6 +143,6 @@ case "$trap_after" in *"echo mine"*) pass "the user's INT trap is back after a s
 # The flag comes right after the command's name too, and never reaches it.
 out="$(sc run --scratch true)"
 rec_has "edit $SCR --set del(.mountType) | .mounts = []" && pass "run --scratch: taken" || fail "run --scratch not taken: $out"
-grep -v '^edit' "$REC" | grep -q -- "--scratch" && fail "--scratch reached the command" || pass "and it does not reach the command"
+grep -q -- "--scratch" <<< "$(grep -v '^edit' "$REC")" && fail "--scratch reached the command" || pass "and it does not reach the command"
 case "$(agent-vm --scratch stop 2>&1)" in *"is an option for the commands that start a VM"*) pass "--scratch before 'stop' is refused" ;; *) fail "--scratch stop accepted" ;; esac
 _agent_vm_cleanup_state "$SCR"

@@ -19,7 +19,7 @@ pf_rec() {
 # Regular files only: the planted links themselves point at the secret, and
 # some greps (busybox) follow links when recursing.
 leaked() {
-  { cat "$SB/pf-stdin"; find "$PF" -type f -exec cat {} +; } 2>/dev/null | grep -q TOPSECRET \
+  grep -q TOPSECRET <<< "$({ cat "$SB/pf-stdin"; find "$PF" -type f -exec cat {} +; } 2>/dev/null)" \
     && echo leaked || echo no
 }
 
@@ -37,7 +37,42 @@ if [[ -n "$AGENT_VM_HAS_SYMLINKS" ]]; then
   ln -s "$SB/pf-outside" "$PF/.mytool"
   AGENT_VM_PROJECT_ENV=.mytool/env AGENT_VM_PROJECT_RUNTIME=.mytool/env pf_rec run true >/dev/null
   check "a symlinked directory on the way: nothing reaches the VM" "$(leaked)" "no"
-  rm -rf "$PF/.mytool" "$PF/.agent-vm.env" "$PF/.agent-vm.runtime.sh"
+  rm -rf "$PF/.mytool"
+  # The project named another way: by its real path while it is used through
+  # a link (/tmp and /private/tmp on macOS). Still the project, by where the
+  # path leads, not how it is spelled.
+  ln -s "$PF" "$SB/pf-link"
+  pf_link() {
+    ( cd "$SB/pf-link" || exit 1
+      export AGENT_VM_TEST_REC="$REC" AGENT_VM_TEST_VM="$(_agent_vm_name "$SB/pf-link")" AGENT_VM_TEST_STDIN="$SB/pf-stdin"
+      : > "$REC"; : > "$SB/pf-stdin"
+      AGENT_VM_PROJECT_ENV="$PF/.agent-vm.env" AGENT_VM_PROJECT_RUNTIME="$PF/.agent-vm.runtime.sh" agent-vm "$@" </dev/null 2>&1 )
+  }
+  if [[ -n "$AGENT_VM_HAS_PERL" ]]; then
+    check "the real path of a linked project: project-env get refuses the link" \
+      "$(pf_link project-env get TOPSECRET; echo "rc=$?")" "$(printf '%s\n%s\n%s' "Error: $SB/pf-link/.agent-vm.env is a symlink, is reached through one, or is not a regular file." "  agent-vm follows no link in the project, which the VM can write. Replace it with a plain file." "rc=2")"
+    pf_link project-env set X 1 >/dev/null
+    check "and project-env set leaves the link alone" "$([ -L "$PF/.agent-vm.env" ] && echo link || echo replaced)" "link"
+  else
+    printf '  skip project-env through a linked project (perl is not installed)\n'
+  fi
+  AGENT_VM_TEST_RUNTIME_FOUND=1 pf_link run true >/dev/null
+  check "and nothing of the target reaches the VM" "$(leaked)" "no"
+  grep -qF "$SB/pf-link/.agent-vm.env" "$REC" && pass "the env file is handed to the VM by its path there" \
+    || fail "linked project: env path not passed to the VM"
+  check "a relative path is found by where it leads" \
+    "$(_agent_vm_project_rel "$SB/pf-link" "$PF/sub/f"):$(_agent_vm_project_rel "$PF" "$SB/pf-link/f"):$(_agent_vm_project_rel "$PF" "$SB/other/f" || echo out)" \
+    "sub/f:f:out"
+  # A link of the user's to a folder IN the project, which the VM then makes
+  # a link out of it: still the project, not where the VM's link leads.
+  mkdir -p "$PF/sub" "$SB/pf-elsewhere"; ln -s "$PF/sub" "$SB/pf-sublink"
+  check "a user's link into the project: in it" "$(_agent_vm_project_rel "$PF" "$SB/pf-sublink/.env")" "sub/.env"
+  rmdir "$PF/sub"; ln -s "$SB/pf-elsewhere" "$PF/sub"
+  check "and once the VM swaps a link in below it: still in it" "$(_agent_vm_project_rel "$PF" "$SB/pf-sublink/.env")" "sub/.env"
+  check "a relative link outside, through .., is followed" \
+    "$(ln -s "../pf-link" "$SB/pf-elsewhere/up"; _agent_vm_project_rel "$PF" "$SB/pf-elsewhere/up/y")" "y"
+  rm -rf "$SB/pf-sublink" "$PF/sub" "$SB/pf-elsewhere"
+  rm -f "$SB/pf-link" "$PF/.agent-vm.env" "$PF/.agent-vm.runtime.sh"
 else
   printf '  skip symlinked project files (ln -s plants copies on this machine)\n'
 fi

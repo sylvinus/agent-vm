@@ -24,9 +24,7 @@ _agent_vm_file_is_private() {
   if ! mode="$(_agent_vm_file_mode "$1")"; then
     return 2
   fi
-  # 8# for base-8: a mode of 08 must not read as octal, and $mode may carry
-  # a leading zero. The mask is written 8#77 and not 077: zsh reads a bare
-  # 077 as decimal 77, while 8#77 is octal 63 in both bash and zsh.
+  # 8# for base-8: $mode may carry a leading zero.
   (( 8#$mode & 8#77 )) && return 1
   return 0
 }
@@ -48,8 +46,8 @@ _agent_vm_doctor_line() {
 }
 
 _agent_vm_doctor() {
-  # Local, and still visible to _agent_vm_doctor_line: bash and zsh both scope
-  # locals dynamically, so the helper updates these and nothing leaks.
+  # Local, and still visible to _agent_vm_doctor_line: bash scopes locals
+  # dynamically, so the helper updates these and nothing leaks.
   local AGENT_VM_DOCTOR_WARN=0 AGENT_VM_DOCTOR_FAIL=0
   local d=_agent_vm_doctor_line
 
@@ -75,7 +73,7 @@ _agent_vm_doctor() {
   echo ""
   echo "Host"
   $d info "$(uname -sm)"
-  local cpus mem avail_kib
+  local cpus mem free_gib
   cpus="$(_agent_vm_host_cpus)"
   mem="$(_agent_vm_host_mem_gib)"
   if [[ -n "$cpus" && -n "$mem" ]]; then
@@ -83,16 +81,13 @@ _agent_vm_doctor() {
   else
     $d warn "could not read the host's CPU or RAM: --cpus and --memory are not clamped"
   fi
-  avail_kib=$(df -Pk "${LIMA_HOME:-$HOME}" 2>/dev/null | awk 'NR==2 {print $4}')
-  case "$avail_kib" in
-    ''|*[!0-9]*) $d warn "could not read the free disk space" ;;
-    *)
-      if [[ $((avail_kib / 1048576)) -lt 10 ]]; then
-        $d warn "$((avail_kib / 1048576)) GiB free for Lima's VMs" "A default VM disk is 10 GiB (sparse)."
-      else
-        $d ok "$((avail_kib / 1048576)) GiB free for Lima's VMs"
-      fi ;;
-  esac
+  if ! free_gib="$(_agent_vm_free_gib)"; then
+    $d warn "could not read the free disk space"
+  elif [[ "$free_gib" -lt 10 ]]; then
+    $d warn "$free_gib GiB free for Lima's VMs" "A default VM disk is 10 GiB (sparse)."
+  else
+    $d ok "$free_gib GiB free for Lima's VMs"
+  fi
 
   echo ""
   echo "Lima"
@@ -118,6 +113,12 @@ _agent_vm_doctor() {
         $d ok "Lima keeps every .git read-only for the VMs (sshfs.readonlyNames)" ;;
       1)
         $d warn "this Lima cannot keep .git read-only for the VMs, so a start with writable shares asks first"
+        # Where a start would ask about it: Windows, Lima's config, or this
+        # directory's VM if Lima made it before 1.0 (else the base's).
+        if _agent_vm_unprotected_mount_is_sshfs "$(_agent_vm_name "$(pwd)" 2>/dev/null)"; then
+          $d warn "it cannot keep the VMs to their shares either"
+          _agent_vm_sshfs_exposure_note | _agent_vm_wrap 70 | sed 's/^/        /'
+        fi
         _agent_vm_git_protection_hint | _agent_vm_wrap 70 | sed 's/^/        /' ;;
       *)
         $d fail "cannot tell whether this Lima keeps .git read-only: 'limactl validate' gave no answer agent-vm knows" \
@@ -149,7 +150,7 @@ _agent_vm_doctor() {
     fi
     $d info "QEMU also needs the 'Windows Hypervisor Platform' feature, which only an administrator can check or turn on" \
       "Without it, VMs fail to start with a WHPX error. An administrator runs, once, then reboots:" \
-      "DISM /Online /Enable-Feature /FeatureName:HypervisorPlatform /All"
+      "$AGENT_VM_WHPX_ON"
   fi
 
   # A bare repository is not named .git, so readonlyNames does not cover one
@@ -177,17 +178,21 @@ _agent_vm_doctor() {
     _agent_vm_base_exists || st=$?
     case "$st" in
       0)
-        local built age
+        local built
         built="$(cat "$AGENT_VM_STATE_DIR/.agent-vm-base-version" 2>/dev/null)"
         if [[ "$built" =~ ^[0-9]+$ ]]; then
-          age=$(( ($(date +%s) - built) / 86400 ))
-          $d ok "$AGENT_VM_TEMPLATE is ready, built $age day(s) ago"
-          if [[ "$age" -gt 90 ]]; then
+          $d ok "$AGENT_VM_TEMPLATE is ready, built $(_agent_vm_epoch_date "$built" +%F)"
+          if [[ $(( ($(date +%s) - built) / 86400 )) -gt 90 ]]; then
             $d warn "the base template is over 90 days old" \
               "Its agents and packages are as old. 'agent-vm setup' rebuilds it."
           fi
         else
           $d ok "$AGENT_VM_TEMPLATE is ready"
+        fi
+        # 0.1.0 support, to be removed with _agent_vm_migrate_0_1.
+        if [[ ! -f "$AGENT_VM_STATE_DIR/.agent-vm-base-built-by" ]]; then
+          $d warn "the base template was built by agent-vm 0.1.0, without the sshfs of the shares that keep .git read-only: each VM made from it boots once more to install it" \
+            "'agent-vm setup' rebuilds it, then '--reset' the VMs made from it."
         fi ;;
       1)
         if _agent_vm_exists "$AGENT_VM_TEMPLATE"; then
@@ -228,13 +233,13 @@ _agent_vm_doctor() {
   host_dir="$(pwd)"
   [[ -n "$protects_git" ]] && ro_names="$(_agent_vm_readonly_names "$host_dir")"
   echo "This directory ($host_dir)"
-  if [[ "$host_dir" == *[[:space:]]* || "$host_dir" == *[\"\\]* || "$host_dir" == *[[:cntrl:]]* ]]; then
-    $d fail "the path contains whitespace, a quote, a backslash or a control character" \
-      "agent-vm refuses to mount it. Rename the directory."
+  local bad
+  if bad="$(_agent_vm_unmountable_path "$host_dir")"; then
+    $d fail "the path $bad" "agent-vm refuses to mount it. Rename the directory."
   fi
   local unsafe
   if unsafe="$(_agent_vm_unsafe_project "$host_dir")"; then
-    $d fail "this directory is, or contains, $unsafe" \
+    $d fail "this directory $unsafe" \
       "agent-vm refuses to share it with a VM. Run it from a project directory."
   fi
   if vm_name="$(_agent_vm_name "$host_dir" 2>/dev/null)"; then
@@ -313,11 +318,11 @@ _agent_vm_doctor() {
     printf '%s\n' "$git_risks" | sed 's/^/        /'
     printf '        %s\n' "Move them out of the project, or have them name commands outside it."
   fi
-  local runtime runtime_text project_env
+  local runtime runtime_text runtime_rel project_env
   runtime="$(_agent_vm_project_runtime_path "$host_dir")"
-  if _agent_vm_in_project "$host_dir" "$runtime"; then
-    # Not by its path: the VM can make it a symlink (see _agent_vm_in_project).
-    if runtime_text="$(_agent_vm_nofollow read "$host_dir" "${runtime#"${host_dir%/}"/}" 2>/dev/null && printf x)"; then
+  if runtime_rel="$(_agent_vm_project_rel "$host_dir" "$runtime")"; then
+    # Not by its path: the VM can make it a symlink (see _agent_vm_project_rel).
+    if runtime_text="$(_agent_vm_nofollow read "$host_dir" "$runtime_rel" 2>/dev/null && printf x)"; then
       $d info "project runtime: $runtime ($(printf '%s' "${runtime_text%x}" | awk "$_AGENT_VM_SHEBANG_AWK"))"
     fi
   elif [[ -f "$runtime" ]]; then
@@ -338,7 +343,6 @@ _agent_vm_doctor() {
   if [[ -n "$have_lima" ]]; then
     # VMs persist and each is clamped on its own, so several running at once
     # can promise more than the host has.
-    # Not `status`: that name is read-only in zsh.
     local all name vstatus vcpus vmem run_n=0 run_cpus=0 run_mem=0
     all="$(limactl list --format '{{.Name}}|{{.Status}}|{{.CPUs}}|{{.Memory}}' 2>/dev/null || true)"
     while IFS='|' read -r name vstatus vcpus vmem; do
@@ -354,7 +358,7 @@ _agent_vm_doctor() {
       $d info "none running"
     elif [[ -n "$mem" && "$run_mem" -gt "$mem" ]]; then
       $d warn "$run_n running, ${run_cpus} CPUs and ${run_mem} GiB in total: more memory than the host has" \
-        "'agent-vm status' lists them; 'agent-vm stop <name>' frees one."
+        "'agent-vm list' lists them; 'agent-vm stop <name>' frees one."
     else
       $d info "$run_n running, ${run_cpus} CPUs and ${run_mem} GiB in total"
     fi

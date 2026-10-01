@@ -45,20 +45,12 @@ INSTALL_OPENCODE="${AGENT_VM_INSTALL_OPENCODE:-1}"
 INSTALL_CODEX="${AGENT_VM_INSTALL_CODEX:-1}"
 INSTALL_VIBE="${AGENT_VM_INSTALL_VIBE:-1}"
 INSTALL_PI="${AGENT_VM_INSTALL_PI:-0}"
-# MCP servers wired into every installed agent's config. Only servers with a
-# dependency worth baking into the image get a toggle; remote MCP servers are
-# a URL (and often a secret) and belong in per-project config, not in an image
-# every VM is cloned from. mcp-playwright is opt-in: a second browser-driving
-# MCP alongside mcp-chrome is redundant for most users, and every wired server
-# costs tool definitions in the agent's context.
+# MCP servers wired into every installed agent's config (see lib/setup.sh).
 INSTALL_MCP_CHROME="${AGENT_VM_INSTALL_MCP_CHROME:-1}"
 INSTALL_MCP_PLAYWRIGHT="${AGENT_VM_INSTALL_MCP_PLAYWRIGHT:-0}"
 
-# Several installers (Claude Code, Vibe, …) check PATH at install time and
-# print a "~/.local/bin is not in your PATH" warning otherwise. The persistent
-# PATH lives in ~/.zshenv (added below), so once the user opens a
-# VM shell it's fine — but this bash script runs under a fresh session that
-# doesn't see those edits yet. Export it here so installers stay quiet.
+# For this session too: installers (Claude Code, Vibe) warn when ~/.local/bin
+# is not on PATH, which ~/.zshenv only sets for the next ones.
 export PATH="$HOME/.local/bin:$PATH"
 
 # Behind a proxy: Lima copies the host's proxy settings into /etc/environment,
@@ -131,7 +123,7 @@ fi
 
 if [[ "$INSTALL_RUST" == "1" ]]; then
   # Rustup is the canonical Rust installer. --no-modify-path keeps it from
-  # editing ~/.profile/~/.bashrc — we add ~/.cargo/bin to zsh's PATH below.
+  # editing ~/.profile/~/.bashrc: ~/.cargo/bin goes on zsh's PATH below.
   echo "Installing Rust..."
   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --no-modify-path --default-toolchain stable
   echo 'export PATH=$HOME/.cargo/bin:$PATH' >> ~/.zshenv
@@ -385,7 +377,7 @@ configure_mcp() {
   fi
 }
 
-# True when at least one agent is installed — nothing to configure otherwise,
+# True when at least one agent is installed: nothing to configure otherwise,
 # and no reason to print a "skipping" notice either.
 any_agent_installed() {
   [[ "$INSTALL_CLAUDE" == "1" || "$INSTALL_OPENCODE" == "1" \
@@ -402,26 +394,11 @@ if [[ "$INSTALL_MCP_CHROME" == "1" ]] && any_agent_installed; then
   fi
 fi
 
-# Playwright MCP drives the Chromium installed above instead of pulling its own
-# browser build, so it needs the same two dependencies as the Chrome MCP.
-#
-# Two things are needed for that reuse, and --executable-path alone is not
-# enough: @playwright/mcp depends on the `playwright` package, whose postinstall
-# downloads every browser marked installByDefault in playwright-core's
-# browsers.json — chromium, chromium-headless-shell, firefox, webkit and ffmpeg,
-# several hundred MB — regardless of which binary ends up being launched.
-# PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD suppresses that. It is set through `env` on
-# this one command rather than in the VM's ~/.zshenv, so a user's own
-# `npx playwright test` in a project still downloads the browsers it expects.
-#
-# Consequence to know: this server is pinned to Chromium. Pointing it at another
-# engine means editing the MCP entry (drop --executable-path, add e.g.
-# --browser firefox), and the first launch then fails with Playwright's usual
-# "run npx playwright install" message — which works inside the VM and lands the
-# download in that project VM rather than in the base image.
-#
-# The trade-off: Playwright pins and tests against its own browser build, so a
-# distro Chromium can drift from what playwright-core expects. Re-add
+# Playwright MCP drives the Chromium installed above (--executable-path), not
+# a browser of its own: PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD, on this command only,
+# skips the several hundred MB of browsers the `playwright` package downloads
+# on install, while a project's own `npx playwright test` still gets them. A
+# distro Chromium can drift from what playwright-core expects:
 # `npx playwright install chromium` here if that ever bites.
 if [[ "$INSTALL_MCP_PLAYWRIGHT" == "1" ]] && any_agent_installed; then
   if [[ "$INSTALL_NODE" == "1" && "$INSTALL_CHROMIUM" == "1" ]]; then

@@ -74,6 +74,10 @@ check "0.08.0 is decimal, not octal"   "$(vge 0.8.0 0.08.0)"     "yes"
 check "0.09.0 outranks 0.8.0"          "$(vge 0.09.0 0.8.0)"     "yes"
 check "a component past 999 still orders" "$(vge 1.1000.0 2.0.0)" "no"
 check "and does not spill into the next"  "$(vge 1.0.1000 1.1.0)" "no"
+# Past what shell arithmetic holds.
+check "a 20-digit floor is not met"    "$(vge 0.2.0 18446744073709551616)" "no"
+check "a 20-digit version meets a 19-digit one" "$(vge 18446744073709551616 9223372036854775807)" "yes"
+check "leading zeros are dropped"      "$(vge 0010 9)"           "yes"
 
 check "plain version still prints" "$(agent-vm version)" "$AGENT_VM_VERSION"
 
@@ -100,7 +104,9 @@ case "$too_old" in
 esac
 mkdir -p "$SB/upd/clone/.git" "$SB/upd/Cellar/agent-vm/1.0.0/libexec" "$SB/upd/release"
 update_of() { ( AGENT_VM_SCRIPT_DIR="$1"; _agent_vm_update_command ); }
-check "update: a clone pulls"        "$(update_of "$SB/upd/clone")" "git -C \"$SB/upd/clone\" pull"
+check "update: a clone pulls"        "$(update_of "$SB/upd/clone")" "git -C '$SB/upd/clone' pull"
+mkdir -p "$SB/upd/it's/.git"
+check "update: a clone path is quoted for the shell" "$(update_of "$SB/upd/it's")" "git -C '$SB/upd/it'\"'\"'s' pull"
 check "update: a keg upgrades"       "$(update_of "$SB/upd/Cellar/agent-vm/1.0.0/libexec")" "brew upgrade agent-vm"
 mkdir -p "$HOME/.local/share/agent-vm" "$SB/upd/agent-vm"
 check "update: a release reinstalls" "$(update_of "$HOME/.local/share/agent-vm")" "curl -fsSL https://www.agent-vm.org/install.sh | sh"

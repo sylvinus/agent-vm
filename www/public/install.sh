@@ -13,7 +13,7 @@
 #
 # A release is the tarball published on GitHub, checked against its SHA256SUMS.
 # Running this again replaces it with the latest release. A clone is updated
-# with `git pull` instead, and running this again pulls it.
+# with `git pull`, or by running this again with --git.
 #
 # Then `agent-vm.sh install` links agent-vm into ~/.local/bin (AGENT_VM_BIN_DIR
 # overrides). Nothing needs root.
@@ -52,6 +52,10 @@ sha256_of() {
 cleanup() {
   [ -z "$TMP" ] || rm -rf "$TMP"
   [ -z "$LEFTOVER" ] || rm -rf "$LEFTOVER"
+  # Stopped between the two renames: the previous version goes back.
+  if [ -n "$ROLLBACK" ] && [ -e "$ROLLBACK" ] && [ ! -e "$DIR" ]; then
+    mv "$ROLLBACK" "$DIR" && say "interrupted: the previous version is back in $DIR"
+  fi
 }
 
 install_release() {
@@ -95,14 +99,17 @@ install_release() {
   [ -f "$src/agent-vm.sh" ] || die "$tarball has no agent-vm-$version/agent-vm.sh"
 
   # Staged next to $DIR so the swap is two renames on one filesystem. The
-  # previous version is left in LEFTOVER, which cleanup removes.
+  # previous version is left in LEFTOVER, which cleanup removes, or put back
+  # from ROLLBACK when the swap did not finish.
   mkdir -p "$(dirname "$DIR")"
   LEFTOVER="$DIR.new.$$"
   mv "$src" "$LEFTOVER"
   if [ -e "$DIR" ]; then
-    mv "$DIR" "$DIR.old.$$"
+    ROLLBACK="$DIR.old.$$"
+    mv "$DIR" "$ROLLBACK"
     mv "$LEFTOVER" "$DIR"
-    LEFTOVER="$DIR.old.$$"
+    LEFTOVER="$ROLLBACK"
+    ROLLBACK=""
   else
     mv "$LEFTOVER" "$DIR"
     LEFTOVER=""
@@ -156,13 +163,14 @@ main() {
 
   [ -n "${HOME:-}" ] || die "HOME is not set"
   [ -n "$DIR" ] || DIR="${XDG_DATA_HOME:-$HOME/.local/share}/agent-vm"
+  # C:/... and C:\... are absolute too, in Git Bash.
   case "$DIR" in
-    /*) ;;
+    /*|[A-Za-z]:/*|[A-Za-z]:\\*) ;;
     *) DIR="$(pwd)/$DIR" ;;
   esac
   DIR="${DIR%/}"
 
-  TMP=""; LEFTOVER=""
+  TMP=""; LEFTOVER=""; ROLLBACK=""
   trap cleanup EXIT
   trap 'exit 1' HUP INT TERM
   TMP="$(mktemp -d 2>/dev/null || mktemp -d -t agent-vm)"

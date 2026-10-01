@@ -329,7 +329,9 @@ check "the asset names for ARM64" \
 pinned_ok=yes
 for a in "$SB/fakewin" "$SB/fakewinarm"; do
   for f in $(PATH="$a:$PATH" _agent_vm_lima_fork_files); do
-    printf '%s\n' "$AGENT_VM_LIMA_FORK_SHA256" | grep -Eq "^[0-9a-f]{64}  $f\$" || pinned_ok="no: $f"
+    # A here-string, not a pipe: grep -q exits on the match, printf can then
+    # die of SIGPIPE, and pipefail fails the line.
+    grep -Eq "^[0-9a-f]{64}  $f\$" <<< "$AGENT_VM_LIMA_FORK_SHA256" || pinned_ok="no: $f"
   done
 done
 check "each zip has a pinned checksum" "$pinned_ok" "yes"
@@ -346,11 +348,12 @@ if command -v sha256sum >/dev/null 2>&1; then
 else
   ( cd "$SB/sums" && shasum -a 256 a.zip b.zip > SHA256SUMS )
 fi
-_agent_vm_sha256_sums_check "$SB/sums" a.zip b.zip \
+sums() { cat "$SB/sums/SHA256SUMS"; }
+_agent_vm_sha256_sums_check "$(sums)" "$SB/sums" a.zip b.zip \
   && pass "matching checksums verify" \
   || fail "matching checksums do not verify"
 printf 'tampered\n' > "$SB/sums/b.zip"
-if _agent_vm_sha256_sums_check "$SB/sums" a.zip b.zip >/dev/null 2>&1; then
+if _agent_vm_sha256_sums_check "$(sums)" "$SB/sums" a.zip b.zip >/dev/null 2>&1; then
   fail "a tampered download verified"
 else
   pass "a tampered download is refused"
@@ -358,10 +361,10 @@ fi
 # Binary mode marks the name with a *: `sha256sum -b`, and Git Bash's default.
 printf 'hello\n' > "$SB/sums/c.zip"
 printf '%s *c.zip\n' "$(_agent_vm_sha256 < "$SB/sums/c.zip" | cut -d' ' -f1)" >> "$SB/sums/SHA256SUMS"
-_agent_vm_sha256_sums_check "$SB/sums" c.zip \
+_agent_vm_sha256_sums_check "$(sums)" "$SB/sums" c.zip \
   && pass "a binary-mode (*) checksum line verifies" \
   || fail "a binary-mode (*) checksum line does not verify"
-if _agent_vm_sha256_sums_check "$SB/sums" missing.zip >/dev/null 2>&1; then
+if _agent_vm_sha256_sums_check "$(sums)" "$SB/sums" missing.zip >/dev/null 2>&1; then
   fail "an unlisted file verified"
 else
   pass "an unlisted file is refused"

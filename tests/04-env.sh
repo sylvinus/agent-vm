@@ -50,7 +50,7 @@ else
 fi
 
 check "list prints names only" "$(avenv list | sort | tr '\n' ' ')" "AC_GIT_USER_NAME ALBERT_API_KEY SOMEONE_ELSE "
-if avenv list | grep -q "O'Brien\|k3"; then fail "list must never print values"; else pass "list never prints values"; fi
+if grep -q "O'Brien\|k3" <<< "$(avenv list)"; then fail "list must never print values"; else pass "list never prints values"; fi
 
 avenv unset ALBERT_API_KEY >/dev/null
 avenv has ALBERT_API_KEY && fail "unset removed the key" || pass "unset removes the key"
@@ -119,7 +119,7 @@ if _agent_vm_on_windows; then
 else
 check "the file is mode 600" "$(ls -l "$PENV/pa/.agent-vm.env" | cut -c2-10)" "rw-------"
 fi
-if pe "$PENV/pa" list | grep -q "O'Brien"; then fail "list must never print values"; else pass "list never prints values"; fi
+if grep -q "O'Brien" <<< "$(pe "$PENV/pa" list)"; then fail "list must never print values"; else pass "list never prints values"; fi
 
 # AGENT_VM_PROJECT_ENV, like AGENT_VM_PROJECT_RUNTIME: an integrator keeps its
 # files in its own directory instead of cluttering the project root.
@@ -158,7 +158,7 @@ fi
   printf "SHARED_LAST='s'" > "$AGENT_VM_STATE_DIR/env"
   printf "BOTH='project'\n" > "$PENV/outside.env"
   payload="$(_agent_vm_env_payload "$PENV/pa")"
-  printf '%s\n' "$payload" | grep -qx "BOTH='project'" )
+  grep -qx "BOTH='project'" <<< "$payload" )
 check "a shared file with no final newline stays separate" "$?" "0"
 ( AGENT_VM_STATE_DIR="$PENV/state"
   printf "S='s'\n" > "$AGENT_VM_STATE_DIR/env"
@@ -281,3 +281,24 @@ case "$drive_err" in
   *"echo '/.agent-vm.env' >> 'C:/proj/.gitignore'"*) pass "the suggested line names the relative file" ;;
   *) fail "the suggested line is not applicable: $drive_err" ;;
 esac
+
+section "files rewritten under the caller's noclobber"
+# agent-vm is sourced into the user's shell, set -C (noclobber) included: a
+# plain > on a file that exists fails there. The env file went unwritable, and
+# the record of a VM's shares kept claiming what they were before.
+( set -C
+  AGENT_VM_STATE_DIR="$SB/noclobber"
+  agent-vm env set NC 1 >/dev/null 2>&1 && agent-vm env set NC 2 >/dev/null 2>&1 && agent-vm env get NC
+  _agent_vm_record_mounts vmnc '[{"a": 1}]' && _agent_vm_record_mounts vmnc '[{"b": 2}]' && cat "$AGENT_VM_STATE_DIR/.agent-vm-mounts-vmnc"
+) > "$SB/noclobber.out" 2>&1
+check "noclobber: the env file and the shares record are rewritten" "$(cat "$SB/noclobber.out")" "$(printf '2\n[{"b": 2}]')"
+# A record that cannot be written stops the start, and says so.
+mkdir -p "$SB/ro-state"; printf 'old\n' > "$SB/ro-state/.agent-vm-mounts-vmro"
+chmod 400 "$SB/ro-state/.agent-vm-mounts-vmro"
+if ( printf 'x\n' >| "$SB/ro-state/.agent-vm-mounts-vmro" ) 2>/dev/null; then
+  printf '  skip an unwritable record (this user writes anyway)\n'
+else
+  out="$(AGENT_VM_STATE_DIR="$SB/ro-state"; _agent_vm_record_mounts vmro '[]' 2>&1; echo "rc=$?")"
+  case "$out" in *"could not record the shares of VM 'vmro'"*"rc=1") pass "an unwritable record: an error" ;; *) fail "an unwritable record: $out" ;; esac
+  [ -e "$SB/ro-state/.agent-vm-mounts-vmro" ] && fail "the old record is still there" || pass "and the old record goes"
+fi

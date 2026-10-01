@@ -20,7 +20,6 @@ _agent_vm_launcher() {
 
 # 0 when <path> is what `install` puts there for <script>: a link to it, or
 # the launcher running it.
-# Not `path`: zsh ties that name to PATH.
 _agent_vm_installed_ours() {
   local target="$1" script="$2"
   if [[ -L "$target" ]]; then
@@ -98,7 +97,7 @@ _agent_vm_install() {
 }
 
 # Removes the link `install` made, and nothing else: the rc line is named, not
-# edited, and the VMs, ~/.agent-vm and the clone stay.
+# edited, and the VMs, ~/.agent-vm and agent-vm's own folder stay.
 _agent_vm_uninstall() {
   if [[ $# -gt 0 ]]; then
     echo "Usage: agent-vm uninstall" >&2
@@ -117,5 +116,5 @@ _agent_vm_uninstall() {
   if _agent_vm_rc_sources_us; then
     echo "Your shell rc still sources agent-vm.sh: remove that line to drop the shell function."
   fi
-  echo "The VMs, ~/.agent-vm and this clone are left as they are ('agent-vm destroy-all' deletes the VMs)."
+  echo "Left as they are: the VMs ('agent-vm destroy-all' deletes them, run it first), ~/.agent-vm, and agent-vm itself in $AGENT_VM_SCRIPT_DIR (delete that folder to remove it)."
 }
