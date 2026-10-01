@@ -49,6 +49,21 @@ _agent_vm_host_mem_gib() { echo ""; }
 check "unknown host: the value is honoured as asked" \
   "$(_agent_vm_cap_resource cpus 16)" "16"
 
+# Free space: measured where Lima keeps the disks, through a link to another
+# disk; in HOME before Lima has made its directory. A stub df names the path.
+free_at() {  # <LIMA_HOME or empty>: the path df was given, then the GiB
+  ( df() { printf '%s ' "$2" > "$SB/df-arg"; printf 'h\nfs 1 1 2097152 0%% /\n'; }
+    if [[ -n "$1" ]]; then export LIMA_HOME="$1"; else unset LIMA_HOME; fi
+    gib="$(_agent_vm_free_gib)"
+    printf '%s%s' "$(cat "$SB/df-arg")" "$gib" )
+}
+mkdir -p "$SB/lima-disk"
+ln -s "$SB/lima-disk" "$SB/lima-link" 2>/dev/null
+check "free space: in Lima's directory, a link followed" "$(free_at "$SB/lima-link")" "$SB/lima-link/. 2"
+check "free space: in HOME before Lima's directory exists" "$(free_at "$SB/no-lima")" "$HOME/. 2"
+check "free space: ~/.lima without LIMA_HOME" "$(mkdir -p "$HOME/.lima"; free_at "")" "$HOME/.lima/. 2"
+rmdir "$HOME/.lima"; rm -rf "$SB/lima-link" "$SB/lima-disk" "$SB/df-arg"
+
 # Restore the real probes for anything running after this section.
 unset -f _agent_vm_host_cpus _agent_vm_host_mem_gib
 # shellcheck source=./agent-vm.sh

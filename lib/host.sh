@@ -73,10 +73,14 @@ _agent_vm_cap_resource() {
   printf '%s\n' "$val"
 }
 
-# Free space in GiB where Lima keeps the VMs' disks. Fails when df cannot say.
+# Free space in GiB where Lima keeps the VMs' disks, in $HOME until Lima has
+# made its directory. "/.": the directory a link there leads to. Fails when
+# df cannot say.
 _agent_vm_free_gib() {
-  local kib
-  kib=$(df -Pk "${LIMA_HOME:-$HOME}" 2>/dev/null | awk 'NR==2 {print $4}')
+  local kib dir
+  dir="$(_agent_vm_lima_home)"
+  [[ -d "$dir" ]] || dir="$HOME"
+  kib=$(df -Pk "$dir/." 2>/dev/null | awk 'NR==2 {print $4}')
   case "$kib" in ''|*[!0-9]*) return 1 ;; esac
   echo $((kib / 1048576))
 }

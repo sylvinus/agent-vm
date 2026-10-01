@@ -221,8 +221,10 @@ out="$( _agent_vm_unprotected_mount_is_sshfs() { return 0; }
         AGENT_VM_TEST_STOPPED=1 rec --readonly run true; echo "rc=$?" )"
 case "$out" in *"--readonly cannot be enforced here"*"rc=1") pass "reverse-sshfs, --readonly: refused" ;; *) fail "reverse-sshfs --readonly: $out" ;; esac
 grep -Eq '^(edit|start|clone) ' "$REC" && fail "reverse-sshfs --readonly: the VM was touched" || pass "and nothing was touched"
+# The real function: tests/11 stubs it on Windows.
 sshfs_default() {
-  ( export AGENT_VM_TEST_REC="$REC" AGENT_VM_TEST_VM="$PV" AGENT_VM_TEST_VMTYPE=qemu LIMA_HOME="$SB/old-lima"
+  ( . "$SELF_DIR/lib/mounts.sh"
+    export AGENT_VM_TEST_REC="$REC" AGENT_VM_TEST_VM="$PV" AGENT_VM_TEST_VMTYPE=qemu LIMA_HOME="$SB/old-lima"
     mkdir -p "$SB/old-lima/$PV"; echo "$1" > "$SB/old-lima/$PV/lima-version"
     _agent_vm_unprotected_mount_is_sshfs "$PV" && echo yes || echo no )
 }
@@ -236,7 +238,8 @@ printf 'mountType: 9p # mine\n' > "$SB/old-lima/_config/override.yaml"
 check "override.yaml wins over it" "$(sshfs_default 2.1.0)" "$(_agent_vm_on_windows && echo yes || echo no)"
 rm -rf "$SB/old-lima/_config"
 check "a VM on vz: not" \
-  "$( AGENT_VM_TEST_REC="$REC" AGENT_VM_TEST_VM="$PV" _agent_vm_unprotected_mount_is_sshfs "$PV" && echo yes || echo no )" \
+  "$( . "$SELF_DIR/lib/mounts.sh"
+      AGENT_VM_TEST_REC="$REC" AGENT_VM_TEST_VM="$PV" _agent_vm_unprotected_mount_is_sshfs "$PV" && echo yes || echo no )" \
   "$(_agent_vm_on_windows && echo yes || echo no)"
 
 # --readonly on reverse-sshfs: enforced on the host by the builtin server of a

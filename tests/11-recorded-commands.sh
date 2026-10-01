@@ -86,6 +86,12 @@ PV="$(_agent_vm_name "$PROJ")"
 # tests/18-windows.sh, not here.
 _agent_vm_check_linux_prereqs() { return 0; }
 _agent_vm_check_windows_prereqs() { return 0; }
+# The stub Lima runs its VMs on vz, which keeps them to their shares. On
+# Windows a VM's shares are reverse-sshfs whatever Lima says: the tests of
+# that case stub it, and tests/14 checks the real answer.
+if _agent_vm_on_windows; then
+  _agent_vm_unprotected_mount_is_sshfs() { return 1; }
+fi
 rec() {
   : > "$REC"
   rm -f "$REC.stopped"
