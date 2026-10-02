@@ -17,6 +17,33 @@ check "default leaves pi out"       "$(preinstall_exports default PI)"         "
 check "all installs pi"             "$(preinstall_exports all PI)"             "1"
 check "naming pi installs it"       "$(preinstall_exports default,pi PI)"      "1"
 check "pi pulls node in"            "$(preinstall_exports pi NODE)"            "1"
+check "default leaves code-server out" "$(preinstall_exports default CODE_SERVER)" "0"
+check "all installs code-server"    "$(preinstall_exports all CODE_SERVER)"    "1"
+check "naming code-server installs it" "$(preinstall_exports default,code-server CODE_SERVER)" "1"
+check "code-server alone has no extension" "$(preinstall_exports code-server CODE_CLAUDE)" "0"
+check "code-claude pulls code-server in" "$(preinstall_exports code-claude CODE_SERVER)" "1"
+check "code-claude alone: no Claude CLI" "$(preinstall_exports code-claude CLAUDE)" "0"
+check "default leaves the extensions out" "$(preinstall_exports default CODE_CODEX)" "0"
+check "all installs the extensions" "$(preinstall_exports all CODE_VIBE)" "1"
+check "code-codex needs no npm" "$(preinstall_exports code-codex NODE)" "0"
+check "but the chrome MCP wired into it does" "$(preinstall_exports code-codex,chromium,mcp-chrome NODE)" "1"
+
+section "setup wizard: agents in the editor"
+# The question after code-server, with the answer given.
+code_ext() {
+  ( install_code_server="$1" install_claude="$2" install_codex="$3" install_vibe="$4"
+    install_code_claude=0 install_code_codex=0 install_code_vibe=0 answer="$5"
+    _agent_vm_ask_choice() { echo asked >> "$SB/asked.log"; echo "$answer"; }
+    _agent_vm_ask_code_extensions 2>/dev/null
+    echo "$install_claude$install_codex$install_vibe:$install_code_claude$install_code_codex$install_code_vibe" )
+}
+check "both: CLIs kept, extensions added" "$(code_ext 1 1 0 1 1)" "101:101"
+check "extension only: CLIs dropped"      "$(code_ext 1 1 1 0 2)" "000:110"
+check "command line only: no extension"   "$(code_ext 1 1 1 1 3)" "111:000"
+: > "$SB/asked.log"
+check "no code-server: not asked"         "$(code_ext 0 1 1 1 2)" "111:000"
+check "no agent with an extension: not asked" "$(code_ext 1 0 0 0 2)" "000:000"
+check "and nothing was asked" "$(wc -l < "$SB/asked.log" | tr -d ' ')" "0"
 
 section "--preinstall: MCP names"
 check "default wires the chrome MCP"      "$(preinstall_exports default MCP_CHROME)"     "1"

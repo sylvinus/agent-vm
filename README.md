@@ -23,6 +23,7 @@ cd your-project
 agent-vm claude                # or opencode, codex, vibe, pi
 agent-vm shell                 # a shell in this project's VM
 agent-vm run npm test          # one command in it
+agent-vm code                  # VS Code in the browser (setup --preinstall=default,code-claude)
 agent-vm --readonly shell      # nothing on the host writable from the VM
 agent-vm --scratch claude      # nothing of yours mounted, VM deleted on exit
 agent-vm stop                  # or rm; list for all VMs
@@ -36,7 +37,7 @@ Everyday use: [Usage](https://www.agent-vm.org/#usage). Every command, option, f
 The agent is root in its VM and has the network. What it can reach on your machine is what crosses the shares:
 
 - Every `.git` and `.hg`, and the folder of a `core.hooksPath` inside the project, are read-only for the VM with a Lima that has `sshfs.readonlyNames`, which `agent-vm setup` offers to install. Before a VM boots, agent-vm stops on what it cannot protect and asks whether to go on: [Protecting .git](https://www.agent-vm.org/#git).
-- The agent writes the project folder: on your machine, open it in your editor and use git there, and run everything else in the VM. Open agent-vm projects in VS Code's Restricted Mode. Editors, agents, commit hooks and commands you run on the host can run code the agent wrote: [What else reads the project](https://www.agent-vm.org/#what-else-on-your-machine-reads-the-project).
+- The agent writes the project folder: on your machine, open it in your editor and use git there, and run everything else in the VM. Open agent-vm projects in VS Code's Restricted Mode, and never connect an editor to the VM over SSH (Remote-SSH trusts the VM with your machine: [SSH from your machine](https://www.agent-vm.org/#ssh-from-your-machine)). Editors, agents, commit hooks and commands you run on the host can run code the agent wrote: [What else reads the project](https://www.agent-vm.org/#what-else-on-your-machine-reads-the-project).
 - The VM reaches your machine's loopback and prints to your terminal: [Security](https://www.agent-vm.org/#security).
 
 ## Development

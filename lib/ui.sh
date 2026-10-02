@@ -37,6 +37,26 @@ _agent_vm_ask_yn() {
   esac
 }
 
+# A numbered choice: the options as arguments after the prompt and the
+# default's number. Prints the number picked. Re-asks on anything else.
+_agent_vm_ask_choice() {
+  local prompt="$1" default="$2" reply i
+  shift 2
+  i=1
+  for reply in "$@"; do
+    printf '    %s) %s\n' "$i" "$reply" >&2
+    i=$((i + 1))
+  done
+  while true; do
+    reply="$(_agent_vm_ask "$prompt" "$default")"
+    if [[ "$reply" =~ ^[1-9][0-9]*$ && "$reply" -le $# ]]; then
+      printf '%s\n' "$reply"
+      return 0
+    fi
+    printf '  (a number from 1 to %s; got: %s)\n' "$#" "$reply" >&2
+  done
+}
+
 # Can a question be asked, and seen? A terminal to read the answer from, and
 # stderr, where the question goes, on a terminal too: a caller capturing
 # stderr would otherwise wait on a question nobody sees.

@@ -52,7 +52,7 @@ fi
 # The rest of agent-vm, one file per concern, sourced like this one. Only
 # functions and settings: nothing runs until a command does. A file that is
 # missing stops here, not half-way through a command.
-for _agent_vm_lib in ui options host vm mounts git runtime env info install doctor help setup; do
+for _agent_vm_lib in ui options host vm mounts git runtime env info install doctor help setup code; do
   _agent_vm_lib="$AGENT_VM_SCRIPT_DIR/lib/$_agent_vm_lib.sh"
   if [[ ! -r "$_agent_vm_lib" ]] || ! . "$_agent_vm_lib"; then
     echo "agent-vm: cannot load $_agent_vm_lib" >&2
@@ -700,7 +700,7 @@ agent-vm() {
   if [[ ${#lead[@]} -gt 0 ]]; then
     case "$cmd" in
       stop|rm|destroy|destroy-all|list|status|name|info|env|project-env|version|--version|-V|doctor|install|uninstall|help|--help|-h)
-        echo "Error: ${lead[*]:0:1} is an option for the commands that start a VM (claude, opencode, codex, vibe, pi, shell, run), not for '$cmd'." >&2
+        echo "Error: ${lead[*]:0:1} is an option for the commands that start a VM (claude, opencode, codex, vibe, pi, shell, run, code), not for '$cmd'." >&2
         return 1 ;;
     esac
   fi
@@ -730,6 +730,9 @@ agent-vm() {
       ;;
     run)
       _agent_vm_run ${lead[@]+"${lead[@]}"} "$@"
+      ;;
+    code)
+      _agent_vm_code ${lead[@]+"${lead[@]}"} "$@"
       ;;
     stop)
       _agent_vm_stop "$@"
@@ -813,7 +816,8 @@ agent-vm() {
 # guest shell never re-parses them; `env` runs the command and keeps leading
 # VAR=value assignments working. `env --`: GNU env still reads assignments
 # after it, and a command starting with `-` (`run -i foo`) is not taken for
-# one of its options.
+# one of its options. A command that is not there is said so, with env's
+# status: an agent installed only as an editor extension has no command.
 #
 # Usage: _agent_vm_lima_run <vm_name> <host_dir> <tty:1|""> <command> [args...]
 _agent_vm_lima_run() {
@@ -821,7 +825,9 @@ _agent_vm_lima_run() {
   shift 3
   local shell_opts=(--workdir "$host_dir")
   [[ -n "$want_tty" ]] && shell_opts+=(--tty)
-  limactl shell "${shell_opts[@]}" "$vm_name" -- zsh -l -c 'exec env -- "$@"' agent-vm "$@"
+  limactl shell "${shell_opts[@]}" "$vm_name" -- zsh -l -c \
+    'case "$1" in *=*) ;; *) command -v -- "$1" >/dev/null || { print -r -- "agent-vm: $1 is not installed in this VM." >&2; exit 127; } ;; esac; exec env -- "$@"' \
+    agent-vm "$@"
 }
 
 # Starts this directory's VM with the caller's vm_opts, runs <function> with

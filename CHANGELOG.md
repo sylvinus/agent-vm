@@ -1,5 +1,35 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- `agent-vm code`: VS Code (code-server) served from the VM and opened in
+  the browser, until Ctrl-C. Opt-in at setup: `--preinstall=code-server`
+  for the editor alone, `code-claude`, `code-codex` and `code-vibe` for it
+  with that agent's extension, each starting with no permission prompts.
+  The wizard asks about the editor after the agents, then whether the
+  agents that have an extension get it, the command line, or both. An
+  extension ships its own copy of its agent: without the command line,
+  `agent-vm claude` (or `codex`, `vibe`) says it is not installed. Dark
+  theme, GitHub Copilot disabled, no telemetry, no welcome page, tips,
+  recommendations or experiments. The JSON schemas the editor validates
+  files with (`package.json`, `tsconfig.json`...) are downloaded once by
+  `setup`: opening a file sends no request.
+- The editor's password is made in each VM on first use, never in the base,
+  of which every VM is a copy, and printed. Each VM's editor is at
+  `http://<vm-name>.localhost:<port>/`, a port of its own from 20000 to
+  29999, the same on every start: browsers keep cookies per host name, not
+  per port, so at `127.0.0.1` a page served by any VM would get the session
+  of every editor, which logs into it. Safari may not resolve `*.localhost`:
+  then `127.0.0.1` in a private window kept for the editor. code-server's
+  port proxy is off.
+
+### Changed
+
+- A command that is not in the VM (`agent-vm run foo`, or an agent not
+  installed) says so, with status 127, instead of `env`'s error.
+
 ## 0.2.0
 
 ### Security

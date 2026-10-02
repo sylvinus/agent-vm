@@ -109,7 +109,7 @@ _agent_vm_version() {
 # --unsafe-disable-security-prompts to accept them, or --readonly.
 #
 # ssh_host is the Host alias in ssh_config, the file Lima rewrites with the
-# current port on each start (https://www.agent-vm.org/#connect-an-ide-over-ssh).
+# current port on each start (https://www.agent-vm.org/#ssh-from-your-machine).
 _agent_vm_info() {
   local dir="${1:-$(pwd)}"
   local vm_name

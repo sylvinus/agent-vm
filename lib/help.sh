@@ -21,6 +21,12 @@ Commands:
   run <cmd> [args]   Run a command in the VM (no shell: for pipes/redirects
                      use 'shell -c "..."' instead; pass --tty for TUIs like
                      opencode, vibe, htop, etc.)
+  code               Serve VS Code (code-server) from the VM, at
+                     http://<vm-name>.localhost:<port>/, and open it in the
+                     browser, until Ctrl-C. Its password is made in each VM
+                     and printed. Opt-in at setup, with the agents'
+                     extensions or without: --preinstall=default,code-claude
+                     (or code-codex, code-vibe, code-server)
   stop [vm-name]     Stop the VM for the current directory, or the named one
   rm [vm-name]       Stop and delete the VM for the current directory, or the
                      named one. Pass a name from 'agent-vm list' to reach a VM
@@ -64,7 +70,7 @@ Commands:
                      (2 when the call itself is wrong). For integrators.
   help               Show this help
 
-VM options (for claude, opencode, codex, vibe, pi, shell, run), read before the
+VM options (for claude, opencode, codex, vibe, pi, shell, run, code), read before the
 command or right after its name, never later: in 'agent-vm run docker run
 --rm x', --rm belongs to docker.
   --disk GB          VM disk size
@@ -120,6 +126,7 @@ Examples:
   agent-vm sh -c "ls -la | grep config"      # One-shot command via login zsh
   agent-vm run npm install                   # Run a command in the VM
   agent-vm run --tty opencode -p "..."       # Run a TUI with PTY allocated
+  agent-vm code                              # VS Code in the browser
   agent-vm claude -p "fix lint errors"       # Pass args to claude
   agent-vm rm agent-vm-old-name-1a2b3c4d     # Delete a VM by name (see 'list')
 

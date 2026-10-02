@@ -89,10 +89,35 @@ _agent_vm_node_needed_by() {
   elif [[ "$install_pi" == 1 ]]; then
     echo "Pi requires npm"
   elif [[ "$install_chromium" == 1 && "$install_mcp_chrome" == 1 \
-          && ( "$install_claude" == 1 || "$install_opencode" == 1 || "$install_vibe" == 1 ) ]]; then
+          && ( "$install_claude" == 1 || "$install_opencode" == 1 || "$install_vibe" == 1 \
+               || "$install_code_claude" == 1 || "$install_code_codex" == 1 || "$install_code_vibe" == 1 ) ]]; then
     echo "Chrome DevTools MCP uses npx"
   fi
   return 0
+}
+
+# The wizard's question after code-server, on the caller's install_*: how the
+# agents picked that have an extension (Claude Code, Codex, Vibe) are
+# installed. Asked only when there is one.
+_agent_vm_ask_code_extensions() {
+  local names="" choice
+  [[ "$install_code_server" == 1 ]] || return 0
+  [[ "$install_claude" == 1 ]] && names="$names, Claude Code"
+  [[ "$install_codex" == 1 ]] && names="$names, Codex"
+  [[ "$install_vibe" == 1 ]] && names="$names, Mistral Vibe"
+  [[ -n "$names" ]] || return 0
+  printf '  %s in the editor:\n' "${names#, }" >&2
+  choice="$(_agent_vm_ask_choice "Pick one" 1 \
+    "Extension and command line (agent-vm claude...)" \
+    "Extension only" \
+    "Command line only")"
+  [[ "$choice" == 3 ]] && return 0
+  install_code_claude="$install_claude"
+  install_code_codex="$install_codex"
+  install_code_vibe="$install_vibe"
+  if [[ "$choice" == 2 ]]; then
+    install_claude=0 install_codex=0 install_vibe=0
+  fi
 }
 
 _agent_vm_setup() {
@@ -103,15 +128,17 @@ _agent_vm_setup() {
   local preinstall_seen=""
   # The default set, used without --preinstall when the wizard's first
   # question is accepted or there is no terminal. Opt-in: Ruby, Rust, Go, Pi
-  # (0.x, released several times a week) and Playwright MCP (a second
-  # browser-driving server, whose tools cost context in every agent). Only MCP
-  # servers with something to bake into the image belong here; a remote one
-  # is per-project config.
+  # (0.x, released several times a week), Playwright MCP (a second
+  # browser-driving server, whose tools cost context in every agent), and
+  # code-server with its agent extensions (an editor most use on the host).
+  # Only MCP servers with something to bake into the image belong here; a
+  # remote one is per-project config.
   local install_python=1 install_node=1
   local install_ruby=0 install_rust=0 install_golang=0
   local install_docker=1 install_chromium=1 install_gh=1
   local install_claude=1 install_opencode=1 install_codex=1 install_vibe=1
   local install_pi=0
+  local install_code_server=0 install_code_claude=0 install_code_codex=0 install_code_vibe=0
   local install_mcp_chrome=1 install_mcp_playwright=0
 
   local vm_opts=() rm="" taken
@@ -141,8 +168,8 @@ Usage: agent-vm setup [options]
 
 Create a base VM template with dev tools and agents pre-installed. Runs an
 interactive wizard by default; the first prompt offers a "default install"
-(everything except the opt-in Ruby, Rust, Go, Pi, Playwright MCP). Answer 'n' for
-per-component prompts. Pass --preinstall=... to skip the wizard and pick a
+(everything except the opt-in Ruby, Rust, Go, Pi, Playwright MCP, code-server
+and its extensions). Answer 'n' for per-component prompts. Pass --preinstall=... to skip the wizard and pick a
 specific subset non-interactively. When no terminal is available (e.g. CI),
 the wizard is skipped automatically and the default set is installed.
 
@@ -155,13 +182,21 @@ Options:
                       skipped. Use:
                         'default' for the default set
                                   (everything except Ruby, Rust, Go, Pi,
-                                  mcp-playwright),
+                                  mcp-playwright, code-server, code-*),
                         'all' for everything,
                         'none' for nothing.
                       Available names:
                         python, node, ruby, rust, golang, docker, chromium,
                         gh, claude, opencode, codex, vibe, pi, mcp-chrome,
-                        mcp-playwright
+                        mcp-playwright, code-server, code-claude,
+                        code-codex, code-vibe
+                      'code-server' is VS Code in the browser, for
+                      'agent-vm code', with GitHub Copilot turned off.
+                      'code-claude', 'code-codex' and 'code-vibe' add that
+                      agent's extension, and code-server with it. Each
+                      extension brings its own copy of the agent: 'claude',
+                      'codex' and 'vibe' are the command-line ones, for
+                      'agent-vm claude' and the others.
                       Selecting codex or pi also installs node (npm). So does
                       mcp-chrome when chromium and an agent are selected
                       (npx). mcp-playwright does not: list node yourself.
@@ -179,6 +214,7 @@ Options:
                         --preinstall=default,rust       # default set plus Rust
                         --preinstall=python,docker,claude
                         --preinstall=node,chromium,opencode   # no chrome MCP
+                        --preinstall=default,code-claude      # plus the editor
   --help              Show this help
 EOF
         return 0
@@ -220,6 +256,7 @@ EOF
     install_docker=0 install_chromium=0 install_gh=0
     install_claude=0 install_opencode=0 install_codex=0 install_vibe=0
     install_pi=0
+    install_code_server=0 install_code_claude=0 install_code_codex=0 install_code_vibe=0
     install_mcp_chrome=0 install_mcp_playwright=0
     [[ -z "$preinstall" ]] && preinstall="default"
     # Iterate the comma-list by appending a trailing comma and peeling off
@@ -238,6 +275,7 @@ EOF
           install_docker=1 install_chromium=1 install_gh=1
           install_claude=1 install_opencode=1 install_codex=1 install_vibe=1
           install_pi=1
+          install_code_server=1 install_code_claude=1 install_code_codex=1 install_code_vibe=1
           install_mcp_chrome=1 install_mcp_playwright=1
           ;;
         default)
@@ -263,9 +301,13 @@ EOF
         pi)       install_pi=1 ;;
         mcp-chrome)     install_mcp_chrome=1 ;;
         mcp-playwright) install_mcp_playwright=1 ;;
+        code-server)    install_code_server=1 ;;
+        code-claude)    install_code_claude=1 ;;
+        code-codex)     install_code_codex=1 ;;
+        code-vibe)      install_code_vibe=1 ;;
         *)
           echo "Unknown preinstall name: $f (names are lowercase)" >&2
-          echo "Valid: python, node, ruby, rust, golang, docker, chromium, gh, claude, opencode, codex, vibe, pi, mcp-chrome, mcp-playwright, default, all, none" >&2
+          echo "Valid: python, node, ruby, rust, golang, docker, chromium, gh, claude, opencode, codex, vibe, pi, mcp-chrome, mcp-playwright, code-server, code-claude, code-codex, code-vibe, default, all, none" >&2
           return 1
           ;;
       esac
@@ -337,7 +379,7 @@ EOF
     printf '  Agents:   Claude Code, OpenCode, Codex CLI, Mistral Vibe\n' >&2
     printf '  Tools:    Python, Node.js, Docker, Chromium, gh,\n' >&2
     printf '            Chrome DevTools MCP\n' >&2
-    printf '  Skip:     Pi, Ruby, Rust, Go, Playwright MCP\n\n' >&2
+    printf '  Skip:     Pi, Ruby, Rust, Go, Playwright MCP, code-server\n\n' >&2
     local use_default_software
     use_default_software=$(_agent_vm_ask_yn "Use this default" Y)
     if [[ "$use_default_software" != "1" ]]; then
@@ -348,6 +390,11 @@ EOF
       install_codex=$(_agent_vm_ask_yn "Codex CLI" Y)
       install_vibe=$(_agent_vm_ask_yn "Mistral Vibe" Y)
       install_pi=$(_agent_vm_ask_yn "Pi" N)
+
+      printf '\nEditor\n' >&2
+      printf '──────\n' >&2
+      install_code_server=$(_agent_vm_ask_yn "code-server (VS Code in the browser, for 'agent-vm code')" N)
+      _agent_vm_ask_code_extensions
 
       printf '\nSystem tools\n' >&2
       printf '────────────\n' >&2
@@ -410,6 +457,11 @@ EOF
   # _agent_vm_check_bare_repo_setting).
   echo "Running security checks..."
   [[ -n "$declined_protection" ]] || _agent_vm_offer_git_protection
+
+  # An extension needs the editor.
+  if [[ "$install_code_claude$install_code_codex$install_code_vibe" == *1* ]]; then
+    install_code_server=1
+  fi
 
   # --preinstall can name what needs node without node.
   local node_reason
@@ -488,6 +540,10 @@ EOF
     printf 'export AGENT_VM_INSTALL_CODEX=%s\n'     "$install_codex"
     printf 'export AGENT_VM_INSTALL_VIBE=%s\n'      "$install_vibe"
     printf 'export AGENT_VM_INSTALL_PI=%s\n'        "$install_pi"
+    printf 'export AGENT_VM_INSTALL_CODE_SERVER=%s\n' "$install_code_server"
+    printf 'export AGENT_VM_INSTALL_CODE_CLAUDE=%s\n' "$install_code_claude"
+    printf 'export AGENT_VM_INSTALL_CODE_CODEX=%s\n'  "$install_code_codex"
+    printf 'export AGENT_VM_INSTALL_CODE_VIBE=%s\n'   "$install_code_vibe"
     printf 'export AGENT_VM_INSTALL_MCP_CHROME=%s\n'     "$install_mcp_chrome"
     printf 'export AGENT_VM_INSTALL_MCP_PLAYWRIGHT=%s\n' "$install_mcp_playwright"
     cat "${AGENT_VM_SCRIPT_DIR}/agent-vm.setup.sh"
@@ -524,6 +580,7 @@ EOF
   [[ "$install_codex"    == "1" ]] && echo "  agent-vm codex"
   [[ "$install_vibe"     == "1" ]] && echo "  agent-vm vibe"
   [[ "$install_pi"       == "1" ]] && echo "  agent-vm pi"
+  [[ "$install_code_server" == "1" ]] && echo "  agent-vm code"
   # Only worth saying to someone who has a VM to re-clone: on a first install
   # there is nothing to reset, and the advice reads like a missed step.
   if [[ -n "$(_agent_vm_project_vms)" ]]; then

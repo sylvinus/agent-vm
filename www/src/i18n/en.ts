@@ -169,7 +169,7 @@ export const en = {
       {
         title: 'Get inside',
         body: 'A shell to poke around, or a single command when you already know what you want.',
-        code: 'agent-vm shell                    # zsh in the VM\nagent-vm run npm install          # one-off command\nagent-vm run --tty opencode       # allocate a PTY for TUIs\nagent-vm sh -c "ls -la | grep config"',
+        code: 'agent-vm shell                    # zsh in the VM\nagent-vm run npm install          # one-off command\nagent-vm run --tty opencode       # allocate a PTY for TUIs\nagent-vm sh -c "ls -la | grep config"\nagent-vm code                     # VS Code in the browser, if set up',
       },
       {
         title: 'Manage the fleet',
@@ -192,9 +192,9 @@ export const en = {
         code: 'agent-vm env set GH_TOKEN   # pasted unseen, not in history\nagent-vm env list           # names only, never values\nagent-vm env has ANTHROPIC_API_KEY\n\n# scoped to this project only\nagent-vm project-env set SOME_PATH ./config',
       },
       {
-        title: 'Connect an IDE over SSH',
-        body: 'VS Code Remote-SSH, JetBrains Gateway or a GUI agent can work in the VM over SSH, through the alias `agent-vm info` prints as `ssh_host`. Put these lines at the top of `~/.ssh/config`: a `ForwardAgent yes` found before them would hand the VM your SSH keys. `--ssh-port` pins the port for tools that save it.',
-        code: '# top of ~/.ssh/config\nInclude ~/.lima/*/ssh.config\nHost lima-agent-vm-*\n  ForwardAgent no\n  ForwardX11 no\n\nagent-vm info | grep ^ssh_host   # the alias to use\nagent-vm --ssh-port 2222 shell   # a fixed port',
+        title: 'Edit with the VM’s tools',
+        body: 'For language servers, linters, the debugger and the VM’s packages, run the editor in the VM: `agent-vm code` serves VS Code (code-server) to a browser tab, the only part on your machine. Set it up with `code-server` or a `code-*` name ([What is in the VM](#what-is-in-the-vm)). The tab can still open links, and every VM reaches the editor’s port, hence a password and a host name per VM ([Network and ports](#network-and-ports)). Do not connect a desktop editor over SSH instead ([SSH from your machine](#ssh-from-your-machine)).',
+        code: 'agent-vm setup --preinstall=default,code-claude   # once\nagent-vm code   # prints the address and the password\n                # Ctrl-C stops the editor',
       },
     ],
     gitTitle: 'Letting the agent commit',
@@ -229,6 +229,7 @@ export const en = {
         rows: [
           ['shell, sh', 'Open a zsh shell in the VM. `-c "…"` runs a one-shot command through a login shell.'],
           ['run <cmd> [args]', 'Run a command with no shell. `--tty` allocates a PTY for TUIs.'],
+          ['code', 'Serve VS Code (code-server) from the VM at `http://<vm-name>.localhost:<port>/` and open it in your browser, until Ctrl-C. Its password is made in the VM on first use and printed. Needs `code-server` or a `code-*` name at setup ([What is in the VM](#what-is-in-the-vm)).'],
         ],
       },
       {
@@ -262,7 +263,7 @@ export const en = {
       },
     ],
     optionsTitle: 'VM options',
-    optionsNote: 'For `claude`, `opencode`, `codex`, `vibe`, `pi`, `shell` and `run`, placed before the command or right after its name. Anything later belongs to the command: in `agent-vm run docker run --rm x`, `--rm` is docker’s.',
+    optionsNote: 'For `claude`, `opencode`, `codex`, `vibe`, `pi`, `shell`, `run` and `code`, placed before the command or right after its name. Anything later belongs to the command: in `agent-vm run docker run --rm x`, `--rm` is docker’s.',
     optionsHeaders: ['Flag', 'What it does', 'Default'],
     options: [
       ['--disk GB', 'VM disk size. Can grow, never shrink.', 'the template’s (10)'],
@@ -527,6 +528,15 @@ export const en = {
             code: '',
           },
           {
+            title: 'SSH from your machine',
+            paras: [
+              'Do not connect VS Code Remote-SSH or open-remote-ssh to an agent VM. They run a server in the VM, which root in the VM controls, and the editor on your machine trusts it. Microsoft’s Remote-SSH page says so: “a compromised remote could use the VS Code Remote connection to execute code on your local machine”, and it is by design. Public write-ups show it opening a terminal on the host and running commands there. That removes the boundary agent-vm sets up, which is worse than opening the project in Restricted Mode. JetBrains Gateway most likely works the same way; it has not been checked. For language servers and a debugger with the VM’s packages, use [`agent-vm code`](#edit-with-the-vm-s-tools).',
+              'For scripts, `scp` or `rsync`, `agent-vm info` prints the SSH alias as `ssh_host`. Put these lines at the top of `~/.ssh/config`: a `ForwardAgent yes` found before them would hand the VM your SSH keys. `--ssh-port` pins the port for tools that save it.',
+            ],
+            list: [],
+            code: '# top of ~/.ssh/config\nInclude ~/.lima/*/ssh.config\nHost lima-agent-vm-*\n  ForwardAgent no\n  ForwardX11 no\n\nagent-vm info | grep ^ssh_host   # the alias to use\nagent-vm --ssh-port 2222 shell   # a fixed port',
+          },
+          {
             title: 'Shell, commands, hooks',
             paras: [],
             list: [
@@ -570,6 +580,7 @@ export const en = {
             title: 'Network and ports',
             paras: [
               'The VM reaches the internet and every service on your machine’s loopback, at `192.168.5.2`. Lima forwards every port a VM listens on to your `127.0.0.1` when it is free: a VM that listens first on 5432 receives the connections, and passwords, meant for your local Postgres. Blocking this is [on the roadmap](#roadmap).',
+              'So every VM can reach the editor of every other one. `agent-vm code` gives each its own password, made in that VM, and its own host name, `<vm-name>.localhost`: browsers keep cookies per host name and not per port, so at `127.0.0.1` any page a VM serves would receive the editor sessions of the others, and with them a way in. Chrome and Firefox resolve `*.localhost` themselves; Safari may not, and then `127.0.0.1` in a private window kept for the editor does the same.',
             ],
             list: [],
             code: '',
@@ -641,11 +652,13 @@ export const en = {
       ['AI agents', 'Pi', 'pi', 'no'],
       ['MCP', 'Chrome DevTools MCP, wired into every installed agent but Pi (no MCP support)', 'mcp-chrome', 'yes'],
       ['MCP', 'Playwright MCP, reusing the same Chromium', 'mcp-playwright', 'no'],
+      ['Editor', 'code-server (VS Code in the browser, for `agent-vm code`), dark theme, GitHub Copilot off, no telemetry', 'code-server', 'no'],
+      ['Editor', 'The Claude Code, Codex or Mistral Vibe extension, each starting with no permission prompts, with code-server', 'code-claude, code-codex, code-vibe', 'no'],
     ],
     contentsCode:
-      'agent-vm setup --preinstall=default                  # no prompts\nagent-vm setup --preinstall=default,rust             # plus Rust\nagent-vm setup --preinstall=python,docker,claude     # minimal Claude setup\nagent-vm setup --disk 50 --memory 16 --cpus 8        # a bigger template',
+      'agent-vm setup --preinstall=default                  # no prompts\nagent-vm setup --preinstall=default,rust             # plus Rust\nagent-vm setup --preinstall=python,docker,claude     # minimal Claude setup\nagent-vm setup --preinstall=default,code-claude      # plus the editor\nagent-vm setup --disk 50 --memory 16 --cpus 8        # a bigger template',
     contentsNote:
-      '`codex` and `pi` pull in `node`, and so does `mcp-chrome` with `chromium` and an agent. Both MCP servers are skipped without `node` and `chromium`. This is only what the template ships: the agent is root in the VM and has the network, so it installs whatever else it needs.',
+      '`codex` and `pi` pull in `node`, and so does `mcp-chrome` with `chromium` and an agent. Both MCP servers are skipped without `node` and `chromium`. Each editor extension ships its own copy of its agent (200 to 600 MB): the wizard asks whether to keep the command-line one too. Without it, `agent-vm claude` says it is not installed. This is only what the template ships: the agent is root in the VM and has the network, so it installs whatever else it needs.',
     dockerTitle: 'Why not Docker',
     dockerLede:
       'On Linux, containers share the host kernel, so a compromised dependency that finds a kernel bug is on your host. On macOS, Docker Desktop already runs a VM, which narrows the gap, but it is one VM shared by every container rather than one per project. A VM brings its own kernel, and root inside it still has the hypervisor between it and your machine. The practical differences matter as much as the security one.',

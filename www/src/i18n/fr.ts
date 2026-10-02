@@ -171,7 +171,7 @@ export const fr: Dictionary = {
       {
         title: 'Entrer dans la VM',
         body: 'Un shell pour aller voir ce qui s\'y passe, ou une commande isolée quand tu sais déjà ce que tu veux.',
-        code: 'agent-vm shell                    # zsh dans la VM\nagent-vm run npm install          # commande unique\nagent-vm run --tty opencode       # un PTY pour les TUI\nagent-vm sh -c "ls -la | grep config"',
+        code: 'agent-vm shell                    # zsh dans la VM\nagent-vm run npm install          # commande unique\nagent-vm run --tty opencode       # un PTY pour les TUI\nagent-vm sh -c "ls -la | grep config"\nagent-vm code                     # VS Code dans le navigateur, si installé',
       },
       {
         title: 'Gérer le parc',
@@ -194,9 +194,9 @@ export const fr: Dictionary = {
         code: 'agent-vm env set GH_TOKEN   # masqué, hors historique\nagent-vm env list           # les noms, jamais les valeurs\nagent-vm env has ANTHROPIC_API_KEY\n\n# limité à ce projet\nagent-vm project-env set SOME_PATH ./config',
       },
       {
-        title: 'Brancher un IDE en SSH',
-        body: 'VS Code Remote-SSH, JetBrains Gateway ou un agent graphique peuvent travailler dans la VM en SSH, par l\'alias qu\'`agent-vm info` affiche comme `ssh_host`. Mets ces lignes en haut de `~/.ssh/config` : un `ForwardAgent yes` trouvé avant elles donnerait tes clés SSH à la VM. `--ssh-port` fixe le port pour les outils qui l\'enregistrent.',
-        code: '# en haut de ~/.ssh/config\nInclude ~/.lima/*/ssh.config\nHost lima-agent-vm-*\n  ForwardAgent no\n  ForwardX11 no\n\nagent-vm info | grep ^ssh_host   # l\'alias à utiliser\nagent-vm --ssh-port 2222 shell   # un port fixe',
+        title: 'Éditer avec les outils de la VM',
+        body: 'Pour les serveurs de langage, les linters, le débogueur et les paquets de la VM, fais tourner l\'éditeur dans la VM : `agent-vm code` sert VS Code (code-server) dans un onglet du navigateur, seule partie sur ta machine. Il s\'installe avec `code-server` ou un nom `code-*` ([Ce qu\'il y a dans la VM](#what-is-in-the-vm)). L\'onglet peut toujours ouvrir des liens, et chaque VM atteint le port de l\'éditeur, d\'où un mot de passe et un nom d\'hôte par VM ([Réseau et ports](#network-and-ports)). N\'y branche pas plutôt un éditeur de bureau en SSH ([SSH depuis ta machine](#ssh-from-your-machine)).',
+        code: 'agent-vm setup --preinstall=default,code-claude   # une fois\nagent-vm code   # affiche l\'adresse et le mot de passe\n                # Ctrl-C arrête l\'éditeur',
       },
     ],
     gitTitle: 'Laisser l\'agent commiter',
@@ -231,6 +231,7 @@ export const fr: Dictionary = {
         rows: [
           ['shell, sh', 'Ouvre un shell zsh dans la VM. `-c "…"` exécute une commande unique via un shell de connexion.'],
           ['run <cmd> [args]', 'Exécute une commande sans shell. `--tty` alloue un PTY pour les TUI.'],
+          ['code', 'Sert VS Code (code-server) depuis la VM à `http://<nom-de-vm>.localhost:<port>/` et l\'ouvre dans ton navigateur, jusqu\'à Ctrl-C. Son mot de passe est créé dans la VM à la première utilisation, puis affiché. Demande `code-server` ou un nom `code-*` au setup ([Ce qu\'il y a dans la VM](#what-is-in-the-vm)).'],
         ],
       },
       {
@@ -264,7 +265,7 @@ export const fr: Dictionary = {
       },
     ],
     optionsTitle: 'Options de VM',
-    optionsNote: 'Pour `claude`, `opencode`, `codex`, `vibe`, `pi`, `shell` et `run`, à placer avant la commande ou juste après son nom. Tout ce qui suit appartient à la commande : dans `agent-vm run docker run --rm x`, `--rm` est l\'option de docker.',
+    optionsNote: 'Pour `claude`, `opencode`, `codex`, `vibe`, `pi`, `shell`, `run` et `code`, à placer avant la commande ou juste après son nom. Tout ce qui suit appartient à la commande : dans `agent-vm run docker run --rm x`, `--rm` est l\'option de docker.',
     optionsHeaders: ['Option', 'Rôle', 'Défaut'],
     options: [
       ['--disk GB', 'Taille du disque. Peut grandir, jamais rétrécir.', 'celle de l\'image (10)'],
@@ -529,6 +530,15 @@ export const fr: Dictionary = {
             code: '',
           },
           {
+            title: 'SSH depuis ta machine',
+            paras: [
+              'Ne branche pas VS Code Remote-SSH ou open-remote-ssh sur une VM d\'agent. Ils font tourner un serveur dans la VM, que contrôle root dans la VM, et l\'éditeur sur ta machine lui fait confiance. La page de Remote-SSH chez Microsoft le dit : « a compromised remote could use the VS Code Remote connection to execute code on your local machine », et c\'est voulu. Des articles publics le montrent ouvrant un terminal sur l\'hôte et y lançant des commandes. Cela supprime la frontière que pose agent-vm, ce qui est pire qu\'ouvrir le projet en mode restreint. JetBrains Gateway fonctionne très probablement de la même façon ; ce n\'est pas vérifié. Pour les serveurs de langage et un débogueur avec les paquets de la VM, utilise [`agent-vm code`](#edit-with-the-vm-s-tools).',
+              'Pour des scripts, `scp` ou `rsync`, `agent-vm info` affiche l\'alias SSH comme `ssh_host`. Mets ces lignes en haut de `~/.ssh/config` : un `ForwardAgent yes` trouvé avant elles donnerait tes clés SSH à la VM. `--ssh-port` fixe le port pour les outils qui l\'enregistrent.',
+            ],
+            list: [],
+            code: '# en haut de ~/.ssh/config\nInclude ~/.lima/*/ssh.config\nHost lima-agent-vm-*\n  ForwardAgent no\n  ForwardX11 no\n\nagent-vm info | grep ^ssh_host   # l\'alias à utiliser\nagent-vm --ssh-port 2222 shell   # un port fixe',
+          },
+          {
             title: 'Shell, commandes, hooks',
             paras: [],
             list: [
@@ -572,6 +582,7 @@ export const fr: Dictionary = {
             title: 'Réseau et ports',
             paras: [
               'La VM atteint Internet et tous les services de la boucle locale de ta machine, à `192.168.5.2`. Lima redirige chaque port qu\'écoute une VM vers ton `127.0.0.1` s\'il est libre : une VM qui écoute la première sur 5432 reçoit les connexions, et les mots de passe, destinés à ton Postgres local. Le bloquer est [sur la feuille de route](#roadmap).',
+              'Chaque VM peut donc joindre l\'éditeur de toutes les autres. `agent-vm code` donne à chacune son propre mot de passe, créé dans cette VM, et son propre nom d\'hôte, `<nom-de-vm>.localhost` : les navigateurs rangent les cookies par nom d\'hôte et non par port, si bien qu\'à `127.0.0.1` n\'importe quelle page servie par une VM recevrait les sessions d\'éditeur des autres, et avec elles une porte d\'entrée. Chrome et Firefox résolvent `*.localhost` eux-mêmes ; Safari peut ne pas le faire, et `127.0.0.1` dans une fenêtre privée réservée à l\'éditeur fait alors la même chose.',
             ],
             list: [],
             code: '',
@@ -643,11 +654,13 @@ export const fr: Dictionary = {
       ['Agents IA', 'Pi', 'pi', 'non'],
       ['MCP', 'Chrome DevTools MCP, câblé dans chaque agent installé sauf Pi (pas de support MCP)', 'mcp-chrome', 'oui'],
       ['MCP', 'Playwright MCP, réutilisant le même Chromium', 'mcp-playwright', 'non'],
+      ['Éditeur', 'code-server (VS Code dans le navigateur, pour `agent-vm code`), thème sombre, GitHub Copilot désactivé, sans télémétrie', 'code-server', 'non'],
+      ['Éditeur', 'L\'extension Claude Code, Codex ou Mistral Vibe, chacune démarrant sans demande de permission, avec code-server', 'code-claude, code-codex, code-vibe', 'non'],
     ],
     contentsCode:
-      'agent-vm setup --preinstall=default                  # sans question\nagent-vm setup --preinstall=default,rust             # avec Rust en plus\nagent-vm setup --preinstall=python,docker,claude     # Claude seul, minimal\nagent-vm setup --disk 50 --memory 16 --cpus 8        # une image plus grosse',
+      'agent-vm setup --preinstall=default                  # sans question\nagent-vm setup --preinstall=default,rust             # avec Rust en plus\nagent-vm setup --preinstall=python,docker,claude     # Claude seul, minimal\nagent-vm setup --preinstall=default,code-claude      # avec l\'éditeur\nagent-vm setup --disk 50 --memory 16 --cpus 8        # une image plus grosse',
     contentsNote:
-      '`codex` et `pi` entraînent `node`, tout comme `mcp-chrome` avec `chromium` et un agent. Les deux serveurs MCP sont ignorés sans `node` et `chromium`. Ce n\'est que ce que l\'image contient au départ : l\'agent est root dans la VM et a le réseau, il installe lui-même ce qui lui manque.',
+      '`codex` et `pi` entraînent `node`, tout comme `mcp-chrome` avec `chromium` et un agent. Les deux serveurs MCP sont ignorés sans `node` et `chromium`. Chaque extension de l\'éditeur apporte sa propre copie de son agent (200 à 600 Mo) : l\'assistant demande s\'il faut garder aussi celle en ligne de commande. Sans elle, `agent-vm claude` dit qu\'il n\'est pas installé. Ce n\'est que ce que l\'image contient au départ : l\'agent est root dans la VM et a le réseau, il installe lui-même ce qui lui manque.',
     dockerTitle: 'Pourquoi pas Docker',
     dockerLede:
       'Sous Linux, les conteneurs partagent le noyau de l\'hôte : une dépendance compromise qui trouve une faille dans le noyau se retrouve sur ta machine. Sous macOS, Docker Desktop fait déjà tourner une VM, ce qui réduit l\'écart, mais c\'est une seule VM partagée par tous tes conteneurs, pas une par projet. Une VM a son propre noyau, et root dans la VM a encore l\'hyperviseur entre lui et ton poste. Les différences pratiques comptent autant que celle-ci.',

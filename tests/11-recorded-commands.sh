@@ -69,6 +69,9 @@ case "$1" in
         esac
         [ -z "${AGENT_VM_TEST_RO:-}" ] || exit 1 ;;
       *"exec "*" -s"*) cat >> "${AGENT_VM_TEST_STDIN:-/dev/null}" ;;
+      # The editor's prep (lib/code.sh): AGENT_VM_TEST_CODE_PREP is its answer.
+      *"agent-vm-code "*)
+        printf '%b' "${AGENT_VM_TEST_CODE_PREP-config=/home/u/.config/code-server/agent-vm-lima-x.yaml\npassword=0123456789abcdef0123456789abcdef\n}" ;;
     esac ;;
   start) rm -f "$AGENT_VM_TEST_REC.stopped" ;;
   stop) cat >/dev/null; [ -n "${AGENT_VM_TEST_STOP_FAIL:-}" ] || touch "$AGENT_VM_TEST_REC.stopped" ;;
