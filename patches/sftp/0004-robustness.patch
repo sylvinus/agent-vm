@@ -1,0 +1,837 @@
+diff -ruN a/attrs_atime_darwin.go b/attrs_atime_darwin.go
+--- a/attrs_atime_darwin.go	1970-01-01 01:00:00.000000000 +0100
++++ b/attrs_atime_darwin.go	2026-10-02 22:16:29.708925353 +0200
+@@ -0,0 +1,10 @@
++//go:build darwin
++// +build darwin
++
++package sftp
++
++import "syscall"
++
++func statAtime(st *syscall.Stat_t) (int64, bool) {
++	return int64(st.Atimespec.Sec), true
++}
+diff -ruN a/attrs_atime_linux.go b/attrs_atime_linux.go
+--- a/attrs_atime_linux.go	1970-01-01 01:00:00.000000000 +0100
++++ b/attrs_atime_linux.go	2026-10-02 22:16:29.708925353 +0200
+@@ -0,0 +1,10 @@
++//go:build !android && linux
++// +build !android,linux
++
++package sftp
++
++import "syscall"
++
++func statAtime(st *syscall.Stat_t) (int64, bool) {
++	return int64(st.Atim.Sec), true
++}
+diff -ruN a/attrs_atime_other.go b/attrs_atime_other.go
+--- a/attrs_atime_other.go	1970-01-01 01:00:00.000000000 +0100
++++ b/attrs_atime_other.go	2026-10-02 22:16:29.708925353 +0200
+@@ -0,0 +1,11 @@
++//go:build dragonfly || freebsd || netbsd || openbsd || solaris || aix || js || zos
++// +build dragonfly freebsd netbsd openbsd solaris aix js zos
++
++package sftp
++
++import "syscall"
++
++// statAtime is not implemented here: the access time stays the modification time.
++func statAtime(*syscall.Stat_t) (int64, bool) {
++	return 0, false
++}
+diff -ruN a/attrs_atime_test.go b/attrs_atime_test.go
+--- a/attrs_atime_test.go	1970-01-01 01:00:00.000000000 +0100
++++ b/attrs_atime_test.go	2026-10-02 22:16:29.708925353 +0200
+@@ -0,0 +1,26 @@
++//go:build darwin || (!android && linux)
++// +build darwin !android,linux
++
++package sftp
++
++import (
++	"os"
++	"path/filepath"
++	"testing"
++	"time"
++
++	"github.com/stretchr/testify/assert"
++	"github.com/stretchr/testify/require"
++)
++
++func TestFileStatFromInfoAtime(t *testing.T) {
++	f := filepath.Join(t.TempDir(), "f")
++	require.NoError(t, os.WriteFile(f, nil, 0o644))
++	at, mt := time.Unix(1000000000, 0), time.Unix(1500000000, 0)
++	require.NoError(t, os.Chtimes(f, at, mt))
++	fi, err := os.Stat(f)
++	require.NoError(t, err)
++	_, st := fileStatFromInfo(fi)
++	assert.Equal(t, uint32(at.Unix()), st.Atime)
++	assert.Equal(t, uint32(mt.Unix()), st.Mtime)
++}
+diff -ruN a/attrs_unix.go b/attrs_unix.go
+--- a/attrs_unix.go	2026-10-02 22:07:37.989644104 +0200
++++ b/attrs_unix.go	2026-10-02 22:16:29.708925353 +0200
+@@ -13,5 +13,8 @@
+ 		*flags |= sshFileXferAttrUIDGID
+ 		fileStat.UID = statt.Uid
+ 		fileStat.GID = statt.Gid
++		if atime, ok := statAtime(statt); ok {
++			fileStat.Atime = uint32(atime)
++		}
+ 	}
+ }
+diff -ruN a/errno_posix.go b/errno_posix.go
+--- a/errno_posix.go	2026-10-02 22:07:37.989644104 +0200
++++ b/errno_posix.go	2026-10-02 22:16:29.708925353 +0200
+@@ -4,6 +4,8 @@
+ package sftp
+ 
+ import (
++	"errors"
++	"io/fs"
+ 	"os"
+ 	"syscall"
+ )
+@@ -17,29 +19,38 @@
+ 	return err
+ }
+ 
+-// translateErrno translates a syscall error number to a SFTP error code.
++// translateErrno translates a syscall error number to a SFTP error code,
++// as OpenSSH's errno_to_portable does.
+ func translateErrno(errno syscall.Errno) uint32 {
+ 	switch errno {
+ 	case 0:
+ 		return sshFxOk
+-	case syscall.ENOENT:
++	case syscall.ENOENT, syscall.ENOTDIR, syscall.ELOOP:
+ 		return sshFxNoSuchFile
+ 	case syscall.EACCES, syscall.EPERM:
+ 		return sshFxPermissionDenied
++	case syscall.ENAMETOOLONG, syscall.EINVAL:
++		return sshFxBadMessage
++	case syscall.ENOSYS:
++		return sshFxOPUnsupported
++	}
++	// Errors of other systems with the same meaning, such as ERROR_ACCESS_DENIED on Windows.
++	switch {
++	case errors.Is(errno, fs.ErrNotExist):
++		return sshFxNoSuchFile
++	case errors.Is(errno, fs.ErrPermission):
++		return sshFxPermissionDenied
+ 	}
+-
+ 	return sshFxFailure
+ }
+ 
++// translateSyscallError finds a syscall.Errno in err, also wrapped in an
++// *os.PathError, *os.LinkError or *os.SyscallError.
+ func translateSyscallError(err error) (uint32, bool) {
+-	switch e := err.(type) {
+-	case syscall.Errno:
+-		return translateErrno(e), true
+-	case *os.PathError:
+-		debug("statusFromError,pathError: error is %T %#v", e.Err, e.Err)
+-		if errno, ok := e.Err.(syscall.Errno); ok {
+-			return translateErrno(errno), true
+-		}
++	var errno syscall.Errno
++	if errors.As(err, &errno) {
++		debug("statusFromError: errno %#v in %T", errno, err)
++		return translateErrno(errno), true
+ 	}
+ 	return 0, false
+ }
+diff -ruN a/packet-manager.go b/packet-manager.go
+--- a/packet-manager.go	2026-10-02 22:07:37.989644104 +0200
++++ b/packet-manager.go	2026-10-02 22:16:29.708925353 +0200
+@@ -85,7 +85,8 @@
+ 
+ func (o orderedPackets) Sort() {
+ 	sort.Slice(o, func(i, j int) bool {
+-		return o[i].orderID() < o[j].orderID()
++		// The difference, not the values: orderIDs wrap around after 2^32 packets.
++		return int32(o[i].orderID()-o[j].orderID()) < 0
+ 	})
+ }
+ 
+@@ -142,7 +143,7 @@
+ 	pktChan := make(chan orderedRequest, SftpServerWorkerCount)
+ 	go func() {
+ 		for pkt := range pktChan {
+-			switch pkt.requestPacket.(type) {
++			switch p := pkt.requestPacket.(type) {
+ 			case *sshFxpReadPacket, *sshFxpWritePacket:
+ 				s.incomingPacket(pkt)
+ 				rwChan <- pkt
+@@ -151,6 +152,11 @@
+ 				// wait for reads/writes to finish when file is closed
+ 				// incomingPacket() call must occur after this
+ 				s.working.Wait()
++			case *sshFxpExtendedPacket:
++				// and before syncing the file they wrote
++				if _, ok := p.SpecificPacket.(*sshFxpFsyncPacket); ok {
++					s.working.Wait()
++				}
+ 			}
+ 			s.incomingPacket(pkt)
+ 			// all non-RW use sequential cmdChan
+diff -ruN a/packet.go b/packet.go
+--- a/packet.go	2026-10-02 22:07:37.989644104 +0200
++++ b/packet.go	2026-10-02 22:16:29.708925353 +0200
+@@ -1304,6 +1304,31 @@
+ 	return b, nil
+ }
+ 
++func (p *sshFxpFsyncPacket) readonly() bool { return true }
++
++func (p *sshFxpFsyncPacket) UnmarshalBinary(b []byte) error {
++	var err error
++	if p.ID, b, err = unmarshalUint32Safe(b); err != nil {
++		return err
++	} else if _, b, err = unmarshalStringSafe(b); err != nil {
++		return err
++	} else if p.Handle, _, err = unmarshalStringSafe(b); err != nil {
++		return err
++	}
++	return nil
++}
++
++func (p *sshFxpFsyncPacket) respond(svr *Server) responsePacket {
++	f, ok := svr.getHandle(p.Handle)
++	if !ok {
++		return statusFromError(p.ID, EBADF)
++	}
++	if s, ok := f.(interface{ Sync() error }); ok {
++		return statusFromError(p.ID, s.Sync())
++	}
++	return statusFromError(p.ID, ErrSSHFxOpUnsupported)
++}
++
+ type sshFxpExtendedPacket struct {
+ 	ID              uint32
+ 	ExtendedRequest string
+@@ -1345,6 +1370,8 @@
+ 		p.SpecificPacket = &sshFxpExtendedPacketPosixRename{}
+ 	case "hardlink@openssh.com":
+ 		p.SpecificPacket = &sshFxpExtendedPacketHardlink{}
++	case "fsync@openssh.com":
++		p.SpecificPacket = &sshFxpFsyncPacket{}
+ 	default:
+ 		return fmt.Errorf("packet type %v: %w", p.SpecificPacket, errUnknownExtendedPacket)
+ 	}
+@@ -1409,7 +1436,7 @@
+ 
+ // https://github.com/openssh/openssh-portable/blob/master/PROTOCOL
+ func (p *sshFxpExtendedPacketHardlink) id() uint32     { return p.ID }
+-func (p *sshFxpExtendedPacketHardlink) readonly() bool { return true }
++func (p *sshFxpExtendedPacketHardlink) readonly() bool { return false }
+ func (p *sshFxpExtendedPacketHardlink) UnmarshalBinary(b []byte) error {
+ 	var err error
+ 	if p.ID, b, err = unmarshalUint32Safe(b); err != nil {
+diff -ruN a/request-server.go b/request-server.go
+--- a/request-server.go	2026-10-02 22:07:37.989644104 +0200
++++ b/request-server.go	2026-10-02 22:16:29.708925353 +0200
+@@ -3,9 +3,11 @@
+ import (
+ 	"context"
+ 	"errors"
++	"fmt"
+ 	"io"
+ 	"path"
+ 	"path/filepath"
++	rdebug "runtime/debug"
+ 	"strconv"
+ 	"sync"
+ )
+@@ -29,6 +31,7 @@
+ 
+ 	startDirectory string
+ 	maxTxPacket    uint32
++	maxHandles     int
+ 
+ 	mu           sync.RWMutex
+ 	handleCount  int
+@@ -74,6 +77,14 @@
+ 	}
+ }
+ 
++// WithRSMaxHandles makes OPEN and OPENDIR fail once n handles are open.
++// By default there is no limit, and each handle may hold a file descriptor and memory.
++func WithRSMaxHandles(n int) RequestServerOption {
++	return func(rs *RequestServer) {
++		rs.maxHandles = n
++	}
++}
++
+ // WithRSSequential processes requests one at a time, in the order they are received.
+ //
+ // By default, reads and writes run concurrently with each other and with the other
+@@ -126,6 +137,18 @@
+ 	return r.handle
+ }
+ 
++// handleLimitReached reports whether no more handle may be opened (see WithRSMaxHandles).
++func (rs *RequestServer) handleLimitReached() bool {
++	if rs.maxHandles <= 0 {
++		return false
++	}
++	rs.mu.RLock()
++	defer rs.mu.RUnlock()
++	return len(rs.openRequests) >= rs.maxHandles
++}
++
++var errTooManyHandles = errors.New("too many open handles")
++
+ // Returns Request from openRequests, bool is false if it is missing.
+ //
+ // The Requests in openRequests work essentially as open file descriptors that
+@@ -240,105 +263,135 @@
+ 			}
+ 		}
+ 
+-		var rpkt responsePacket
+-		switch pkt := pkt.requestPacket.(type) {
+-		case *sshFxInitPacket:
+-			rpkt = &sshFxVersionPacket{Version: sftpProtocolVersion, Extensions: sftpExtensions}
+-		case *sshFxpClosePacket:
+-			handle := pkt.getHandle()
+-			rpkt = statusFromError(pkt.ID, rs.closeRequest(handle))
+-		case *sshFxpRealpathPacket:
+-			var realPath string
+-			var err error
+-
+-			switch pather := rs.Handlers.FileList.(type) {
+-			case RealPathFileLister:
+-				realPath, err = pather.RealPath(pkt.getPath())
+-			case legacyRealPathFileLister:
+-				realPath = pather.RealPath(pkt.getPath())
+-			default:
+-				realPath = cleanPathWithBase(rs.startDirectory, pkt.getPath())
+-			}
+-			if err != nil {
+-				rpkt = statusFromError(pkt.ID, err)
+-			} else {
+-				rpkt = cleanPacketPath(pkt, realPath)
+-			}
+-		case *sshFxpOpendirPacket:
+-			request := requestFromPacket(ctx, pkt, rs.startDirectory)
+-			handle := rs.nextRequest(request)
+-			rpkt = request.opendir(rs.Handlers, pkt)
+-			if _, ok := rpkt.(*sshFxpHandlePacket); !ok {
+-				// if we return an error we have to remove the handle from the active ones
+-				rs.closeRequest(handle)
+-			}
+-		case *sshFxpOpenPacket:
+-			request := requestFromPacket(ctx, pkt, rs.startDirectory)
+-			handle := rs.nextRequest(request)
+-			rpkt = request.open(rs.Handlers, pkt)
+-			if _, ok := rpkt.(*sshFxpHandlePacket); !ok {
+-				// if we return an error we have to remove the handle from the active ones
+-				rs.closeRequest(handle)
+-			}
+-		case *sshFxpFstatPacket:
+-			handle := pkt.getHandle()
+-			request, ok := rs.getRequest(handle)
+-			if !ok {
+-				rpkt = statusFromError(pkt.ID, EBADF)
+-			} else {
+-				request = &Request{
+-					Method:     "Stat",
+-					Filepath:   cleanPathWithBase(rs.startDirectory, request.Filepath),
+-					handleFile: request.opened(),
+-				}
+-				rpkt = request.call(rs.Handlers, pkt, rs.pktMgr.alloc, orderID, rs.maxTxPacket)
+-			}
+-		case *sshFxpFsetstatPacket:
+-			handle := pkt.getHandle()
+-			request, ok := rs.getRequest(handle)
+-			if !ok {
+-				rpkt = statusFromError(pkt.ID, EBADF)
+-			} else {
+-				request = &Request{
+-					Method:     "Setstat",
+-					Filepath:   cleanPathWithBase(rs.startDirectory, request.Filepath),
+-					handleFile: request.opened(),
+-				}
+-				rpkt = request.call(rs.Handlers, pkt, rs.pktMgr.alloc, orderID, rs.maxTxPacket)
+-			}
+-		case *sshFxpExtendedPacketPosixRename:
+-			request := &Request{
+-				Method:   "PosixRename",
+-				Filepath: cleanPathWithBase(rs.startDirectory, pkt.Oldpath),
+-				Target:   cleanPathWithBase(rs.startDirectory, pkt.Newpath),
++		rpkt := rs.handlePacket(ctx, pkt.requestPacket, orderID)
++
++		rs.pktMgr.readyPacket(
++			rs.pktMgr.newOrderedResponse(rpkt, orderID))
++	}
++	return nil
++}
++
++// handlePacket answers one packet. A panic in a handler fails that request, instead of
++// the whole process, which may serve other connections or, as in Lima, run the VM.
++func (rs *RequestServer) handlePacket(ctx context.Context, pkt requestPacket, orderID uint32) (rpkt responsePacket) {
++	defer func() {
++		if p := recover(); p != nil {
++			debug("handlePacket: panic: %v\n%s", p, rdebug.Stack())
++			rpkt = statusFromError(pkt.id(), fmt.Errorf("sftp server: internal error: %v", p))
++		}
++	}()
++
++	switch pkt := pkt.(type) {
++	case *sshFxInitPacket:
++		rpkt = &sshFxVersionPacket{Version: sftpProtocolVersion, Extensions: sftpExtensions}
++	case *sshFxpClosePacket:
++		handle := pkt.getHandle()
++		rpkt = statusFromError(pkt.ID, rs.closeRequest(handle))
++	case *sshFxpRealpathPacket:
++		var realPath string
++		var err error
++
++		switch pather := rs.Handlers.FileList.(type) {
++		case RealPathFileLister:
++			realPath, err = pather.RealPath(pkt.getPath())
++		case legacyRealPathFileLister:
++			realPath = pather.RealPath(pkt.getPath())
++		default:
++			realPath = cleanPathWithBase(rs.startDirectory, pkt.getPath())
++		}
++		if err != nil {
++			rpkt = statusFromError(pkt.ID, err)
++		} else {
++			rpkt = cleanPacketPath(pkt, realPath)
++		}
++	case *sshFxpFsyncPacket:
++		request, ok := rs.getRequest(pkt.Handle)
++		if !ok {
++			rpkt = statusFromError(pkt.ID, EBADF)
++		} else if s, ok := request.opened().(interface{ Sync() error }); ok {
++			rpkt = statusFromError(pkt.ID, s.Sync())
++		} else {
++			rpkt = statusFromError(pkt.ID, ErrSSHFxOpUnsupported)
++		}
++	case *sshFxpOpendirPacket:
++		if rs.handleLimitReached() {
++			rpkt = statusFromError(pkt.ID, errTooManyHandles)
++			break
++		}
++		request := requestFromPacket(ctx, pkt, rs.startDirectory)
++		handle := rs.nextRequest(request)
++		rpkt = request.opendir(rs.Handlers, pkt)
++		if _, ok := rpkt.(*sshFxpHandlePacket); !ok {
++			// if we return an error we have to remove the handle from the active ones
++			rs.closeRequest(handle)
++		}
++	case *sshFxpOpenPacket:
++		if rs.handleLimitReached() {
++			rpkt = statusFromError(pkt.ID, errTooManyHandles)
++			break
++		}
++		request := requestFromPacket(ctx, pkt, rs.startDirectory)
++		handle := rs.nextRequest(request)
++		rpkt = request.open(rs.Handlers, pkt)
++		if _, ok := rpkt.(*sshFxpHandlePacket); !ok {
++			// if we return an error we have to remove the handle from the active ones
++			rs.closeRequest(handle)
++		}
++	case *sshFxpFstatPacket:
++		handle := pkt.getHandle()
++		request, ok := rs.getRequest(handle)
++		if !ok {
++			rpkt = statusFromError(pkt.ID, EBADF)
++		} else {
++			request = &Request{
++				Method:     "Stat",
++				Filepath:   cleanPathWithBase(rs.startDirectory, request.Filepath),
++				handleFile: request.opened(),
+ 			}
+ 			rpkt = request.call(rs.Handlers, pkt, rs.pktMgr.alloc, orderID, rs.maxTxPacket)
+-		case *sshFxpExtendedPacketStatVFS:
+-			request := &Request{
+-				Method:   "StatVFS",
+-				Filepath: cleanPathWithBase(rs.startDirectory, pkt.Path),
++		}
++	case *sshFxpFsetstatPacket:
++		handle := pkt.getHandle()
++		request, ok := rs.getRequest(handle)
++		if !ok {
++			rpkt = statusFromError(pkt.ID, EBADF)
++		} else {
++			request = &Request{
++				Method:     "Setstat",
++				Filepath:   cleanPathWithBase(rs.startDirectory, request.Filepath),
++				handleFile: request.opened(),
+ 			}
+ 			rpkt = request.call(rs.Handlers, pkt, rs.pktMgr.alloc, orderID, rs.maxTxPacket)
+-		case hasHandle:
+-			handle := pkt.getHandle()
+-			request, ok := rs.getRequest(handle)
+-			if !ok {
+-				rpkt = statusFromError(pkt.id(), EBADF)
+-			} else {
+-				rpkt = request.call(rs.Handlers, pkt, rs.pktMgr.alloc, orderID, rs.maxTxPacket)
+-			}
+-		case hasPath:
+-			request := requestFromPacket(ctx, pkt, rs.startDirectory)
++		}
++	case *sshFxpExtendedPacketPosixRename:
++		request := &Request{
++			Method:   "PosixRename",
++			Filepath: cleanPathWithBase(rs.startDirectory, pkt.Oldpath),
++			Target:   cleanPathWithBase(rs.startDirectory, pkt.Newpath),
++		}
++		rpkt = request.call(rs.Handlers, pkt, rs.pktMgr.alloc, orderID, rs.maxTxPacket)
++	case *sshFxpExtendedPacketStatVFS:
++		request := &Request{
++			Method:   "StatVFS",
++			Filepath: cleanPathWithBase(rs.startDirectory, pkt.Path),
++		}
++		rpkt = request.call(rs.Handlers, pkt, rs.pktMgr.alloc, orderID, rs.maxTxPacket)
++	case hasHandle:
++		handle := pkt.getHandle()
++		request, ok := rs.getRequest(handle)
++		if !ok {
++			rpkt = statusFromError(pkt.id(), EBADF)
++		} else {
+ 			rpkt = request.call(rs.Handlers, pkt, rs.pktMgr.alloc, orderID, rs.maxTxPacket)
+-			request.close()
+-		default:
+-			rpkt = statusFromError(pkt.id(), ErrSSHFxOpUnsupported)
+ 		}
+-
+-		rs.pktMgr.readyPacket(
+-			rs.pktMgr.newOrderedResponse(rpkt, orderID))
++	case hasPath:
++		request := requestFromPacket(ctx, pkt, rs.startDirectory)
++		rpkt = request.call(rs.Handlers, pkt, rs.pktMgr.alloc, orderID, rs.maxTxPacket)
++		request.close()
++	default:
++		rpkt = statusFromError(pkt.id(), ErrSSHFxOpUnsupported)
+ 	}
+-	return nil
++	return rpkt
+ }
+ 
+ // clean and return name packet for file
+diff -ruN a/request-server_robust_test.go b/request-server_robust_test.go
+--- a/request-server_robust_test.go	1970-01-01 01:00:00.000000000 +0100
++++ b/request-server_robust_test.go	2026-10-02 22:16:29.708925353 +0200
+@@ -0,0 +1,256 @@
++//go:build !plan9
++// +build !plan9
++
++package sftp
++
++import (
++	"io"
++	"math"
++	"net"
++	"os"
++	"path/filepath"
++	"sync/atomic"
++	"syscall"
++	"testing"
++	"time"
++
++	"github.com/stretchr/testify/assert"
++	"github.com/stretchr/testify/require"
++)
++
++// osHandlers serves dir with *os.File handles, write-only opens get an O_WRONLY file.
++// Stat of "/panic" panics, Stat of "/slow" takes 100ms.
++type osHandlers struct {
++	dir string
++}
++
++func (h *osHandlers) p(r *Request) string { return filepath.Join(h.dir, r.Filepath) }
++
++func (h *osHandlers) Fileread(r *Request) (io.ReaderAt, error) { return os.Open(h.p(r)) }
++func (h *osHandlers) Filewrite(r *Request) (io.WriterAt, error) {
++	return os.OpenFile(h.p(r), os.O_WRONLY|os.O_CREATE, 0o644)
++}
++func (h *osHandlers) OpenFile(r *Request) (WriterAtReaderAt, error) {
++	return os.OpenFile(h.p(r), os.O_RDWR|os.O_CREATE, 0o644)
++}
++func (h *osHandlers) Filecmd(r *Request) error { return ErrSSHFxOpUnsupported }
++func (h *osHandlers) Filelist(r *Request) (ListerAt, error) {
++	switch r.Filepath {
++	case "/panic":
++		panic("handler bug")
++	case "/slow":
++		time.Sleep(100 * time.Millisecond)
++	}
++	if r.Method == "List" {
++		f, err := os.Open(h.p(r))
++		if err != nil {
++			return nil, err
++		}
++		defer f.Close()
++		fis, err := f.Readdir(-1)
++		return listerat(fis), err
++	}
++	fi, err := os.Stat(h.p(r))
++	if err != nil {
++		return nil, err
++	}
++	return listerat{fi}, nil
++}
++
++// rawClient sends packets a well-behaved client would not.
++type rawClient struct {
++	t  *testing.T
++	c  net.Conn
++	rs *RequestServer
++	id uint32
++}
++
++func newRawClient(t *testing.T, h Handlers, opts ...RequestServerOption) *rawClient {
++	a, b := net.Pipe()
++	rs := NewRequestServer(a, h, append([]RequestServerOption{WithRSSequential()}, opts...)...)
++	go rs.Serve()
++	t.Cleanup(func() { b.Close() })
++	return &rawClient{t: t, c: b, rs: rs}
++}
++
++type rawPacket []byte
++
++func (b rawPacket) MarshalBinary() ([]byte, error) { return b, nil }
++
++func (r *rawClient) send(typ byte, fields ...any) uint32 {
++	r.id++
++	b := []byte{0, 0, 0, 0, typ}
++	b = marshalUint32(b, r.id)
++	for _, f := range fields {
++		b = marshal(b, f)
++	}
++	require.NoError(r.t, sendPacket(r.c, rawPacket(b)))
++	return r.id
++}
++
++func (r *rawClient) recv() (fxp, []byte) {
++	require.NoError(r.t, r.c.SetReadDeadline(time.Now().Add(5*time.Second)))
++	typ, data, err := recvPacket(r.c, nil, 0)
++	require.NoError(r.t, err)
++	return typ, data
++}
++
++// status returns the code of a STATUS response, or fails.
++func (r *rawClient) status() uint32 {
++	typ, data := r.recv()
++	require.Equal(r.t, fxp(sshFxpStatus), typ)
++	_, data = unmarshalUint32(data)
++	code, _ := unmarshalUint32(data)
++	return code
++}
++
++func (r *rawClient) handle(typ byte, path string, fields ...any) string {
++	r.send(typ, append([]any{path}, fields...)...)
++	rtyp, data := r.recv()
++	require.Equal(r.t, fxp(sshFxpHandle), rtyp)
++	_, data = unmarshalUint32(data)
++	h, _ := unmarshalString(data)
++	return h
++}
++
++// A handle only answers the packets of what it was opened for.
++func TestRequestHandlePacketMismatch(t *testing.T) {
++	dir := t.TempDir()
++	require.NoError(t, os.WriteFile(filepath.Join(dir, "f"), []byte("hello"), 0o644))
++	require.NoError(t, os.WriteFile(filepath.Join(dir, "g"), nil, 0o644))
++	h := &osHandlers{dir: dir}
++	c := newRawClient(t, Handlers{h, h, h, h})
++
++	wh := c.handle(sshFxpOpen, "/f", uint32(sshFxfWrite), uint32(0))
++	rh := c.handle(sshFxpOpen, "/f", uint32(sshFxfRead), uint32(0))
++	dh := c.handle(sshFxpOpendir, "/")
++
++	c.send(sshFxpRead, wh, uint64(10), uint32(100))
++	assert.NotEqual(t, uint32(sshFxOk), c.status(), "READ on a write-only handle")
++	c.send(sshFxpWrite, rh, uint64(0), "XXXX")
++	assert.NotEqual(t, uint32(sshFxOk), c.status(), "WRITE on a read-only handle")
++	c.send(sshFxpReaddir, rh)
++	assert.NotEqual(t, uint32(sshFxOk), c.status(), "READDIR on a file handle")
++	c.send(sshFxpRead, dh, uint64(0), uint32(100))
++	assert.NotEqual(t, uint32(sshFxOk), c.status(), "READ on a directory handle")
++
++	b, err := os.ReadFile(filepath.Join(dir, "f"))
++	require.NoError(t, err)
++	assert.Equal(t, "hello", string(b))
++	c.send(sshFxpReaddir, dh)
++	typ, data := c.recv()
++	require.Equal(t, fxp(sshFxpName), typ, "the READ must not have consumed the entries")
++	_, data = unmarshalUint32(data)
++	n, _ := unmarshalUint32(data)
++	assert.Equal(t, uint32(2), n)
++}
++
++func TestRequestServerMaxHandles(t *testing.T) {
++	dir := t.TempDir()
++	require.NoError(t, os.WriteFile(filepath.Join(dir, "f"), nil, 0o644))
++	h := &osHandlers{dir: dir}
++	c := newRawClient(t, Handlers{h, h, h, h}, WithRSMaxHandles(2))
++
++	first := c.handle(sshFxpOpen, "/f", uint32(sshFxfRead), uint32(0))
++	c.handle(sshFxpOpendir, "/")
++	c.send(sshFxpOpen, "/f", uint32(sshFxfRead), uint32(0))
++	assert.Equal(t, uint32(sshFxFailure), c.status(), "OPEN over the limit")
++	c.send(sshFxpOpendir, "/")
++	assert.Equal(t, uint32(sshFxFailure), c.status(), "OPENDIR over the limit")
++	c.send(sshFxpClose, first)
++	require.Equal(t, uint32(sshFxOk), c.status())
++	c.handle(sshFxpOpen, "/f", uint32(sshFxfRead), uint32(0))
++}
++
++// A panic in a handler fails its request, the server keeps serving.
++func TestRequestServerHandlerPanic(t *testing.T) {
++	h := &osHandlers{dir: t.TempDir()}
++	c := newRawClient(t, Handlers{h, h, h, h})
++	c.send(sshFxpStat, "/panic")
++	assert.Equal(t, uint32(sshFxFailure), c.status())
++	c.send(sshFxpStat, "/")
++	typ, _ := c.recv()
++	assert.Equal(t, fxp(sshFxpAttrs), typ)
++}
++
++type syncCounter struct {
++	*os.File
++	n *atomic.Int32
++}
++
++func (s syncCounter) Sync() error {
++	s.n.Add(1)
++	return s.File.Sync()
++}
++
++type syncHandlers struct {
++	*osHandlers
++	n atomic.Int32
++}
++
++func (h *syncHandlers) Filewrite(r *Request) (io.WriterAt, error) {
++	f, err := os.OpenFile(h.p(r), os.O_WRONLY|os.O_CREATE, 0o644)
++	if err != nil {
++		return nil, err
++	}
++	return syncCounter{f, &h.n}, nil
++}
++
++func TestRequestFsync(t *testing.T) {
++	h := &syncHandlers{osHandlers: &osHandlers{dir: t.TempDir()}}
++	c := newRawClient(t, Handlers{h, h, h, h})
++	c.send(sshFxpInit) // INIT has a version where other packets have an id
++	typ, data := c.recv()
++	require.Equal(t, fxp(sshFxpVersion), typ)
++	assert.Contains(t, string(data), "fsync@openssh.com")
++
++	wh := c.handle(sshFxpOpen, "/f", uint32(sshFxfWrite|sshFxfCreat), uint32(0))
++	c.send(sshFxpExtended, "fsync@openssh.com", wh)
++	assert.Equal(t, uint32(sshFxOk), c.status())
++	assert.Equal(t, int32(1), h.n.Load())
++
++	dh := c.handle(sshFxpOpendir, "/")
++	c.send(sshFxpExtended, "fsync@openssh.com", dh)
++	assert.Equal(t, uint32(sshFxOPUnsupported), c.status())
++	c.send(sshFxpExtended, "fsync@openssh.com", "nope")
++	assert.NotEqual(t, uint32(sshFxOk), c.status())
++}
++
++// Responses keep their order when orderIDs wrap around.
++func TestRequestServerOrderIDWrap(t *testing.T) {
++	dir := t.TempDir()
++	require.NoError(t, os.WriteFile(filepath.Join(dir, "slow"), nil, 0o644))
++	h := &osHandlers{dir: dir}
++	a, b := net.Pipe()
++	rs := NewRequestServer(a, Handlers{h, h, h, h})
++	rs.pktMgr.packetCount = math.MaxUint32 - 1
++	go rs.Serve()
++	t.Cleanup(func() { b.Close() })
++	c := &rawClient{t: t, c: b, rs: rs}
++
++	id1 := c.send(sshFxpStat, "/slow")
++	id2 := c.send(sshFxpStat, "/")
++	_, d1 := c.recv()
++	_, d2 := c.recv()
++	g1, _ := unmarshalUint32(d1)
++	g2, _ := unmarshalUint32(d2)
++	assert.Equal(t, []uint32{id1, id2}, []uint32{g1, g2})
++}
++
++func TestStatusFromErrorErrno(t *testing.T) {
++	for _, tc := range []struct {
++		err  error
++		code uint32
++	}{
++		{&os.LinkError{Op: "rename", Old: "a", New: "b", Err: syscall.EACCES}, sshFxPermissionDenied},
++		{&os.SyscallError{Syscall: "x", Err: syscall.EPERM}, sshFxPermissionDenied},
++		{&os.PathError{Op: "open", Path: "x", Err: syscall.ENOTDIR}, sshFxNoSuchFile},
++		{&os.PathError{Op: "open", Path: "x", Err: syscall.ELOOP}, sshFxNoSuchFile},
++		{&os.PathError{Op: "open", Path: "x", Err: syscall.ENAMETOOLONG}, sshFxBadMessage},
++		{syscall.EINVAL, sshFxBadMessage},
++		{syscall.ENOSYS, sshFxOPUnsupported},
++		{syscall.EEXIST, sshFxFailure},
++	} {
++		assert.Equal(t, tc.code, statusFromError(1, tc.err).Code, "%v", tc.err)
++	}
++}
+diff -ruN a/request-server_test.go b/request-server_test.go
+--- a/request-server_test.go	2026-10-02 22:07:37.989644104 +0200
++++ b/request-server_test.go	2026-10-02 22:16:29.708925353 +0200
+@@ -779,14 +779,9 @@
+ 			t.Fatal("expected no error, got:", err)
+ 		}
+ 	}
++	// ENOTDIR is SSH_FX_NO_SUCH_FILE, as in OpenSSH's sftp-server.
+ 	_, err := p.cli.ReadDir("/foo_01")
+-	if runtime.GOOS == "zos" {
+-		assert.Equal(t, &StatusError{Code: sshFxFailure,
+-			msg: " /foo_01: EDC5135I Not a directory."}, err)
+-	} else {
+-		assert.Equal(t, &StatusError{Code: sshFxFailure,
+-			msg: " /foo_01: not a directory"}, err)
+-	}
++	assert.Equal(t, os.ErrNotExist, err)
+ 	_, err = p.cli.ReadDir("/does_not_exist")
+ 	assert.Equal(t, os.ErrNotExist, err)
+ 	di, err := p.cli.ReadDir("/")
+diff -ruN a/request.go b/request.go
+--- a/request.go	2026-10-02 22:07:37.989644104 +0200
++++ b/request.go	2026-10-02 22:16:29.708925353 +0200
+@@ -337,6 +337,23 @@
+ 
+ // called from worker to handle packet/request
+ func (r *Request) call(handlers Handlers, pkt requestPacket, alloc *allocator, orderID uint32, maxTxPacket uint32) responsePacket {
++	// A handle only serves the packets of what it was opened for: otherwise a READ on a
++	// write-only handle would write its zeroed buffer, and a READ on a directory consume entries.
++	var allowed bool
++	switch pkt.(type) {
++	case *sshFxpReadPacket:
++		allowed = r.Method == "Get" || r.Method == "Open"
++	case *sshFxpWritePacket:
++		allowed = r.Method == "Put" || r.Method == "Open"
++	case *sshFxpReaddirPacket:
++		allowed = r.Method == "List"
++	default:
++		allowed = true
++	}
++	if !allowed {
++		return statusFromError(pkt.id(), EBADF)
++	}
++
+ 	switch r.Method {
+ 	case "Get":
+ 		return fileget(handlers.FileGet, r, pkt, alloc, orderID, maxTxPacket)
+diff -ruN a/sftp.go b/sftp.go
+--- a/sftp.go	2026-10-02 22:07:37.989644104 +0200
++++ b/sftp.go	2026-10-02 22:16:29.708925353 +0200
+@@ -89,6 +89,7 @@
+ 		{"hardlink@openssh.com", "1"},
+ 		{"posix-rename@openssh.com", "1"},
+ 		{"statvfs@openssh.com", "2"},
++		{"fsync@openssh.com", "1"},
+ 	}
+ 	sftpExtensions = supportedSFTPExtensions
+ )

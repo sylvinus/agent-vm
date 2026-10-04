@@ -14,7 +14,7 @@ export const en = {
     label: 'English',
     title: 'agent-vm | a disposable Linux VM per project for AI coding agents',
     description:
-      'agent-vm gives every project its own Linux VM and runs the coding agent there with permissions bypassed. Your SSH keys, your browser sessions and the rest of your disk are invisible to it. Built on Lima. MIT.',
+      'agent-vm gives every project its own Linux VM and runs the coding agent there with permissions bypassed. Your SSH keys, your browser sessions, the rest of your disk and your local network are out of its reach. One binary, Lima built in. MIT.',
     skipToContent: 'Skip to content',
   },
 
@@ -37,17 +37,17 @@ export const en = {
     title: 'Give agents a machine they can wreck.',
     titleAccent: 'Keep yours.',
     lede:
-      'agent-vm runs AI coding agents with every permission, in a Linux VM per project. Your SSH keys, your browser sessions and the rest of your disk are invisible to them.',
+      'agent-vm runs AI coding agents with every permission, in a Linux VM per project. Your SSH keys, your browser sessions, the rest of your disk and your local network are out of their reach.',
     installLabel: 'Get started',
     ctaPrimary: 'Install it',
     ctaSecondary: 'How it works',
-    meta: 'MIT licensed · macOS, Linux, Windows (experimental) · built on Lima',
+    meta: 'MIT licensed · macOS, Linux, Windows (experimental) · Lima built in',
     terminalCaption:
       'Only the project directory is mounted.',
     points: [
       {
-        title: '[Lima](https://lima-vm.io/) is the only host dependency',
-        body: 'No Node, no npm, no Docker Desktop on your machine: the toolchain lives in the VM. On Linux, Lima also needs QEMU and access to KVM.',
+        title: 'One binary, [Lima](https://lima-vm.io/) built in',
+        body: 'No Lima to install, no Node, no npm, no Docker Desktop on your machine: the toolchain lives in the VM. On Linux, the VMs need QEMU and access to KVM.',
       },
       {
         title: 'A separate kernel, not a namespace',
@@ -55,7 +55,7 @@ export const en = {
       },
       {
         title: 'Ports are forwarded for you',
-        body: 'A dev server started in the VM answers on localhost at the same port. Lima does it; there is no flag and no config.',
+        body: 'A dev server started in the VM answers on localhost at the same port, with a notification, and no flag or config. A port a program of yours already uses is left to it.',
       },
       {
         title: 'Batteries included, root for the rest',
@@ -84,21 +84,21 @@ export const en = {
       },
     ],
     closing:
-      'A VM limits what a mistake or a compromised agent can reach to the project and what you hand it, such as [its env file](#share-secrets-across-vms). What stays open is the network: see [Security](#security).',
+      'A VM limits what a mistake or a compromised agent can reach to the project, the internet, and what you hand it, such as [its env file](#share-secrets-across-vms). Your machine and your local network stay out of reach: see [Security](#security).',
   },
 
   install: {
     eyebrow: 'Install',
     title: 'Install, build a template, run an agent.',
     lede:
-      'agent-vm is a few shell scripts, with no daemon.',
+      'agent-vm is one binary, with Lima built in and no daemon: each running VM is served by an agent-vm process of its own.',
     prerequisitesTitle: 'Prerequisites',
     prerequisites: [
-      { name: 'macOS, Linux or Windows', note: 'Windows is experimental: Git Bash, QEMU and Lima for Windows required.', href: '' },
+      { name: 'macOS, Linux or Windows', note: 'Windows is experimental: not yet tried on a Windows machine.', href: '' },
       {
-        name: 'Lima',
-        note: '`agent-vm setup` offers to install it. On Linux, QEMU and KVM too; on Windows, QEMU.',
-        href: 'https://lima-vm.io/docs/installation/',
+        name: 'QEMU, on Linux and Windows',
+        note: 'macOS needs nothing more. On Linux, KVM too: `agent-vm setup` says what is missing and how to install it. On Windows, QEMU 7.2 or later and the Windows Hypervisor Platform feature.',
+        href: '',
       },
       {
         name: 'An agent subscription or API key',
@@ -114,7 +114,7 @@ export const en = {
         id: 'curl',
         label: 'curl',
         code: 'curl -fsSL https://www.agent-vm.org/install.sh | sh',
-        note: 'Downloads the latest release from GitHub, checks it against the release’s `SHA256SUMS`, unpacks it in `~/.local/share/agent-vm` and links `agent-vm` into `~/.local/bin`. It then offers to run step 2 right away. Run it again to update. `sh -s -- --version X.Y.Z` installs a given release, `sh -s -- --git` a clone of `main`.',
+        note: 'Downloads the latest release’s build for your machine from GitHub, checks it against the release’s `SHA256SUMS`, unpacks it in `~/.local/share/agent-vm` and links `agent-vm` into `~/.local/bin`. It then offers to run step 2 right away. Run it again to update. `sh -s -- --version X.Y.Z` installs a given release, `sh -s -- --git` a clone of `main`.',
       },
       {
         id: 'brew',
@@ -126,19 +126,19 @@ export const en = {
         id: 'git',
         label: 'git',
         code: 'git clone https://github.com/sylvinus/agent-vm.git\ncd agent-vm && ./agent-vm.sh install',
-        note: '`install` symlinks `agent-vm` onto your `PATH`, so `git pull` in the clone is the update. It then offers to run step 2 right away.',
+        note: 'Builds it, with Go (and on macOS the Xcode command line tools), then `install` symlinks `agent-vm` onto your `PATH`. After a `git pull`, run `./agent-vm.sh install` again to rebuild. It then offers to run step 2 right away.',
       },
       {
         id: 'windows',
         label: 'Windows',
         code: '# in Git Bash (experimental)\nwinget install SoftwareFreedom.QEMU\ncurl -fsSL https://www.agent-vm.org/install.sh | sh',
-        note: 'Experimental, in Git Bash. `agent-vm setup` then offers a Lima build for Windows: take it, Lima’s own does not keep the VM to its shares. VMs also need the Windows Hypervisor Platform feature, which an administrator turns on once: see [Windows and WSL](#windows-and-wsl).',
+        note: 'Experimental: not yet tried on a Windows machine. Without Git Bash, download `agent-vm-X.Y.Z-windows-amd64.tar.gz` (or `-arm64`) from the GitHub releases, unpack it with `tar -xzf`, and run `agent-vm.exe install` in PowerShell. VMs also need the Windows Hypervisor Platform feature, which an administrator turns on once: see [Windows and WSL](#windows-and-wsl).',
       },
     ],
     steps: [
       {
         title: 'Build the base template',
-        body: 'Run once. Without Lima, or without the build that keeps `.git` [read-only](#git), it first offers to install it. A wizard then picks what goes in the template: Enter takes the default set (see [What is in the VM](#what-is-in-the-vm)). It builds a Debian 13 VM with it and keeps it, stopped, as the template.',
+        body: 'Run once. A wizard picks what goes in the template: Enter takes the default set (see [What is in the VM](#what-is-in-the-vm)). It builds a Debian 13 VM with it and keeps it, stopped, as the template.',
         code: 'agent-vm setup',
       },
       {
@@ -163,7 +163,7 @@ export const en = {
       },
       {
         title: 'Reach the dev server',
-        body: 'Lima forwards every port opened in the VM to the same port on your localhost, so a dev server opens in your browser as usual. Treat those ports as the agent’s.',
+        body: 'Every port opened in the VM is forwarded to the same port on your localhost, so a dev server opens in your browser as usual, and a notification says so. A port a program of yours already listens on is not taken: the notification says that too. Treat the forwarded ports as the agent’s.',
         code: 'agent-vm run npm run dev         # then open localhost:5173\nagent-vm run docker compose up',
       },
       {
@@ -193,7 +193,7 @@ export const en = {
       },
       {
         title: 'Edit with the VM’s tools',
-        body: 'For language servers, linters, the debugger and the VM’s packages, run the editor in the VM: `agent-vm code` serves VS Code (code-server) to a browser tab, the only part on your machine. Set it up with `code-server` or a `code-*` name ([What is in the VM](#what-is-in-the-vm)). The tab can still open links, and every VM reaches the editor’s port, hence a password and a host name per VM ([Network and ports](#network-and-ports)). Do not connect a desktop editor over SSH instead ([SSH from your machine](#ssh-from-your-machine)).',
+        body: 'For language servers, linters, the debugger and the VM’s packages, run the editor in the VM: `agent-vm code` serves VS Code (code-server) to a browser tab, the only part on your machine. Set it up with `code-server` or a `code-*` name ([What is in the VM](#what-is-in-the-vm)). The tab can still open links, and every VM can send your browser to it, hence a password and a host name per VM ([Network and ports](#network-and-ports)). Do not connect a desktop editor over SSH instead ([SSH from your machine](#ssh-from-your-machine)).',
         code: 'agent-vm setup --preinstall=default,code-claude   # once\nagent-vm code   # prints the address and the password\n                # Ctrl-C stops the editor',
       },
     ],
@@ -239,13 +239,13 @@ export const en = {
           ['stop [vm-name]', 'Stop this directory’s VM, or the named one. The disk survives.'],
           ['rm [vm-name]', 'Stop and delete. A name from `list` reaches a VM whose directory is gone.'],
           ['destroy-all', 'Stop and delete every agent-vm VM, the base template included. `setup` rebuilds it.'],
-          ['doctor', 'Check the host, Lima, the base template and this directory, and say what to run. Changes nothing.'],
+          ['doctor', 'Check the host, the base template, your settings files and this directory, and say what to run. Changes nothing.'],
         ],
       },
       {
         title: 'Set up and configure',
         rows: [
-          ['install', 'Put `agent-vm` on your `PATH`, from the clone: `./agent-vm.sh install`. The curl installer runs it for you.'],
+          ['install', 'Put `agent-vm` on your `PATH`: a link to the binary that runs it, in `~/.local/bin`. The curl installer runs it for you.'],
           ['uninstall', 'Remove that link. VMs and `~/.agent-vm` stay.'],
           ['setup', 'Build the base template. `--preinstall=LIST` skips the wizard ([What is in the VM](#what-is-in-the-vm)); `--disk`, `--memory` and `--cpus` size it.'],
           ['env <sub>', '`set`, `get`, `has`, `unset`, `list` on the secrets shared by every VM.'],
@@ -281,25 +281,29 @@ export const en = {
     envNote: 'Read from your shell, never from a file of the project.',
     envHeaders: ['Variable', 'What it does', 'Default'],
     env: [
-      ['AGENT_VM_STATE_DIR', 'Moves `~/.agent-vm`, for tests, CI or a second install, without moving `HOME` (and Lima’s VMs with it).', '~/.agent-vm'],
+      ['AGENT_VM_STATE_DIR', 'Moves `~/.agent-vm`, VMs included, for tests, CI or a second install, without moving `HOME`.', '~/.agent-vm'],
+      ['AGENT_VM_LIMA_HOME', 'Where the VMs live. Not your own Lima’s home: agent-vm keeps its VMs apart.', '~/.agent-vm/lima'],
       ['AGENT_VM_PROJECT_ENV', 'The project’s env file, relative to the project or absolute.', '.agent-vm.env'],
       ['AGENT_VM_PROJECT_RUNTIME', 'The project’s runtime script, relative to the project or absolute. Outside the project, the host reads it.', '.agent-vm.runtime.sh'],
       ['AGENT_VM_HOST_SHARE', 'CPU and memory per VM are capped at the host’s divided by this. `1`: the whole host.', '2'],
       ['AGENT_VM_BIN_DIR', 'Where `install` links `agent-vm`.', '~/.local/bin'],
-      ['AGENT_VM_LIMA_DIR', 'Windows: where `setup` puts its Lima build.', '~/.local/share/lima-sylvinus'],
-      ['AGENT_VM_QEMU_DIR', 'Windows: where QEMU is, when not on `PATH`.', '/c/Program Files/qemu'],
       ['AGENT_VM_SSHFS_CACHE', '`1`: sshfs caches the writable shares too, faster on many files (`git status`, `find`); the VM may then see a file as it was up to 20 seconds before, and write that back. Applies when a VM is next started.', 'unset'],
+      ['AGENT_VM_NOTIFY', '`0`: no desktop notification when a port is forwarded, or left to a program of yours.', 'unset'],
+      ['AGENT_VM_GUARDED_WRITES', '`deny`: refuse the VM’s writes to [guarded files](#guarded-files) without asking, for a machine with no one at the screen.', 'unset'],
+      ['AGENT_VM_UNSAFE_OPEN_NETWORK', '`1`: no [network isolation](#network-and-ports): the VMs reach your machine and your local networks. Applies when a VM is next started.', 'unset'],
       ['AGENT_VM_UNSAFE_WRITABLE_GIT', '`1`: same as `--unsafe-writable-git`.', 'unset'],
       ['AGENT_VM_UNSAFE_DISABLE_SECURITY_PROMPTS', '`1`: same as `--unsafe-disable-security-prompts`.', 'unset'],
     ],
     customTitle: 'Customisation files',
     customLede:
-      'Six optional files, none of them needed to get started. The per-user ones sit in `~/.agent-vm/`, the per-project ones in the project itself.',
+      'Eight optional files, none of them needed to get started. The per-user ones sit in `~/.agent-vm/`, the per-project ones in the project itself.',
     customTable: {
       headers: ['File', 'Scope', 'Runs when'],
       rows: [
         ['~/.agent-vm/env', 'All VMs', 'Pushed in on every invocation'],
         ['~/.agent-vm/volumes', 'All VMs, or the projects an entry names', 'Mounted at VM creation'],
+        ['~/.agent-vm/network', 'All VMs: what they may reach ([Network and ports](#network-and-ports))', 'Read when a VM starts'],
+        ['~/.agent-vm/guarded', 'All VMs: files to ask about ([Guarded files](#guarded-files))', 'Read when a VM starts'],
         ['~/.agent-vm/setup.sh', 'Base template', 'Once, during agent-vm setup'],
         ['~/.agent-vm/runtime.sh', 'All VMs', 'Every command that enters a VM, first'],
         ['.agent-vm.runtime.sh', 'Single project', 'Every command that enters its VM, after the global one'],
@@ -321,9 +325,9 @@ export const en = {
     nodeNote: 'The host sees an empty `node_modules`, or keeps its own: install there too if your editor needs the packages. In a workspace, repeat the mount for a package with a large `node_modules` of its own. A dev server in the VM may need polling to see edits made on the host (Vite: `server.watch.usePolling`).',
     scriptsTitle: 'From a script',
     scriptsParas: [
-      'Use these commands rather than parsing human-facing output or reading `~/.agent-vm`: VM names and state files are implementation details. All of them work without Lima.',
+      'Use these commands rather than parsing human-facing output or reading `~/.agent-vm`: VM names and state files are implementation details. None of them starts a VM.',
       '`version --min` exits `0` when recent enough, `1` when older, `2` on a malformed call; an engine predating `--min` ignores it and exits `0`. In `info`, booleans are `1` or `0`, `unknown` when undeterminable, and `base_exists=1` means the template is usable.',
-      'A start asks its questions only when stderr is a terminal: otherwise it stops there. `security_questions` in `info` names them beforehand (`lima`, `lima-unknown`, `hooks`, `git-config`, `bare-repo` or `none`), and `--unsafe-disable-security-prompts` accepts them once the user agreed.',
+      'A start asks its questions only when stderr is a terminal: otherwise it stops there. `security_questions` in `info` names them beforehand (`hooks`, `git-config`, `bare-repo` or `none`), and `--unsafe-disable-security-prompts` accepts them once the user agreed.',
     ],
     scriptsCode:
       'agent-vm version --min 0.2.0 || exit 1  # silent when OK\nagent-vm name [dir]    # VM name for a directory\nagent-vm info [dir]    # one key=value per line\n\n# info keys: version, template, state_dir,\n# project_env, dir, vm_name, base_exists,\n# vm_exists, vm_running, vm_stale,\n# ssh_host, ssh_config, git_protected,\n# security_questions',
@@ -342,9 +346,18 @@ export const en = {
           {
             title: 'Updating',
             paras: [
-              'Run the curl installer again, `brew upgrade agent-vm`, or `git pull` in a clone. `agent-vm uninstall` removes the link; VMs and `~/.agent-vm` stay.',
+              'Run the curl installer again, `brew upgrade agent-vm`, or `git pull && ./agent-vm.sh install` in a clone. `agent-vm uninstall` removes the link; VMs and `~/.agent-vm` stay.',
               'Running `setup` again rebuilds the template, not the VMs cloned from it: agent-vm warns about those, and `--reset` re-clones one. Its full log is in `~/.agent-vm/setup.log`.',
-              'From 0.1.0, run `agent-vm setup`: until then, each VM from a base 0.1.0 built boots once more to install `sshfs`.',
+            ],
+            list: [],
+            code: '',
+          },
+          {
+            title: 'From 0.2',
+            paras: [
+              'Lima is built in: Homebrew’s Lima, or the Lima build 0.2 installed, can go, unless you use it for VMs of your own. agent-vm keeps its VMs in `~/.agent-vm/lima`, apart from yours, and names them without the `agent-vm-` prefix: `your-project-1a2b3c4d`, and `base` for the template.',
+              'The first command that needs the VMs offers to move 0.2’s from `~/.lima` (or `$LIMA_HOME`), stopping the running ones first: they keep their disks, shares and settings. Declined, it asks again next time; with no terminal to ask on, it moves them. `doctor` and `info` only look, and say when some are still to move.',
+              'To update, run the curl installer again, or `git pull && ./agent-vm.sh install` in a clone (Go needed): the link on your `PATH` then leads to the binary. Until then, 0.2’s link to `agent-vm.sh` keeps working (in a clone, after a `git pull`, it builds agent-vm first), and so does a shell rc line sourcing it, which `install` says can go. A VM from a base 0.1.0 built no longer starts: run `agent-vm setup`, then `--reset`.',
             ],
             list: [],
             code: '',
@@ -352,8 +365,9 @@ export const en = {
           {
             title: 'Windows and WSL',
             paras: [
-              'VMs need the Windows Hypervisor Platform feature. It is off by default and only an administrator can turn it on, once, in Windows Features or with the command below, then a reboot. On a managed laptop, that is a request to IT.',
-              'In WSL2, KVM needs nested virtualization from the Windows host; WSL1 cannot run VMs.',
+              'On Windows, agent-vm runs natively, from PowerShell or Git Bash, with QEMU; it is experimental, not yet tried on a Windows machine. Your folders are `C:/Users/you/project` to it, and `/c/Users/you/project` in the VM, as with 0.2. The volumes file takes `C:/x` or `C:\\x`, and 0.2’s `/c/x`.',
+              'VMs need the Windows Hypervisor Platform feature. It is off by default and only an administrator can turn it on, once, in Windows Features or with the command below, then a reboot. On a managed laptop, that is a request to IT. A start that fails for want of it says so.',
+              'WSL2 is Linux to agent-vm, and its VMs need KVM, which WSL2 has only with nested virtualization from the Windows host. WSL1 cannot run VMs.',
             ],
             list: [],
             code: '# in PowerShell as administrator, then reboot\nDISM /Online /Enable-Feature `\n  /FeatureName:HypervisorPlatform /All',
@@ -361,7 +375,7 @@ export const en = {
           {
             title: 'Paths',
             paras: [
-              'Paths with whitespace, quotes, backslashes or control characters are refused. iCloud Drive paths have spaces: go through a symlink.',
+              'Paths with whitespace, quotes, backslashes, control characters, `{{` (Lima reads it as a template) or bytes that are not UTF-8 are refused. iCloud Drive paths have spaces: go through a symlink. A folder name too long for Lima’s socket paths is cut in the VM’s name, which keeps the hash of the whole path.',
             ],
             list: [],
             code: 'ln -s ~/Library/Mobile\\ Documents/com~apple~CloudDocs/Dev \\\n  ~/Dev\ncd ~/Dev/your-project && agent-vm claude',
@@ -443,28 +457,28 @@ export const en = {
             title: 'Why .git',
             paras: [
               'Git on your machine runs what a repository’s `.git/config` and hooks name: `core.fsmonitor` on every `git status`, hooks on commit. Your editor and prompt run `git status` on their own, so a VM able to write `.git` could run commands on your host within seconds, invisible in `git diff`.',
-              'With a Lima that has `sshfs.readonlyNames`, every `.git` and `.hg` in the shares is read-only for the VM, at any depth, enforced on the host by Lima’s SFTP server. The agent reads the history but cannot commit. It is not merged upstream yet ([lima-vm/lima#5529](https://github.com/lima-vm/lima/issues/5529)), so `agent-vm setup` offers a build that has it. The shares then use `reverse-sshfs`, slower on many files (see [Node.js](#node)), and without sshfs’s cache on the writable ones, so the VM never writes back a file as it was before you changed it: `AGENT_VM_SSHFS_CACHE=1` trades that for speed.',
+              'Every `.git` and `.hg` in the shares is read-only for the VM, at any depth, enforced on your machine by the SFTP server built into agent-vm (Lima’s `sshfs.readonlyNames`, not merged upstream yet: [lima-vm/lima#5529](https://github.com/lima-vm/lima/issues/5529)). The agent reads the history but cannot commit. The shares use `reverse-sshfs`, slower on many files (see [Node.js](#node)), and without sshfs’s cache on the writable ones, so the VM never writes back a file as it was before you changed it: `AGENT_VM_SSHFS_CACHE=1` trades that for speed.',
             ],
             list: [],
-            code: 'brew unlink lima; brew install sylvinus/tap/lima-sylvinus\nagent-vm doctor    # where you stand\n\n# let the agent commit anyway\nagent-vm --unsafe-writable-git claude',
+            code: 'agent-vm doctor    # where you stand\n\n# let the agent commit anyway\nagent-vm --unsafe-writable-git claude',
           },
           {
             title: 'Beyond the name .git',
             paras: [
               'The folder a `core.hooksPath` points to in a share (`.husky` for husky) is read-only too, as is a link on the way to it, and the same goes for the repositories in your writable volumes. A folder holding git’s internals (`HEAD`, `objects/`, `refs/`, a `config`) is a repository under any name: setting `safe.bareRepository` to `explicit` in your global git config makes git ignore it, and one in a writable volume is read-only by its name. A config included from a share, a command or a hook git runs from one, or hooks at the top of a share, are the same kind of door.',
-              'Before a VM boots with writable shares, agent-vm stops on each of these it finds, and on a Lima without `readonlyNames`, and asks: Enter, or no terminal, aborts. `doctor` lists them. `--unsafe-writable-git` (or `AGENT_VM_UNSAFE_WRITABLE_GIT=1` in your shell, never read from the project) lets the agent commit and reopens that path to your host, with a warning on every run.',
+              'Before a VM boots with writable shares, agent-vm stops on each of these it finds, and asks: Enter, or no terminal, aborts. `doctor` lists them. `--unsafe-writable-git` (or `AGENT_VM_UNSAFE_WRITABLE_GIT=1` in your shell, never read from the project) lets the agent commit and reopens that path to your host, with a warning on every run.',
             ],
             list: [],
             code: '',
           },
           {
-            title: 'The Lima build',
+            title: 'Lima, built in',
             paras: [
-              'On Windows, `setup` downloads it and checks it against checksums pinned in agent-vm. Elsewhere, Homebrew installs it, or build it from source.',
-              'A Lima whose answer agent-vm cannot read stops the start with an error, rather than passing for one without `readonlyNames`.',
+              'agent-vm builds Lima, its SFTP server (sshocker and pkg/sftp) and its network stack (gvisor-tap-vsock) from their upstream sources, with [patches](https://github.com/sylvinus/agent-vm/blob/main/patches/README.md) kept small enough to be sent upstream: the read-only names, fixes to the SFTP server (an append that crashed the VM, writes applied out of order), network isolation, the port check. Each running VM is served by an agent-vm process, which is Lima’s host agent.',
+              'Every share is served by the built-in SFTP server, confined to its folder: agent-vm starts no VM whose config says otherwise, whatever set it. A `default.yaml` or `override.yaml` in `~/.agent-vm/lima/_config` would add to every VM’s config, so agent-vm starts no VM while one is there.',
             ],
             list: [],
-            code: '# back to Homebrew’s Lima\nbrew uninstall lima-sylvinus && brew link lima\n\n# the Lima build, without Homebrew (needs Go and make)\ngit clone --depth 1 -b v2.3.0-sylvinus.2 https://github.com/sylvinus/lima\ncd lima && make native && sudo make install',
+            code: '',
           },
         ],
       },
@@ -474,7 +488,7 @@ export const en = {
           {
             title: 'Refused directories and files',
             paras: [
-              'agent-vm will not share your home directory, `/`, its own directory, `~/.agent-vm`, Lima’s directory, or a directory containing one of them: `cd ~ && agent-vm shell` would hand the VM your dotfiles and SSH keys.',
+              'agent-vm will not share your home directory, `/`, its own directory, `~/.agent-vm`, your own Lima’s directory (`~/.lima`), or a directory containing one of them: `cd ~ && agent-vm shell` would hand the VM your dotfiles and SSH keys.',
               'It never reads a file in the project by its path, since the VM can make it a symlink to any file of yours. Its own git calls in a project refuse a bare repository and run no `core.fsmonitor` or pager.',
             ],
             list: [],
@@ -483,7 +497,7 @@ export const en = {
           {
             title: '--readonly, in detail',
             paras: [
-              '`--readonly` covers every share, `rw` volumes included: a writable volume containing the project would be a second way in. Whether the host enforces it is read from what Lima reports, never from the guest. Where it would not (`reverse-sshfs` without `readonlyNames`, virtiofs under QEMU), the flag is refused.',
+              '`--readonly` covers every share, `rw` volumes included: a writable volume containing the project would be a second way in. The built-in SFTP server enforces it on your machine, and agent-vm checks each VM’s config before it boots, never the guest’s word.',
               'A running VM in the other mode is restarted, asked first. Declined, or with no terminal, the command fails, so another session’s read-only VM is never made writable under it.',
             ],
             list: [],
@@ -508,9 +522,18 @@ export const en = {
             code: '',
           },
           {
+            title: 'Guarded files',
+            paras: [
+              'For the first kind, agent-vm guards the files your machine runs on its own: when the VM writes, creates, renames or removes one, at any depth in the shares, a dialog asks you first. A yes holds until the VM stops; a no, for a minute, after which a retry asks again. Where no dialog can be shown (no desktop session), the write is refused and a notification says so; a dialog left unanswered for two minutes refuses it too. `AGENT_VM_GUARDED_WRITES=deny` refuses them all without asking.',
+              'Guarded by default: `.envrc` (direnv), `.vscode/tasks.json`, `.vscode/settings.json` and `.vscode/launch.json` (VS Code), `.pre-commit-config.yaml` (pre-commit), `lefthook.yml` and `.lefthook.yml` (lefthook), `mise.toml` and `.mise.toml` (mise). Files the agent edits as a matter of course, such as a `Makefile` or `package.json`, are not: add them in `~/.agent-vm/guarded`, one path per line, read when a VM starts. `!path` removes a default.',
+            ],
+            list: [],
+            code: '# ~/.agent-vm/guarded\nMakefile               # ask before the VM changes any Makefile\n.github/workflows/ci.yml\n!.vscode/settings.json # no longer asked',
+          },
+          {
             title: 'Keeping your checkout out of reach',
             paras: [
-              'Do not give agent-vm the checkout you work in. Clone the project a second time, run agent-vm there, and `git fetch` its work into your checkout once you have read the diff. Fetching does not check files out, so the agent’s files reach your working tree only when you merge. This needs a Lima that keeps `.git` read-only: otherwise the VM can write the clone’s `.git`, which git then reads.',
+              'Do not give agent-vm the checkout you work in. Clone the project a second time, run agent-vm there, and `git fetch` its work into your checkout once you have read the diff. Fetching does not check files out, so the agent’s files reach your working tree only when you merge. This relies on the clone’s `.git` being read-only for the VM, as it is unless you pass `--unsafe-writable-git`: otherwise the VM can write it, and git then reads it.',
             ],
             list: [],
             code: '# once; --no-local copies objects, no hardlinks\ngit clone --no-local ~/work/app ~/agent/app\n# the agent works there\ncd ~/agent/app && agent-vm claude\n# back in your checkout, when it is done\ncd ~/work/app\ngit fetch ~/agent/app HEAD:agent/review\ngit diff ...agent/review   # read all of it\ngit merge agent/review',
@@ -532,20 +555,20 @@ export const en = {
             title: 'SSH from your machine',
             paras: [
               'Do not connect VS Code Remote-SSH or open-remote-ssh to an agent VM. They run a server in the VM, which root in the VM controls, and the editor on your machine trusts it. Microsoft’s Remote-SSH page says so: “a compromised remote could use the VS Code Remote connection to execute code on your local machine”, and it is by design. Public write-ups show it opening a terminal on the host and running commands there. That removes the boundary agent-vm sets up, which is worse than opening the project in Restricted Mode. JetBrains Gateway does not say it is safer: its security model page says what the backend loads goes to your machine without asking, the backend opens links there (after a prompt), and decides which client version your machine downloads. For language servers and a debugger with the VM’s packages, use [`agent-vm code`](#edit-with-the-vm-s-tools).',
-              'For scripts, `scp` or `rsync`, `agent-vm info` prints the SSH alias as `ssh_host`. Put these lines at the top of `~/.ssh/config`: a `ForwardAgent yes` found before them would hand the VM your SSH keys. `--ssh-port` pins the port for tools that save it.',
+              'For scripts, `scp` or `rsync`, `agent-vm info` prints the SSH alias as `ssh_host`. Put these lines at the top of `~/.ssh/config`: a `ForwardAgent yes` found before them would hand the VM your SSH keys. `lima-*` also matches the VMs of your own Lima, if you have one. `--ssh-port` pins the port for tools that save it.',
             ],
             list: [],
-            code: '# top of ~/.ssh/config\nInclude ~/.lima/*/ssh.config\nHost lima-agent-vm-*\n  ForwardAgent no\n  ForwardX11 no\n\nagent-vm info | grep ^ssh_host   # the alias to use\nagent-vm --ssh-port 2222 shell   # a fixed port',
+            code: '# top of ~/.ssh/config\nInclude ~/.agent-vm/lima/*/ssh.config\nHost lima-*\n  ForwardAgent no\n  ForwardX11 no\n\nagent-vm info | grep ^ssh_host   # the alias to use\nagent-vm --ssh-port 2222 shell   # a fixed port',
           },
           {
             title: 'Shell, commands, hooks',
             paras: [],
             list: [
-              'direnv only loads an `.envrc` you allowed, and a change revokes it.',
-              'mise trusts a config by its path, so the agent can change a trusted `mise.toml`: your shell runs its hooks and sets its env on the next `cd`, agent-vm’s `AGENT_VM_UNSAFE_*` variables included. `mise settings set paranoid true` ties trust to the content.',
+              'direnv only loads an `.envrc` you allowed, and a change revokes it; agent-vm also asks before the VM writes one ([Guarded files](#guarded-files)).',
+              'mise trusts a config by its path: a VM allowed to change a trusted `mise.toml` makes your shell run its hooks and set its env on the next `cd`, agent-vm’s `AGENT_VM_UNSAFE_*` variables included. agent-vm asks before that write; `mise settings set paranoid true` also ties trust to the content. A config under another name (`mise.local.toml`, `.mise/config.toml`) is guarded only once you list it.',
               '`npm run`, `make`, `./gradlew`, `pytest`, `node_modules/.bin`, an activated `.venv`: each runs files the agent can write. Run them in the VM.',
               '`docker compose up` on your machine can mount any folder of yours into a root container. Docker runs in the VM: use it there.',
-              'lefthook and pre-commit keep their commands in the working tree, and husky’s hooks call project scripts: read them in the diff, or commit with `--no-verify`.',
+              'lefthook and pre-commit keep their commands in the working tree: agent-vm asks before the VM changes their config, but not the scripts it names. husky’s hooks call project scripts. Read them in the diff, or commit with `--no-verify`.',
             ],
             code: '',
           },
@@ -580,12 +603,14 @@ export const en = {
           {
             title: 'Network and ports',
             paras: [
-              'The VM reaches the internet and every service on your machine’s loopback, at `192.168.5.2`. Lima forwards every port a VM listens on to your `127.0.0.1` when it is free: a VM that listens first on 5432 receives the connections, and passwords, meant for your local Postgres. Blocking this is [on the roadmap](#roadmap).',
-              'So every VM can reach the editor of every other one. `agent-vm code` gives each its own password, made in that VM, and its own host name, `<vm-name>.localhost`: browsers keep cookies per host name and not per port, so a page a VM serves at `127.0.0.1` does not receive the editor sessions of the others. Chrome and Firefox resolve `*.localhost` themselves; Safari may not, and then `127.0.0.1` in a private window kept for the editor does the same.',
-              'That stops a page, not a VM bent on it. A VM can listen on a port Lima forwards to your machine and send your browser to another VM’s host name on that port: the browser hands it that editor’s session, and the VM can use it on the editor’s own port, with its terminals. Keeping VMs out of each other needs network isolation, which agent-vm does not have yet ([roadmap](#roadmap)). Until then, stop `agent-vm code` (Ctrl-C) when you are not using it, and treat an editor as reachable from every VM that runs.',
+              'A VM reaches the internet, not your machine: its loopback (where the other VMs’ ports are forwarded), its own addresses and your local networks (private, link-local and carrier-grade NAT ranges) are refused, on your machine, by the network stack agent-vm runs for each VM. Root in the VM cannot lift it.',
+              'There is no `~/.agent-vm/network` by default, and none is needed: without it, the VMs reach the whole internet and nothing of your machine or local networks. Write one to open holes, read when a VM starts, one line each: `allow` an address (`192.168.1.20`), an address and port (`192.168.1.20:5432`, `[fd00::5]:80`), a network (`10.8.0.0/16`), or a service on your machine’s loopback, `localhost:PORT` (`localhost` alone opens every port), which the VM reaches at `192.168.5.2`. An `allow` line covers TCP and UDP.',
+              '`domain` lines restrict the internet itself: those domains and their subdomains (`domain github.com` covers `api.github.com`; `*.github.com` means the same) become the only names the VMs resolve, and an address is reachable once agent-vm’s DNS gave it for one of them. `allow` lines still apply. A line it cannot read stops the start, named; `doctor` checks the file. `AGENT_VM_UNSAFE_OPEN_NETWORK=1` in your shell turns isolation off.',
+              'Each port a VM listens on is forwarded to your `127.0.0.1`, and a notification says so. A port a program of yours listens on is left to it, with a notification too: on macOS, a VM listening first on 5432 would otherwise receive the connections, and passwords, meant for your local Postgres. On a free port, what you send goes to the VM: check the notification.',
+              'No VM reaches the editor of another one any more, but `agent-vm code` still gives each its own password, made in that VM, and its own host name, `<vm-name>.localhost`. A VM can serve a page on a forwarded port and send your browser to another VM’s host name on that port; browsers keep cookies per host name and not per port, so the browser hands it that editor’s cookie. The VM cannot use it against the editor itself, being refused your loopback, but stop `agent-vm code` (Ctrl-C) when you are not using it. Chrome and Firefox resolve `*.localhost` themselves; Safari may not, and then `127.0.0.1` in a private window kept for the editor does the same.',
             ],
             list: [],
-            code: '',
+            code: '# ~/.agent-vm/network\nallow localhost:11434       # Ollama on this machine, at 192.168.5.2:11434\nallow 192.168.1.20:5432     # a database on the local network\nallow 10.8.0.0/16           # a VPN\n\n# only these on the internet, subdomains included\ndomain github.com\ndomain npmjs.org',
           },
         ],
       },
@@ -601,7 +626,7 @@ export const en = {
       {
         n: '01',
         title: 'setup builds the template',
-        body: 'Lima creates a Debian 13 VM. `agent-vm.setup.sh` installs the dev tools, Docker, Chromium and the agents inside it, then the VM is stopped and kept as a base template.',
+        body: 'agent-vm creates a Debian 13 VM with the Lima built into it. `agent-vm.setup.sh` installs the dev tools, Docker, Chromium and the agents inside it, then the VM is stopped and kept as a base template.',
       },
       {
         n: '02',
@@ -611,7 +636,7 @@ export const en = {
       {
         n: '03',
         title: 'The agent works unattended',
-        body: 'It is launched with its own auto-approve flag. Lima forwards the ports it opens inside the VM, so a dev server is reachable in your browser as usual.',
+        body: 'It is launched with its own auto-approve flag. It reaches the internet, not your machine. The ports it opens inside the VM are forwarded to yours, so a dev server is reachable in your browser as usual.',
       },
       {
         n: '04',
@@ -622,7 +647,7 @@ export const en = {
     diagram: {
       hostTitle: 'Your machine',
       hostItems: ['SSH keys', 'API tokens', 'Browser sessions', 'git config', 'Everything else'],
-      hostNote: 'Only Lima installed',
+      hostNote: 'Only agent-vm installed',
       boundaryLabel: 'Hypervisor boundary',
       vmTitle: 'The VM',
       vmItems: ['The agent', 'node, python, docker, ...', 'Headless Chromium, ...', 'Ports, forwarded out'],
@@ -633,7 +658,7 @@ export const en = {
         'Your project directory, mounted into the VM at the same path. Your editor and the agent work on the same files, so there is nothing to copy back. Read-write by default, read-only with `--readonly`. Anything else that crosses is something you chose: the env file, and extra mounts listed in `~/.agent-vm/volumes`.',
     },
     isolationNote:
-      'Each VM authenticates on its own: `claude login` happens inside it. Credentials persist across restarts of that VM and are shared with neither the host nor any other VM. The network is shared, though: see [Network and ports](#network-and-ports).',
+      'Each VM authenticates on its own: `claude login` happens inside it. Credentials persist across restarts of that VM and are shared with neither the host nor any other VM. Each VM has its own network stack too, which reaches the internet and not your machine: see [Network and ports](#network-and-ports).',
     contentsTitle: 'What is in the VM',
     contentsLede:
       'The setup wizard offers the default set: everything below except the rows marked no. Answer `n` to pick each item. `--preinstall` takes the names instead, comma-separated, plus `default`, `all` or `none`, and skips the wizard, as does a setup with no terminal.',
@@ -660,7 +685,7 @@ export const en = {
     contentsCode:
       'agent-vm setup --preinstall=default                  # no prompts\nagent-vm setup --preinstall=default,rust             # plus Rust\nagent-vm setup --preinstall=python,docker,claude     # minimal Claude setup\nagent-vm setup --preinstall=default,code-claude      # plus the editor\nagent-vm setup --disk 50 --memory 16 --cpus 8        # a bigger template',
     contentsNote:
-      '`codex` and `pi` pull in `node`, and so does `mcp-chrome` with `chromium` and an agent. Both MCP servers are skipped without `node` and `chromium`. Each editor extension ships its own copy of its agent (200 to 600 MB): the wizard asks whether to keep the command-line one too. Without it, `agent-vm claude` says it is not installed. This is only what the template ships: the agent is root in the VM and has the network, so it installs whatever else it needs.',
+      '`codex` and `pi` pull in `node`, and so does `mcp-chrome` with `chromium` and an agent. Both MCP servers are skipped without `node` and `chromium`. Each editor extension ships its own copy of its agent (200 to 600 MB): the wizard asks whether to keep the command-line one too. Without it, `agent-vm claude` says it is not installed. This is only what the template ships: the agent is root in the VM and reaches the internet, so it installs whatever else it needs.',
     dockerTitle: 'Why not Docker',
     dockerLede:
       'On Linux, containers share the host kernel, so a compromised dependency that finds a kernel bug is on your host. On macOS, Docker Desktop already runs a VM, which narrows the gap, but it is one VM shared by every container rather than one per project. A VM brings its own kernel, and root inside it still has the hypervisor between it and your machine. The practical differences matter as much as the security one.',
@@ -674,7 +699,7 @@ export const en = {
         'None with plain Docker, forwarded by VS Code devcontainers',
         'Nothing, beyond what you put in ~/.agent-vm/env',
       ],
-      ['Outbound network', 'Open', 'Open by default', 'Open (see [the roadmap](#roadmap))'],
+      ['Outbound network', 'Open', 'Open by default', 'The internet, not your machine or local network ([Network and ports](#network-and-ports))'],
       ['Shares the host kernel', 'Yes', 'On Linux; on macOS, the Docker Desktop VM’s', 'No'],
       [
         'Reaching the host needs',
@@ -699,14 +724,19 @@ export const en = {
     title: 'Known gaps.',
     items: [
       {
-        status: 'Needs Lima',
-        title: 'Block outbound network',
-        body: '`--offline` existed and was removed: it set iptables rules inside the VM, where the agent has root and could drop them. Blocking on the host needs a Lima setting that does not exist. QEMU has the flag already (`-netdev user,restrict=on`); on `vz` the user-mode network is Lima’s own gvisor stack, so it would go there. The same block would also close the host loopback, which the guest reaches at `192.168.5.2` today.',
+        status: 'Built, not yet tried',
+        title: 'Windows, natively',
+        body: 'agent-vm runs on Windows without Git Bash now, its paths handled as `C:/...` and seen by the VM as `/c/...`, as in 0.2, and its tests run on any OS. Nothing of it has run on a Windows machine yet: setup, the shares, the network isolation, the port check. Wanted: someone to try it, on x86_64 or arm64, and a dialog for the guarded files there.',
+      },
+      {
+        status: 'Idea',
+        title: 'Review the agent’s writes',
+        body: 'Every write of the VM goes through agent-vm’s SFTP server. It could keep them aside and let you review the diff, and apply all or part of it to the real folder. A first step: the list of every path the VM wrote during a session.',
       },
       {
         status: 'Needs an M3',
         title: 'Run a VM inside the VM',
-        body: 'A `--allow-nested-vm` flag, for testing VM tooling from in there. Lima supports nested virtualization, but it is off by default and cannot be turned on unconditionally: below an Apple M3, `limactl start` fails outright instead of degrading, so every VM would stop starting. The flag would have to detect host support first. Nothing here has an M3 to test it on. It would also hand the agent a hypervisor interface.',
+        body: 'A `--allow-nested-vm` flag, for testing VM tooling from in there. Lima supports nested virtualization, but it is off by default and cannot be turned on unconditionally: below an Apple M3, Lima fails to start the VM instead of degrading, so every VM would stop starting. The flag would have to detect host support first. Nothing here has an M3 to test it on. It would also hand the agent a hypervisor interface.',
       },
       {
         status: 'Designed, not built',
@@ -720,40 +750,43 @@ export const en = {
     eyebrow: 'Contribute',
     title: 'Patches welcome.',
     lede:
-      'agent-vm is a small, readable Bash codebase with a test suite that creates no VMs and needs no network. Bug reports, engine fixes and support for new agents are all welcome.',
+      'agent-vm is a Go program with Lima built in from upstream sources plus small patches, and a test suite that creates no VMs and needs no network. Bug reports, fixes and support for new agents are all welcome.',
     testsTitle: 'Run the tests',
     testsBody:
       'Two suites. Neither touches your VMs, your `~/.agent-vm` or your git config.',
     testsList: [
-      '`./test.sh` runs against a stub `limactl` in a throwaway `HOME`: no VM, no network. It covers naming, resources, the `info` and `version` surface, the `--preinstall` parser and the mount modes.',
-      '`./test-e2e.sh` builds a real VM with `--preinstall=none` in its own `LIMA_HOME`, and checks what a stub cannot: that root in the guest cannot lift `--readonly` or write `.git`, and that a `--scratch` VM sees nothing of the host.',
-      'Unit tests are `tests/NN-*.sh`, run in order in one shell after `tests/helpers.sh`. A new area gets its own file.',
+      '`make test-go` runs against a fake VM backend in throwaway folders: no VM, no network. Where 0.2’s bash version is compared, its results were recorded in `testdata/bashref`.',
+      'The end-to-end tests boot real VMs in their own Lima home: the VM suite checks what a fake cannot (root in the guest cannot write `.git` or a guarded file, nor reach this machine’s loopback); the CLI suite runs `setup` and a command in a project.',
+      '`make fuzz` runs every fuzzer, `FUZZTIME` each: the SFTP server’s name matching and a hostile client’s requests, the git scan, the env and volumes parsers, paths and names.',
     ],
-    testsCode: './test.sh        # fast, no VM\n./test-e2e.sh    # real VM, needs Lima',
-    shellsTitle: 'Test the shells that matter',
+    testsCode: 'make test-go                                       # fast, no VM\ngo test -tags e2e ./internal/vm/ ./internal/cli/   # real VMs\nmake fuzz FUZZTIME=5m',
+    shellsTitle: 'Patch Lima, its SFTP server and its network',
     shellsBody:
-      'macOS still ships bash 3.2, which is stricter about empty array expansion under `set -u` than modern bash. A change that passes on bash 5 can still break on a stock Mac. The `bash:3.2` image has no git, so the tests that need it skip there: add it with `apk`.',
-    shellsCode: 'docker run --rm -v "$PWD:/w" -w /w bash:3.2 ./test.sh\n\n# with git, for the tests that need it\ndocker run --rm -v "$PWD:/w" -w /w bash:3.2 sh -c \'\n  set -e\n  apk add -q git\n  git config --global safe.directory "*"\n  ./test.sh\'',
+      '`third_party/` holds Lima, sshocker, pkg/sftp and gvisor-tap-vsock: each the upstream commit in `third_party/SOURCES` plus the patches in `patches/`, every one small enough to be sent upstream. Never edit `third_party/` by hand: change a patch, then rebuild it. CI checks that nothing else is there.',
+    shellsCode: 'scripts/third-party-sync sshocker   # rebuild from SOURCES and patches\nmake check-third-party              # what CI checks\nmake test-third-party               # their own tests, patched',
     structureTitle: 'Where things live',
     structureHeaders: ['File', 'What it is'],
     structure: [
-      ['agent-vm.sh', 'The command: settings, the lib/ loader, starting a VM, the commands. What goes on your PATH.'],
-      ['lib/', 'The rest of the command, one file per concern: mounts, .git protection, env, doctor, setup…'],
+      ['cmd/agent-vm/', 'The command’s entry point.'],
+      ['internal/cli/', 'The commands, the start flow and its checks, setup, doctor.'],
+      ['internal/vm/', 'The VMs, through the Lima built in.'],
+      ['internal/limaembed/', 'Lima’s host agent, run as `agent-vm hostagent`, and the files it needs.'],
+      ['internal/mounts/, internal/gitguard/', 'The shares, and the .git protection.'],
+      ['internal/netguard/, internal/guard/', 'Network isolation, and the guarded files.'],
+      ['third_party/, patches/', 'Lima and its SFTP server and network stack, upstream plus patches.'],
       ['agent-vm.setup.sh', 'Package installation, runs inside the base VM during setup.'],
-      ['install.sh', 'Former installer, now a wrapper for ./agent-vm.sh install.'],
-      ['test.sh', 'Test suite. Stub limactl, no VMs, no network. Runs tests/, in order.'],
-      ['test-e2e.sh', 'End-to-end suite. Builds a real VM in a throwaway LIMA_HOME.'],
+      ['agent-vm.sh', 'Runs agent-vm: the binary next to it in a release, the one make builds in a clone. 0.2’s links and shell rc lines lead here.'],
       ['runtime.example.sh', 'Commented template for ~/.agent-vm/runtime.sh.'],
       ['CHANGELOG.md', 'What changed in each release.'],
-      ['release.sh', 'Checks, tags and publishes a release. --dry-run first.'],
+      ['release.sh', 'Checks, tags and publishes a release, a tarball per platform. --dry-run first.'],
       ['www/', 'This website. Astro, static, deployed to GitHub Pages.'],
       ['www/public/install.sh', 'The curl installer, served at /install.sh.'],
     ],
     guidelinesTitle: 'Before you open a PR',
     guidelines: [
-      'Keep it bash 3.2 compatible, and run `./test.sh` under `bash:3.2` as well as your own shell.',
       'Every code path should be safe to re-run: check state before acting rather than assuming a clean machine.',
-      'New behaviour gets a test in `tests/` (a new area gets its own `NN-*.sh`). The stub `limactl` makes that cheap.',
+      'New behaviour gets a test, checked to fail without the change. The fake backend (`vmtest.Fake`) makes that cheap.',
+      'A change to Lima, sshocker, pkg/sftp or gvisor-tap-vsock is a patch in `patches/`, small enough to be sent upstream.',
       'Integrator-facing surfaces (`info`, `env`, `version`) are contracts. Adding keys is fine, changing meanings is not.',
       'No secret, token or personal path in a commit, a test fixture or an issue.',
     ],
@@ -776,7 +809,9 @@ export const en = {
       {
         title: 'The machine',
         items: [
-          { name: 'Lima', note: 'Linux VMs on macOS, Linux and Windows. The only host dependency, with QEMU on Windows.', href: 'https://lima-vm.io/' },
+          { name: 'Lima', note: 'Linux VMs on macOS and Linux, built into agent-vm.', href: 'https://lima-vm.io/' },
+          { name: 'sshocker and pkg/sftp', note: 'The SFTP server that serves the shares and keeps .git read-only.', href: 'https://github.com/lima-vm/sshocker' },
+          { name: 'gvisor-tap-vsock', note: 'Each VM’s network stack, where the isolation applies.', href: 'https://github.com/containers/gvisor-tap-vsock' },
           { name: 'Debian', note: 'The guest distribution. Debian 13.', href: 'https://www.debian.org/' },
           { name: 'mise', note: 'Runtime version manager inside the VM.', href: 'https://mise.jdx.dev/' },
         ],

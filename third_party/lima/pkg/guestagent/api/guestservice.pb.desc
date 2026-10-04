@@ -1,0 +1,39 @@
+
+ý
+guestservice.protogoogle/protobuf/empty.protogoogle/protobuf/timestamp.proto"0
+Info(
+local_ports (2.IPPortR
+localPorts"½
+Event.
+time (2.google.protobuf.TimestampRtime3
+added_local_ports (2.IPPortRaddedLocalPorts7
+removed_local_ports (2.IPPortRremovedLocalPorts
+errors (	Rerrors"H
+IPPort
+protocol (	Rprotocol
+ip (	Rip
+port (Rport"r
+Inotify
+
+mount_path (	R	mountPath.
+time (2.google.protobuf.TimestampRtime
+removed (Rremoved"–
+TunnelMessage
+id (	Rid
+protocol (	Rprotocol
+data (Rdata
+
+guest_addr (	R	guestAddr&
+udp_target_addr (	RudpTargetAddr"J
+TimeSyncRequest7
+	host_time (2.google.protobuf.TimestampRhostTime"_
+TimeSyncResponse
+adjusted (Radjusted
+drift_ms (RdriftMs
+error (	Rerror2ù
+GuestService(
+GetInfo.google.protobuf.Empty.Info-
+	GetEvents.google.protobuf.Empty.Event01
+PostInotify.Inotify.google.protobuf.Empty(,
+Tunnel.TunnelMessage.TunnelMessage(0/
+SyncTime.TimeSyncRequest.TimeSyncResponseB/Z-github.com/lima-vm/lima/v2/pkg/guestagent/apibproto3

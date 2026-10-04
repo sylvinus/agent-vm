@@ -1,0 +1,545 @@
+{
+	"TestMainBash": [
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "echo \"$AGENT_VM_VERSION\"",
+			"Env": [
+				"HOME={T0}/001"
+			],
+			"Args": null,
+			"Files": null,
+			"Stdout": "0.2.1\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{T0}/002",
+			"Stdin": "",
+			"Snippet": "agent-vm \"$@\"",
+			"Env": [
+				"HOME={T0}/004",
+				"PATH={T0}/003"
+			],
+			"Args": [
+				"version"
+			],
+			"Files": null,
+			"Stdout": "0.2.1\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{T0}/002",
+			"Stdin": "",
+			"Snippet": "agent-vm \"$@\"",
+			"Env": [
+				"HOME={T0}/006",
+				"PATH={T0}/005"
+			],
+			"Args": [
+				"--version"
+			],
+			"Files": null,
+			"Stdout": "0.2.1\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{T0}/002",
+			"Stdin": "",
+			"Snippet": "agent-vm \"$@\"",
+			"Env": [
+				"HOME={T0}/008",
+				"PATH={T0}/007"
+			],
+			"Args": [
+				"-V"
+			],
+			"Files": null,
+			"Stdout": "0.2.1\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{T0}/002",
+			"Stdin": "",
+			"Snippet": "agent-vm \"$@\"",
+			"Env": [
+				"HOME={T0}/010",
+				"PATH={T0}/009"
+			],
+			"Args": [
+				"version",
+				"--min",
+				"0.1.0"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{T0}/002",
+			"Stdin": "",
+			"Snippet": "agent-vm \"$@\"",
+			"Env": [
+				"HOME={T0}/012",
+				"PATH={T0}/011"
+			],
+			"Args": [
+				"version",
+				"--min=0.2.1"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{T0}/002",
+			"Stdin": "",
+			"Snippet": "agent-vm \"$@\"",
+			"Env": [
+				"HOME={T0}/014",
+				"PATH={T0}/013"
+			],
+			"Args": [
+				"version",
+				"--min",
+				"0.10.0"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "Error: agent-vm 0.2.1 is older than the required 0.10.0.\n  Update it:  git -C '{ROOT}' pull\n",
+			"Code": 1
+		},
+		{
+			"Dir": "{T0}/002",
+			"Stdin": "",
+			"Snippet": "agent-vm \"$@\"",
+			"Env": [
+				"HOME={T0}/016",
+				"PATH={T0}/015"
+			],
+			"Args": [
+				"version",
+				"--min"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "Error: --min needs a version (e.g. --min 0.2.0)\n",
+			"Code": 2
+		},
+		{
+			"Dir": "{T0}/002",
+			"Stdin": "",
+			"Snippet": "agent-vm \"$@\"",
+			"Env": [
+				"HOME={T0}/018",
+				"PATH={T0}/017"
+			],
+			"Args": [
+				"version",
+				"--min",
+				"x"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "Error: --min expects a version like 1.2.3 (got: 'x')\n",
+			"Code": 2
+		},
+		{
+			"Dir": "{T0}/002",
+			"Stdin": "",
+			"Snippet": "agent-vm \"$@\"",
+			"Env": [
+				"HOME={T0}/020",
+				"PATH={T0}/019"
+			],
+			"Args": [
+				"version",
+				"--min",
+				""
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "Error: --min expects a version like 1.2.3 (got: '')\n",
+			"Code": 2
+		},
+		{
+			"Dir": "{T0}/002",
+			"Stdin": "",
+			"Snippet": "agent-vm \"$@\"",
+			"Env": [
+				"HOME={T0}/022",
+				"PATH={T0}/021"
+			],
+			"Args": [
+				"version",
+				"--max",
+				"1"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "Error: unknown option for version: --max\n",
+			"Code": 2
+		},
+		{
+			"Dir": "{T0}/002",
+			"Stdin": "",
+			"Snippet": "agent-vm \"$@\"",
+			"Env": [
+				"HOME={T0}/024",
+				"PATH={T0}/023"
+			],
+			"Args": [
+				"version",
+				"--min",
+				"1.2.3-rc.1"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "Error: agent-vm 0.2.1 is older than the required 1.2.3-rc.1.\n  Update it:  git -C '{ROOT}' pull\n",
+			"Code": 1
+		},
+		{
+			"Dir": "{T0}/002",
+			"Stdin": "",
+			"Snippet": "agent-vm \"$@\"",
+			"Env": [
+				"HOME={T0}/026",
+				"PATH={T0}/025"
+			],
+			"Args": [
+				"name"
+			],
+			"Files": null,
+			"Stdout": "agent-vm-002-e8f570af\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{T0}/002",
+			"Stdin": "",
+			"Snippet": "agent-vm \"$@\"",
+			"Env": [
+				"HOME={T0}/028",
+				"PATH={T0}/027"
+			],
+			"Args": [
+				"name",
+				"{T0}/002"
+			],
+			"Files": null,
+			"Stdout": "agent-vm-002-e8f570af\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{T0}/002",
+			"Stdin": "",
+			"Snippet": "agent-vm \"$@\"",
+			"Env": [
+				"HOME={T0}/030",
+				"PATH={T0}/029"
+			],
+			"Args": [
+				"name",
+				"."
+			],
+			"Files": null,
+			"Stdout": "agent-vm-002-e8f570af\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{T0}/002",
+			"Stdin": "",
+			"Snippet": "agent-vm \"$@\"",
+			"Env": [
+				"HOME={T0}/032",
+				"PATH={T0}/031"
+			],
+			"Args": [
+				"name",
+				"{T0}/002/missing"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "Error: no such directory: {T0}/002/missing\n",
+			"Code": 1
+		},
+		{
+			"Dir": "{T0}/002",
+			"Stdin": "",
+			"Snippet": "agent-vm \"$@\"",
+			"Env": [
+				"HOME={T0}/034",
+				"PATH={T0}/033"
+			],
+			"Args": [
+				"frobnicate"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "Unknown command: frobnicate\nRun 'agent-vm help' for usage.\n",
+			"Code": 1
+		},
+		{
+			"Dir": "{T0}/002",
+			"Stdin": "",
+			"Snippet": "agent-vm \"$@\"",
+			"Env": [
+				"HOME={T0}/036",
+				"PATH={T0}/035"
+			],
+			"Args": [
+				"--disk"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "Error: --disk needs a value.\n",
+			"Code": 1
+		},
+		{
+			"Dir": "{T0}/002",
+			"Stdin": "",
+			"Snippet": "agent-vm \"$@\"",
+			"Env": [
+				"HOME={T0}/038",
+				"PATH={T0}/037"
+			],
+			"Args": [
+				"--disk",
+				"10G",
+				"claude"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "Error: --disk must be a positive integer (got: '10G')\n",
+			"Code": 1
+		},
+		{
+			"Dir": "{T0}/002",
+			"Stdin": "",
+			"Snippet": "agent-vm \"$@\"",
+			"Env": [
+				"HOME={T0}/040",
+				"PATH={T0}/039"
+			],
+			"Args": [
+				"--disk=0",
+				"shell"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "Error: --disk must be a positive integer (got: '0')\n",
+			"Code": 1
+		},
+		{
+			"Dir": "{T0}/002",
+			"Stdin": "",
+			"Snippet": "agent-vm \"$@\"",
+			"Env": [
+				"HOME={T0}/042",
+				"PATH={T0}/041"
+			],
+			"Args": [
+				"--memory",
+				"-1"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "Error: --memory must be a positive integer (got: '-1')\n",
+			"Code": 1
+		},
+		{
+			"Dir": "{T0}/002",
+			"Stdin": "",
+			"Snippet": "agent-vm \"$@\"",
+			"Env": [
+				"HOME={T0}/044",
+				"PATH={T0}/043"
+			],
+			"Args": [
+				"--ram=x"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "Error: --memory must be a positive integer (got: 'x')\n",
+			"Code": 1
+		},
+		{
+			"Dir": "{T0}/002",
+			"Stdin": "",
+			"Snippet": "agent-vm \"$@\"",
+			"Env": [
+				"HOME={T0}/046",
+				"PATH={T0}/045"
+			],
+			"Args": [
+				"--cpus",
+				"01"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "Error: --cpus must be a positive integer (got: '01')\n",
+			"Code": 1
+		},
+		{
+			"Dir": "{T0}/002",
+			"Stdin": "",
+			"Snippet": "agent-vm \"$@\"",
+			"Env": [
+				"HOME={T0}/048",
+				"PATH={T0}/047"
+			],
+			"Args": [
+				"--ssh-port",
+				"80"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "Error: --ssh-port must be 0 or a port from 1024 to 65535 (got: '80')\n",
+			"Code": 1
+		},
+		{
+			"Dir": "{T0}/002",
+			"Stdin": "",
+			"Snippet": "agent-vm \"$@\"",
+			"Env": [
+				"HOME={T0}/050",
+				"PATH={T0}/049"
+			],
+			"Args": [
+				"--ssh-port",
+				"70000"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "Error: --ssh-port must be 0 or a port from 1024 to 65535 (got: '70000')\n",
+			"Code": 1
+		},
+		{
+			"Dir": "{T0}/002",
+			"Stdin": "",
+			"Snippet": "agent-vm \"$@\"",
+			"Env": [
+				"HOME={T0}/052",
+				"PATH={T0}/051"
+			],
+			"Args": [
+				"--ssh-port=00"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "Error: --ssh-port must be 0 or a port from 1024 to 65535 (got: '00')\n",
+			"Code": 1
+		},
+		{
+			"Dir": "{T0}/002",
+			"Stdin": "",
+			"Snippet": "agent-vm \"$@\"",
+			"Env": [
+				"HOME={T0}/054",
+				"PATH={T0}/053"
+			],
+			"Args": [
+				"--readonly",
+				"stop"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "Error: --readonly is an option for the commands that start a VM (claude, opencode, codex, vibe, pi, shell, run, code), not for 'stop'.\n",
+			"Code": 1
+		},
+		{
+			"Dir": "{T0}/002",
+			"Stdin": "",
+			"Snippet": "agent-vm \"$@\"",
+			"Env": [
+				"HOME={T0}/056",
+				"PATH={T0}/055"
+			],
+			"Args": [
+				"--disk",
+				"10",
+				"--rm",
+				"list"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "Error: --disk is an option for the commands that start a VM (claude, opencode, codex, vibe, pi, shell, run, code), not for 'list'.\n",
+			"Code": 1
+		},
+		{
+			"Dir": "{T0}/002",
+			"Stdin": "",
+			"Snippet": "agent-vm \"$@\"",
+			"Env": [
+				"HOME={T0}/058",
+				"PATH={T0}/057"
+			],
+			"Args": [
+				"--rm",
+				"version"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "Error: --rm is an option for the commands that start a VM (claude, opencode, codex, vibe, pi, shell, run, code), not for 'version'.\n",
+			"Code": 1
+		},
+		{
+			"Dir": "{T0}/002",
+			"Stdin": "",
+			"Snippet": "agent-vm \"$@\"",
+			"Env": [
+				"HOME={T0}/060",
+				"PATH={T0}/059"
+			],
+			"Args": [
+				"--scratch",
+				"help"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "Error: --scratch is an option for the commands that start a VM (claude, opencode, codex, vibe, pi, shell, run, code), not for 'help'.\n",
+			"Code": 1
+		},
+		{
+			"Dir": "{T0}/002",
+			"Stdin": "",
+			"Snippet": "agent-vm \"$@\"",
+			"Env": [
+				"HOME={T0}/062",
+				"PATH={T0}/061"
+			],
+			"Args": [
+				"--unsafe-writable-git=1",
+				"name"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "Error: --unsafe-writable-git=1 is an option for the commands that start a VM (claude, opencode, codex, vibe, pi, shell, run, code), not for 'name'.\n",
+			"Code": 1
+		},
+		{
+			"Dir": "{T0}/002",
+			"Stdin": "",
+			"Snippet": "agent-vm \"$@\"",
+			"Env": [
+				"HOME={T0}/064",
+				"PATH={T0}/063"
+			],
+			"Args": [
+				"--unsafe-disable-security-prompts",
+				"doctor"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "Error: --unsafe-disable-security-prompts is an option for the commands that start a VM (claude, opencode, codex, vibe, pi, shell, run, code), not for 'doctor'.\n",
+			"Code": 1
+		}
+	]
+}

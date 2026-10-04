@@ -1,0 +1,309 @@
+// SPDX-FileCopyrightText: Copyright The Lima Authors
+// SPDX-License-Identifier: Apache-2.0
+
+package autostart
+
+import (
+	"runtime"
+	"testing"
+
+	"gotest.tools/v3/assert"
+
+	"github.com/lima-vm/lima/v2/pkg/autostart/launchd"
+	"github.com/lima-vm/lima/v2/pkg/autostart/systemd"
+)
+
+var (
+	Launchd = &TemplateFileBasedManager{
+		filePath:              launchd.GetPlistPath,
+		template:              launchd.Template,
+		enabler:               launchd.EnableDisableService,
+		autoStartedIdentifier: launchd.AutoStartedServiceName,
+		requestStart:          launchd.RequestStart,
+		requestStop:           launchd.RequestStop,
+	}
+	LaunchdKeepAlive = &TemplateFileBasedManager{
+		filePath:              launchd.GetPlistPath,
+		template:              launchd.Template,
+		enabler:               launchd.EnableDisableService,
+		autoStartedIdentifier: launchd.AutoStartedServiceName,
+		requestStart:          launchd.RequestStart,
+		requestStop:           launchd.RequestStop,
+		extraTemplateVars:     map[string]string{"KeepAlive": "true"},
+	}
+	LaunchdDaemon = &TemplateFileBasedManager{
+		filePath:          launchd.GetDaemonPlistPath,
+		template:          launchd.DaemonTemplate,
+		extraTemplateVars: map[string]string{"UserName": "alice"},
+	}
+	LaunchdDaemonKeepAlive = &TemplateFileBasedManager{
+		filePath:          launchd.GetDaemonPlistPath,
+		template:          launchd.DaemonTemplate,
+		extraTemplateVars: map[string]string{"UserName": "alice", "KeepAlive": "true"},
+	}
+	Systemd = &TemplateFileBasedManager{
+		filePath:              systemd.GetUnitPath,
+		template:              systemd.Template,
+		enabler:               systemd.EnableDisableUnit,
+		autoStartedIdentifier: systemd.AutoStartedUnitName,
+		requestStart:          systemd.RequestStart,
+		requestStop:           systemd.RequestStop,
+		extraTemplateVars:     map[string]string{"Restart": "on-failure"},
+	}
+	SystemdNoKeepAlive = &TemplateFileBasedManager{
+		filePath:              systemd.GetUnitPath,
+		template:              systemd.Template,
+		enabler:               systemd.EnableDisableUnit,
+		autoStartedIdentifier: systemd.AutoStartedUnitName,
+		requestStart:          systemd.RequestStart,
+		requestStop:           systemd.RequestStop,
+		extraTemplateVars:     map[string]string{"Restart": "no"},
+	}
+)
+
+func TestRenderTemplate(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("skipping testing on windows host")
+	}
+	tests := []struct {
+		Manager       *TemplateFileBasedManager
+		Name          string
+		InstanceName  string
+		Expected      string
+		WorkDir       string
+		GetExecutable func() (string, error)
+	}{
+		{
+			Manager:      Launchd,
+			Name:         "render darwin launchd plist",
+			InstanceName: "default",
+			Expected: `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>io.lima-vm.autostart.default</string>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>LIMA_HOME</key>
+		<string>/some/lima/home</string>
+	</dict>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/limactl</string>
+		<string>start</string>
+		<string>default</string>
+		<string>--foreground</string>
+	</array>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>StandardErrorPath</key>
+	<string>launchd.stderr.log</string>
+	<key>StandardOutPath</key>
+	<string>launchd.stdout.log</string>
+	<key>WorkingDirectory</key>
+	<string>/some/path</string>
+	<key>ProcessType</key>
+	<string>Background</string>
+</dict>
+</plist>
+`,
+			GetExecutable: func() (string, error) {
+				return "/limactl", nil
+			},
+			WorkDir: "/some/path",
+		},
+		{
+			Manager:      LaunchdDaemon,
+			Name:         "render darwin launchd daemon plist",
+			InstanceName: "k3s",
+			Expected: `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>io.lima-vm.daemon.k3s</string>
+	<key>UserName</key>
+	<string>alice</string>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>LIMA_HOME</key>
+		<string>/some/lima/home</string>
+	</dict>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/limactl</string>
+		<string>start</string>
+		<string>k3s</string>
+		<string>--foreground</string>
+	</array>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>StandardErrorPath</key>
+	<string>launchd.stderr.log</string>
+	<key>StandardOutPath</key>
+	<string>launchd.stdout.log</string>
+	<key>WorkingDirectory</key>
+	<string>/some/path</string>
+	<key>ProcessType</key>
+	<string>Background</string>
+</dict>
+</plist>
+`,
+			GetExecutable: func() (string, error) {
+				return "/limactl", nil
+			},
+			WorkDir: "/some/path",
+		},
+		{
+			Manager:      LaunchdKeepAlive,
+			Name:         "render darwin launchd plist with keep-alive enabled",
+			InstanceName: "default",
+			Expected: `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>io.lima-vm.autostart.default</string>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>LIMA_HOME</key>
+		<string>/some/lima/home</string>
+	</dict>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/limactl</string>
+		<string>start</string>
+		<string>default</string>
+		<string>--foreground</string>
+	</array>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>KeepAlive</key>
+	<dict>
+		<key>SuccessfulExit</key>
+		<false/>
+	</dict>
+	<key>StandardErrorPath</key>
+	<string>launchd.stderr.log</string>
+	<key>StandardOutPath</key>
+	<string>launchd.stdout.log</string>
+	<key>WorkingDirectory</key>
+	<string>/some/path</string>
+	<key>ProcessType</key>
+	<string>Background</string>
+</dict>
+</plist>
+`,
+			GetExecutable: func() (string, error) {
+				return "/limactl", nil
+			},
+			WorkDir: "/some/path",
+		},
+		{
+			Manager:      LaunchdDaemonKeepAlive,
+			Name:         "render darwin launchd daemon plist with keep-alive enabled",
+			InstanceName: "k3s",
+			Expected: `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>io.lima-vm.daemon.k3s</string>
+	<key>UserName</key>
+	<string>alice</string>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>LIMA_HOME</key>
+		<string>/some/lima/home</string>
+	</dict>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/limactl</string>
+		<string>start</string>
+		<string>k3s</string>
+		<string>--foreground</string>
+	</array>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>KeepAlive</key>
+	<dict>
+		<key>SuccessfulExit</key>
+		<false/>
+	</dict>
+	<key>StandardErrorPath</key>
+	<string>launchd.stderr.log</string>
+	<key>StandardOutPath</key>
+	<string>launchd.stdout.log</string>
+	<key>WorkingDirectory</key>
+	<string>/some/path</string>
+	<key>ProcessType</key>
+	<string>Background</string>
+</dict>
+</plist>
+`,
+			GetExecutable: func() (string, error) {
+				return "/limactl", nil
+			},
+			WorkDir: "/some/path",
+		},
+		{
+			Manager:      Systemd,
+			Name:         "render linux systemd service",
+			InstanceName: "default",
+			Expected: `[Unit]
+Description=Lima - Linux virtual machines, with a focus on running containers.
+Documentation=man:lima(1)
+
+[Service]
+Environment=LIMA_HOME=/some/lima/home
+ExecStart=/limactl start %i --foreground
+WorkingDirectory=%h
+Type=simple
+TimeoutSec=10
+Restart=on-failure
+
+[Install]
+WantedBy=default.target
+`,
+			GetExecutable: func() (string, error) {
+				return "/limactl", nil
+			},
+			WorkDir: "/some/path",
+		},
+		{
+			Manager:      SystemdNoKeepAlive,
+			Name:         "render linux systemd service with keep-alive disabled",
+			InstanceName: "default",
+			Expected: `[Unit]
+Description=Lima - Linux virtual machines, with a focus on running containers.
+Documentation=man:lima(1)
+
+[Service]
+Environment=LIMA_HOME=/some/lima/home
+ExecStart=/limactl start %i --foreground
+WorkingDirectory=%h
+Type=simple
+TimeoutSec=10
+Restart=no
+
+[Install]
+WantedBy=default.target
+`,
+			GetExecutable: func() (string, error) {
+				return "/limactl", nil
+			},
+			WorkDir: "/some/path",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.Name, func(t *testing.T) {
+			// Pin LIMA_HOME so the rendered unit does not depend on the host running the test.
+			// The directory does not exist, so LimaDir() returns it without resolving symlinks.
+			t.Setenv("LIMA_HOME", "/some/lima/home")
+			tmpl, err := tt.Manager.renderTemplate(tt.InstanceName, tt.WorkDir, tt.GetExecutable)
+			assert.NilError(t, err)
+			assert.Equal(t, string(tmpl), tt.Expected)
+		})
+	}
+}

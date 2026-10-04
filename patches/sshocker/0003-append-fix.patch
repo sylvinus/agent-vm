@@ -1,0 +1,114 @@
+diff --git a/pkg/reversesshfs/rooted.go b/pkg/reversesshfs/rooted.go
+index fb39721..f97c31f 100644
+--- a/pkg/reversesshfs/rooted.go
++++ b/pkg/reversesshfs/rooted.go
+@@ -3,6 +3,7 @@
+ package reversesshfs
+ 
+ import (
++	"encoding/binary"
+ 	"errors"
+ 	"io"
+ 	"os"
+@@ -168,6 +169,17 @@ func (h *rootedHandlers) OpenFile(r *sftp.Request) (sftp.WriterAtReaderAt, error
+ 	return h.openFile(r)
+ }
+ 
++// openMode returns the permissions sent with an Open request.
++// For Open, pkg/sftp puts the open flags in r.Flags and drops the attribute flags,
++// so r.AttrFlags and r.Attributes must not be used: SSH_FXF_APPEND reads as permissions.
++// Permissions alone are the only 4-byte attributes, which is what sshfs always sends.
++func openMode(r *sftp.Request) (uint32, bool) {
++	if len(r.Attrs) != 4 {
++		return 0, false
++	}
++	return binary.BigEndian.Uint32(r.Attrs) & 0o7777, true
++}
++
+ // Filecmd implements sftp.FileCmder.
+ func (h *rootedHandlers) Filecmd(r *sftp.Request) error {
+ 	switch r.Method {
+diff --git a/pkg/reversesshfs/rooted_test.go b/pkg/reversesshfs/rooted_test.go
+index bfd630e..d6a186f 100644
+--- a/pkg/reversesshfs/rooted_test.go
++++ b/pkg/reversesshfs/rooted_test.go
+@@ -208,6 +208,51 @@ func TestRootedChmodWithoutReadPermission(t *testing.T) {
+ 	}
+ }
+ 
++// SSH_FXF_APPEND has the bit of SSH_FILEXFER_ATTR_PERMISSIONS: an append open used to
++// panic the server, and with it the process serving the mount.
++func TestRootedOpenAppend(t *testing.T) {
++	c, root := setupRooted(t, false)
++	for _, s := range []string{"src/main.go", "src/new.go"} {
++		f, err := c.OpenFile(filepath.Join(root, s), os.O_WRONLY|os.O_APPEND|os.O_CREATE)
++		if err != nil {
++			t.Fatalf("%s: %v", s, err)
++		}
++		// The server ignores SSH_FXF_APPEND: the client sends the offset, as sshfs does.
++		if _, err := f.Seek(0, io.SeekEnd); err != nil {
++			t.Fatalf("%s: %v", s, err)
++		}
++		if _, err := f.Write([]byte("+")); err != nil {
++			t.Fatalf("%s: %v", s, err)
++		}
++		f.Close()
++	}
++	for s, want := range map[string]string{"src/main.go": "orig+", "src/new.go": "+"} {
++		if b, err := os.ReadFile(filepath.Join(root, s)); err != nil || string(b) != want {
++			t.Fatalf("%s: %q, %v", s, b, err)
++		}
++	}
++}
++
++// sshfs sends its open flags with the permissions alone as attributes.
++func TestRootedOpenMode(t *testing.T) {
++	if runtime.GOOS == "windows" {
++		t.Skip("mode bits other than the owner write bit are not supported on Windows")
++	}
++	_, root, h := setupRootedHandlers(t, false)
++	const write, appendFlag, creat = 0x2, 0x4, 0x8
++	r := sftp.NewRequest("Put", filepath.Join(root, "src", "run.sh"))
++	r.Flags = write | appendFlag | creat
++	r.Attrs = []byte{0, 0, 0o1, 0o355} // 0o755
++	f, err := h.openFile(r)
++	if err != nil {
++		t.Fatal(err)
++	}
++	f.Close()
++	if fi, err := os.Stat(filepath.Join(root, "src", "run.sh")); err != nil || fi.Mode().Perm() != 0o755 {
++		t.Fatalf("%v, %v", fi, err)
++	}
++}
++
+ func TestRootedDeniesProtectedWrites(t *testing.T) {
+ 	type env struct {
+ 		c    *sftp.Client
+diff --git a/pkg/reversesshfs/rooted_unix.go b/pkg/reversesshfs/rooted_unix.go
+index f6d757d..81eb662 100644
+--- a/pkg/reversesshfs/rooted_unix.go
++++ b/pkg/reversesshfs/rooted_unix.go
+@@ -104,8 +104,8 @@ func (h *rootedHandlers) openFile(r *sftp.Request) (*os.File, error) {
+ 		flags |= unix.O_EXCL
+ 	}
+ 	var mode uint32 = 0o644
+-	if r.AttrFlags().Permissions {
+-		mode = r.Attributes().Mode & 0o7777
++	if m, ok := openMode(r); ok {
++		mode = m
+ 	}
+ 	dirfd, base, err := h.openParent(rel)
+ 	if err != nil {
+diff --git a/pkg/reversesshfs/rooted_windows.go b/pkg/reversesshfs/rooted_windows.go
+index 3d95be4..eb2dece 100644
+--- a/pkg/reversesshfs/rooted_windows.go
++++ b/pkg/reversesshfs/rooted_windows.go
+@@ -248,7 +248,7 @@ func (h *rootedHandlers) openFile(r *sftp.Request) (*os.File, error) {
+ 		disposition = windows.FILE_OPEN_IF
+ 	}
+ 	var attrs uint32 = fileAttributeNormal
+-	if r.AttrFlags().Permissions && r.Attributes().Mode&0o200 == 0 {
++	if m, ok := openMode(r); ok && m&0o200 == 0 {
+ 		attrs = fileAttributeReadonly
+ 	}
+ 	fh, err := ntCreate(parent, base, access, attrs, disposition, options, windows.OBJ_DONT_REPARSE)

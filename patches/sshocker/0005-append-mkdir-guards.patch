@@ -1,0 +1,219 @@
+diff -ruN a/pkg/reversesshfs/rooted.go b/pkg/reversesshfs/rooted.go
+--- a/pkg/reversesshfs/rooted.go	2026-10-02 20:37:08.075796246 +0200
++++ b/pkg/reversesshfs/rooted.go	2026-10-02 20:40:29.092778643 +0200
+@@ -164,24 +164,45 @@
+ // writableFile is a file opened by openFile: checked against readonlyNames, without following symlinks.
+ // FSETSTAT applies to it directly. Files opened for reading only may have been opened through a symlink
+ // to a read-only name, so FSETSTAT on them goes through the path checks of setstat.
+-type writableFile struct{ *os.File }
++type writableFile struct {
++	*os.File
++	appends bool // opened with SSH_FXF_APPEND
++}
++
++// WriteAt ignores off for a file opened with SSH_FXF_APPEND, and writes at the end of the file
++// as it is on the host, as OpenSSH's sftp-server does: the client computed off from the size it
++// knew, and the host may have grown the file since. Requests are processed in order, so writes keep theirs.
++func (f writableFile) WriteAt(b []byte, off int64) (int, error) {
++	if f.appends {
++		return appendWrite(f.File, b)
++	}
++	return f.File.WriteAt(b, off)
++}
++
++func (h *rootedHandlers) openWritable(r *sftp.Request) (writableFile, error) {
++	f, err := h.openFile(r)
++	if err != nil {
++		return writableFile{}, err
++	}
++	return writableFile{File: f, appends: r.Pflags().Append}, nil
++}
+ 
+ // Filewrite implements sftp.FileWriter.
+ func (h *rootedHandlers) Filewrite(r *sftp.Request) (io.WriterAt, error) {
+-	f, err := h.openFile(r)
++	f, err := h.openWritable(r)
+ 	if err != nil {
+ 		return nil, err
+ 	}
+-	return writableFile{f}, nil
++	return f, nil
+ }
+ 
+ // OpenFile implements sftp.OpenFileWriter.
+ func (h *rootedHandlers) OpenFile(r *sftp.Request) (sftp.WriterAtReaderAt, error) {
+-	f, err := h.openFile(r)
++	f, err := h.openWritable(r)
+ 	if err != nil {
+ 		return nil, err
+ 	}
+-	return writableFile{f}, nil
++	return f, nil
+ }
+ 
+ // openMode returns the permissions sent with an Open request.
+@@ -251,7 +272,7 @@
+ 	// SFTP v3 times are in seconds.
+ 	mtime := uint32(fi.ModTime().Unix())
+ 	attrs := r.Attributes()
+-	return attrs.Atime == mtime && attrs.Mtime == mtime
++	return attrs != nil && attrs.Atime == mtime && attrs.Mtime == mtime
+ }
+ 
+ // Filelist implements sftp.FileLister.
+diff -ruN a/pkg/reversesshfs/rooted_test.go b/pkg/reversesshfs/rooted_test.go
+--- a/pkg/reversesshfs/rooted_test.go	2026-10-02 20:37:08.075796246 +0200
++++ b/pkg/reversesshfs/rooted_test.go	2026-10-02 20:40:29.092778643 +0200
+@@ -217,10 +217,7 @@
+ 		if err != nil {
+ 			t.Fatalf("%s: %v", s, err)
+ 		}
+-		// The server ignores SSH_FXF_APPEND: the client sends the offset, as sshfs does.
+-		if _, err := f.Seek(0, io.SeekEnd); err != nil {
+-			t.Fatalf("%s: %v", s, err)
+-		}
++		// Offset 0: with SSH_FXF_APPEND, writes go to the end whatever the client sends.
+ 		if _, err := f.Write([]byte("+")); err != nil {
+ 			t.Fatalf("%s: %v", s, err)
+ 		}
+@@ -233,6 +230,54 @@
+ 	}
+ }
+ 
++// The host grows the file after the client learned its size: an append must not overwrite that.
++func TestRootedAppendAfterHostWrite(t *testing.T) {
++	c, root := setupRooted(t, false)
++	p := filepath.Join(root, "src", "main.go")
++	f, err := c.OpenFile(p, os.O_WRONLY|os.O_APPEND)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer f.Close()
++	if _, err := f.WriteAt([]byte("-guest1"), 4); err != nil {
++		t.Fatal(err)
++	}
++	hf, err := os.OpenFile(p, os.O_WRONLY|os.O_APPEND, 0)
++	if err != nil {
++		t.Fatal(err)
++	}
++	if _, err := hf.WriteString("-host"); err != nil {
++		t.Fatal(err)
++	}
++	hf.Close()
++	if _, err := f.WriteAt([]byte("-guest2"), 11); err != nil {
++		t.Fatal(err)
++	}
++	if b, err := os.ReadFile(p); err != nil || string(b) != "orig-guest1-host-guest2" {
++		t.Fatalf("%q, %v", b, err)
++	}
++}
++
++// Attributes shorter than their flags announce: an error, not a panic of the process serving the mount.
++func TestRootedSetstatShortAttributes(t *testing.T) {
++	_, root, h := setupRootedHandlers(t, false)
++	for _, rel := range []string{"src/main.go", ".git/config"} {
++		for _, flags := range []uint32{0x1, 0x2, 0x4, 0x8} {
++			r := sftp.NewRequest("Setstat", filepath.Join(root, rel))
++			r.Flags = flags
++			if err := h.Filecmd(r); err == nil {
++				t.Fatalf("%s, flags %#x: no error", rel, flags)
++			}
++		}
++	}
++	r := sftp.NewRequest("Mkdir", filepath.Join(root, "src", "dir"))
++	r.Flags = 0x4
++	if err := h.Filecmd(r); err != nil {
++		t.Fatal(err)
++	}
++	assertUnchanged(t, root)
++}
++
+ // FSTAT and FSETSTAT apply to the open file, not to whatever is now at the path it was opened with.
+ func TestRootedFstatFsetstatAfterRename(t *testing.T) {
+ 	c, root := setupRooted(t, false)
+diff -ruN a/pkg/reversesshfs/rooted_unix.go b/pkg/reversesshfs/rooted_unix.go
+--- a/pkg/reversesshfs/rooted_unix.go	2026-10-02 20:37:08.075796246 +0200
++++ b/pkg/reversesshfs/rooted_unix.go	2026-10-02 20:40:29.092778643 +0200
+@@ -14,6 +14,12 @@
+ 
+ var errDenied error = unix.EACCES
+ 
++// appendWrite writes b at the end of f, which openFile opened with O_APPEND.
++// pwrite(2) would honor its offset on macOS.
++func appendWrite(f *os.File, b []byte) (int, error) {
++	return f.Write(b)
++}
++
+ type rootedSys struct {
+ 	rootFD int
+ }
+@@ -93,7 +99,10 @@
+ 	default:
+ 		flags |= unix.O_RDONLY
+ 	}
+-	// O_APPEND is not set, as it conflicts with WriteAt; the client sends offsets.
++	// See writableFile.WriteAt.
++	if pf.Append {
++		flags |= unix.O_APPEND
++	}
+ 	if pf.Creat {
+ 		flags |= unix.O_CREAT
+ 	}
+@@ -148,8 +157,8 @@
+ 
+ func (h *rootedHandlers) mkdir(r *sftp.Request) error {
+ 	var mode uint32 = 0o755
+-	if r.AttrFlags().Permissions {
+-		mode = r.Attributes().Mode & 0o7777
++	if a := r.Attributes(); a != nil && r.AttrFlags().Permissions {
++		mode = a.Mode & 0o7777
+ 	}
+ 	return h.inParent("mkdir", r.Filepath, func(dirfd int, base string) error {
+ 		return unix.Mkdirat(dirfd, base, mode)
+@@ -211,13 +220,16 @@
+ 	if err != nil {
+ 		return err
+ 	}
++	flags := r.AttrFlags()
++	attrs := r.Attributes()
++	if attrs == nil {
++		return unix.EINVAL
++	}
+ 	dirfd, base, err := h.openParent(rel)
+ 	if err != nil {
+ 		return err
+ 	}
+ 	defer unix.Close(dirfd)
+-	flags := r.AttrFlags()
+-	attrs := r.Attributes()
+ 	if flags.Size {
+ 		fd, err := unix.Openat(dirfd, base, unix.O_WRONLY|unix.O_NOFOLLOW|unix.O_CLOEXEC|unix.O_NONBLOCK, 0)
+ 		if err != nil {
+diff -ruN a/pkg/reversesshfs/rooted_windows.go b/pkg/reversesshfs/rooted_windows.go
+--- a/pkg/reversesshfs/rooted_windows.go	2026-10-02 20:37:08.075796246 +0200
++++ b/pkg/reversesshfs/rooted_windows.go	2026-10-02 20:40:29.092778643 +0200
+@@ -15,6 +15,15 @@
+ 
+ var errDenied error = windows.ERROR_ACCESS_DENIED
+ 
++// appendWrite writes b at the end of f, as it is when the write happens.
++func appendWrite(f *os.File, b []byte) (int, error) {
++	var n uint32
++	// Offset and OffsetHigh both 0xFFFFFFFF: write to the end of the file (WriteFile documentation).
++	ov := windows.Overlapped{Offset: 0xFFFFFFFF, OffsetHigh: 0xFFFFFFFF}
++	err := windows.WriteFile(windows.Handle(f.Fd()), b, &n, &ov)
++	return int(n), err
++}
++
+ // The first four are not defined in x/sys/windows.
+ const (
+ 	fileNameNormalized        = 0x0 // FILE_NAME_NORMALIZED
+@@ -240,7 +249,7 @@
+ 	default:
+ 		access = windows.FILE_GENERIC_READ
+ 	}
+-	// FILE_APPEND_DATA semantics are not requested, as the client sends offsets.
++	// Appends are done by writableFile.WriteAt, so FILE_WRITE_DATA stays for truncation.
+ 	disposition := uint32(windows.FILE_OPEN)
+ 	switch {
+ 	case pf.Creat && pf.Excl:

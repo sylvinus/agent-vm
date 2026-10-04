@@ -1,0 +1,36 @@
+{
+	"TestBoxBash": [
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_have_tty() { return 1; }; printf '%s' \"$2\" | _agent_vm_box \"$1\"",
+			"Env": [
+				"HOME={T0}/001"
+			],
+			"Args": [
+				"Lima cannot keep .git read-only",
+				"An agent could write .git/config or .git/hooks in your projects, and git on this machine would run them, even when your editor or shell prompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword and then some more words after it\n"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "\n+- Lima cannot keep .git read-only -------------------------------------\n|\n| An agent could write .git/config or .git/hooks in your projects, and\n| git on this machine would run them, even when your editor or shell\n| prompt calls git.\n|\n|   brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\n| short\n| averyveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword\n| and then some more words after it\n|\n+-----------------------------------------------------------------------\n",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_have_tty() { return 1; }; printf '%s' \"$2\" | _agent_vm_box \"$1\"",
+			"Env": [
+				"HOME={T0}/002"
+			],
+			"Args": [
+				"tttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttt",
+				"An agent could write .git/config or .git/hooks in your projects, and git on this machine would run them, even when your editor or shell prompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword and then some more words after it\n"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "\n+- tttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttttt -\n|\n| An agent could write .git/config or .git/hooks in your projects, and\n| git on this machine would run them, even when your editor or shell\n| prompt calls git.\n|\n|   brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\n| short\n| averyveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword\n| and then some more words after it\n|\n+-----------------------------------------------------------------------\n",
+			"Code": 0
+		}
+	]
+}

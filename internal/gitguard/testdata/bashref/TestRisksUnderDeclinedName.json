@@ -1,0 +1,23 @@
+{
+	"TestRisksUnderDeclinedName": [
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/002",
+				"HOME={T0}/001/home",
+				"GIT_CONFIG_NOSYSTEM=1",
+				"AGENT_VM_STATE_DIR={T0}/001/home/.agent-vm"
+			],
+			"Args": [
+				"_agent_vm_git_scan",
+				"{T0}/001/home/proj"
+			],
+			"Files": null,
+			"Stdout": "H\ttools/hooks\ttools/hooks\nR\tcore.pager = tools/relay.sh\n",
+			"Stderr": "",
+			"Code": 0
+		}
+	]
+}

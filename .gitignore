@@ -2,3 +2,13 @@
 .claude
 node_modules
 dist
+/_output
+# Local working copies: the forks (third_party/ holds what is built), and
+# the 0.3 drafts superseded by patches/.
+/lima/
+/lima-pr/
+/tmp/
+/sshocker-append-fix.patch
+# Built by the Makefile, embedded in the binary.
+/internal/limaembed/assets/*
+!/internal/limaembed/assets/README

@@ -1,0 +1,59 @@
+name: Release build
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04 # explicitly use older ubuntu, see commit 428c40018f
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+    steps:
+    - name: Checkout source code
+      uses: actions/checkout@v6
+      with:
+        fetch-depth: 1
+
+    - name: >-
+        WORKAROUND: Fetch tags that points to the revisions
+        checked-out(actions/checkout#1467)
+      run: |-
+        git fetch --tags --force
+
+    - name: Set up Go
+      uses: actions/setup-go@v6
+      with:
+        go-version: 'stable'
+
+    - name: Build
+      run: |
+        make cross qemu-wrapper vm win-gvproxy win-sshproxy image
+        mv bin/gvproxy.exe bin/gvproxy-windowsgui.exe
+
+    - name: Log in to Quay.io
+      uses: redhat-actions/podman-login@v1
+      with:
+        username: ${{ secrets.QUAY_USER_NAME }}
+        password: ${{ secrets.QUAY_PASSWORD }}
+        registry: quay.io
+
+    - name: Push Image
+      run: |
+        make push
+
+    - uses: actions/upload-artifact@v7
+      with:
+        name: gvisor-tap-vsock-binaries
+        path: bin/*
+
+    - name: Create release on github
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+          gh release create --draft --generate-notes --verify-tag ${{github.ref_name}}
+          cd bin
+          sha256sum * >> sha256sums
+          gh release upload ${{github.ref_name}} *

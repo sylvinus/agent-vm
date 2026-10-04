@@ -1,0 +1,29 @@
+version: "2"
+run:
+  timeout: 10m
+linters:
+  enable:
+    - gocritic
+    - gosec
+    - misspell
+    - revive
+    - errcheck
+    - unused
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+  settings:
+    revive:
+      rules:
+      - name: var-naming
+        disabled: true
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  exclusions:
+    generated: lax

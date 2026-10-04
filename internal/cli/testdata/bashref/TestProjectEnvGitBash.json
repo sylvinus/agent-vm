@@ -1,0 +1,46 @@
+{
+	"TestProjectEnvGitBash": [
+		{
+			"Dir": "{T0}/002/sub",
+			"Stdin": "",
+			"Snippet": "agent-vm \"$@\"",
+			"Env": [
+				"HOME={T0}/004",
+				"PWD={T0}/002/sub",
+				"GIT_CONFIG_GLOBAL=/dev/null",
+				"GIT_CONFIG_NOSYSTEM=1"
+			],
+			"Args": [
+				"project-env",
+				"set",
+				"K",
+				"v"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "Warning: sub/.agent-vm.env is not ignored by git: it can be committed by accident.\n         echo '/sub/.agent-vm.env' \u003e\u003e '{T0}/002/.gitignore'\n",
+			"Code": 0
+		},
+		{
+			"Dir": "{T0}/006/sub",
+			"Stdin": "",
+			"Snippet": "agent-vm \"$@\"",
+			"Env": [
+				"HOME={T0}/008",
+				"PWD={T0}/006/sub",
+				"GIT_CONFIG_GLOBAL=/dev/null",
+				"GIT_CONFIG_NOSYSTEM=1"
+			],
+			"Args": [
+				"project-env",
+				"set",
+				"K",
+				"v"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "Warning: sub/.agent-vm.env is tracked by git: its contents are in the repository.\n         git -C '{T0}/006' rm --cached 'sub/.agent-vm.env' \u0026\u0026 echo '/sub/.agent-vm.env' \u003e\u003e '{T0}/006/.gitignore'\n",
+			"Code": 0
+		}
+	]
+}

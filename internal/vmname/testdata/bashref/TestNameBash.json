@@ -1,0 +1,180 @@
+{
+	"TestNameBash": [
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/001"
+			],
+			"Args": [
+				"_agent_vm_name",
+				"/home/u/proj"
+			],
+			"Files": null,
+			"Stdout": "agent-vm-proj-9c09f805\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/002"
+			],
+			"Args": [
+				"_agent_vm_name",
+				"/home/u/proj/"
+			],
+			"Files": null,
+			"Stdout": "agent-vm-proj-31d914da\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/003"
+			],
+			"Args": [
+				"_agent_vm_name",
+				"/home/u/My Project.v2"
+			],
+			"Files": null,
+			"Stdout": "agent-vm-My-Project-v2-061072a7\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/004"
+			],
+			"Args": [
+				"_agent_vm_name",
+				"/home/u/café"
+			],
+			"Files": null,
+			"Stdout": "agent-vm-caf-1f1724dc\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/005"
+			],
+			"Args": [
+				"_agent_vm_name",
+				"/home/u/-lead-"
+			],
+			"Files": null,
+			"Stdout": "agent-vm-lead-c817c87c\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/006"
+			],
+			"Args": [
+				"_agent_vm_name",
+				"/home/u/__"
+			],
+			"Files": null,
+			"Stdout": "agent-vm--d87defef\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/007"
+			],
+			"Args": [
+				"_agent_vm_name",
+				"/home/u/a__b"
+			],
+			"Files": null,
+			"Stdout": "agent-vm-a-b-ccab1801\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/008"
+			],
+			"Args": [
+				"_agent_vm_name",
+				"/home/u/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+			],
+			"Files": null,
+			"Stdout": "agent-vm-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx-60de4357\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/009"
+			],
+			"Args": [
+				"_agent_vm_name",
+				"/home/u/a-very_long.name-with.many-parts-2026"
+			],
+			"Files": null,
+			"Stdout": "agent-vm-a-very-long-name-with-many-parts-2026-381c5623\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/010"
+			],
+			"Args": [
+				"_agent_vm_name",
+				"/"
+			],
+			"Files": null,
+			"Stdout": "agent-vm--8a5edab2\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/011"
+			],
+			"Args": [
+				"_agent_vm_name",
+				"/home/u/x\ty"
+			],
+			"Files": null,
+			"Stdout": "agent-vm-x-y-ea925554\n",
+			"Stderr": "",
+			"Code": 0
+		}
+	]
+}

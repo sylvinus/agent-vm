@@ -1,0 +1,180 @@
+{
+	"TestScratchBash": [
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/001"
+			],
+			"Args": [
+				"_agent_vm_scratch_name",
+				"/home/u/proj"
+			],
+			"Files": null,
+			"Stdout": "agent-vm-proj-scratch-08bc9e59\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/002"
+			],
+			"Args": [
+				"_agent_vm_scratch_name",
+				"/home/u/proj/"
+			],
+			"Files": null,
+			"Stdout": "agent-vm-proj-scratch-b0120f10\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/003"
+			],
+			"Args": [
+				"_agent_vm_scratch_name",
+				"/home/u/My Project.v2"
+			],
+			"Files": null,
+			"Stdout": "agent-vm-My-Project-v2-scratch-31e67444\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/004"
+			],
+			"Args": [
+				"_agent_vm_scratch_name",
+				"/home/u/café"
+			],
+			"Files": null,
+			"Stdout": "agent-vm-caf-scratch-77bf97a5\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/005"
+			],
+			"Args": [
+				"_agent_vm_scratch_name",
+				"/home/u/-lead-"
+			],
+			"Files": null,
+			"Stdout": "agent-vm-lead-scratch-ca29836b\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/006"
+			],
+			"Args": [
+				"_agent_vm_scratch_name",
+				"/home/u/__"
+			],
+			"Files": null,
+			"Stdout": "agent-vm-project-scratch-80404ae2\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/007"
+			],
+			"Args": [
+				"_agent_vm_scratch_name",
+				"/home/u/a__b"
+			],
+			"Files": null,
+			"Stdout": "agent-vm-a-b-scratch-6813e142\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/008"
+			],
+			"Args": [
+				"_agent_vm_scratch_name",
+				"/home/u/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+			],
+			"Files": null,
+			"Stdout": "agent-vm-xxxxxxxxxxxxxxxxxxxx-scratch-b1e4d256\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/009"
+			],
+			"Args": [
+				"_agent_vm_scratch_name",
+				"/home/u/a-very_long.name-with.many-parts-2026"
+			],
+			"Files": null,
+			"Stdout": "agent-vm-a-very-long-name-wit-scratch-5af49531\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/010"
+			],
+			"Args": [
+				"_agent_vm_scratch_name",
+				"/"
+			],
+			"Files": null,
+			"Stdout": "agent-vm-project-scratch-36bd8371\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/011"
+			],
+			"Args": [
+				"_agent_vm_scratch_name",
+				"/home/u/x\ty"
+			],
+			"Files": null,
+			"Stdout": "agent-vm-x-y-scratch-e2656055\n",
+			"Stderr": "",
+			"Code": 0
+		}
+	]
+}

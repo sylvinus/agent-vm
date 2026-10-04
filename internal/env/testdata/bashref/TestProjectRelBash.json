@@ -1,0 +1,208 @@
+{
+	"TestProjectRelBash": [
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/002"
+			],
+			"Args": [
+				"_agent_vm_project_rel",
+				"{T0}/001/proj",
+				"{T0}/001/proj/.agent-vm.env"
+			],
+			"Files": null,
+			"Stdout": ".agent-vm.env\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/003"
+			],
+			"Args": [
+				"_agent_vm_project_rel",
+				"{T0}/001/proj",
+				"{T0}/001/proj/sub/x"
+			],
+			"Files": null,
+			"Stdout": "sub/x\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/004"
+			],
+			"Args": [
+				"_agent_vm_project_rel",
+				"{T0}/001/proj",
+				"{T0}/001/projlink/x"
+			],
+			"Files": null,
+			"Stdout": "x\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/005"
+			],
+			"Args": [
+				"_agent_vm_project_rel",
+				"{T0}/001/proj",
+				"{T0}/001/elselink/x"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "",
+			"Code": 1
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/006"
+			],
+			"Args": [
+				"_agent_vm_project_rel",
+				"{T0}/001/proj",
+				"{T0}/001/else/into/y"
+			],
+			"Files": null,
+			"Stdout": "sub/y\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/007"
+			],
+			"Args": [
+				"_agent_vm_project_rel",
+				"{T0}/001/proj",
+				"{T0}/001/rellink/z"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "",
+			"Code": 1
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/008"
+			],
+			"Args": [
+				"_agent_vm_project_rel",
+				"{T0}/001/proj",
+				"{T0}/001/proj"
+			],
+			"Files": null,
+			"Stdout": "\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/009"
+			],
+			"Args": [
+				"_agent_vm_project_rel",
+				"{T0}/001/proj",
+				"{T0}/001/other/x"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "",
+			"Code": 1
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/010"
+			],
+			"Args": [
+				"_agent_vm_project_rel",
+				"{T0}/001/proj",
+				"{T0}/001/loop/x"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "",
+			"Code": 1
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/011"
+			],
+			"Args": [
+				"_agent_vm_project_rel",
+				"{T0}/001/proj",
+				"/etc/passwd"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "",
+			"Code": 1
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/012"
+			],
+			"Args": [
+				"_agent_vm_project_rel",
+				"{T0}/001/proj",
+				"{T0}/001/proj/../proj/x"
+			],
+			"Files": null,
+			"Stdout": "../proj/x\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/013"
+			],
+			"Args": [
+				"_agent_vm_project_rel",
+				"{T0}/001/proj",
+				"{T0}/001/elselink/../proj/x"
+			],
+			"Files": null,
+			"Stdout": "x\n",
+			"Stderr": "",
+			"Code": 0
+		}
+	]
+}

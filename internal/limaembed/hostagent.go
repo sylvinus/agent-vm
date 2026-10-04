@@ -1,0 +1,213 @@
+// SPDX-FileCopyrightText: Copyright The Lima Authors
+// SPDX-License-Identifier: Apache-2.0
+
+// Copied from third_party/lima/cmd/limactl/hostagent.go, which is in package
+// main and cannot be imported. Changed by agent-vm: the package name, and
+// WrapArgsError (in limactl's main.go) is cobra's own error here.
+// TestHostagentCopy fails when the two drift apart.
+
+package limaembed
+
+import (
+	"errors"
+	"fmt"
+	"io"
+	"net"
+	"net/http"
+	"os"
+	"os/signal"
+	"runtime"
+	"sync"
+	"syscall"
+	"time"
+
+	"github.com/sirupsen/logrus"
+	"github.com/spf13/cobra"
+
+	"github.com/lima-vm/lima/v2/pkg/hostagent"
+	"github.com/lima-vm/lima/v2/pkg/hostagent/api/server"
+	"github.com/lima-vm/lima/v2/pkg/store"
+)
+
+func newHostagentCommand() *cobra.Command {
+	hostagentCommand := &cobra.Command{
+		Use:    "hostagent INSTANCE",
+		Short:  "Run hostagent",
+		Args:   cobra.ExactArgs(1),
+		RunE:   hostagentAction,
+		Hidden: true,
+	}
+	hostagentCommand.Flags().StringP("pidfile", "p", "", "Write PID to file")
+	hostagentCommand.Flags().String("socket", "", "Path of hostagent socket")
+	hostagentCommand.Flags().Bool("run-gui", false, "Run GUI synchronously within hostagent")
+	hostagentCommand.Flags().String("guestagent", "", "Local file path (not URL) of lima-guestagent.OS-ARCH[.gz]")
+	hostagentCommand.Flags().String("nerdctl-archive", "", "Local file path (not URL) of nerdctl-full-VERSION-GOOS-GOARCH.tar.gz")
+	hostagentCommand.Flags().Bool("progress", false, "Show provision script progress by monitoring cloud-init logs")
+	return hostagentCommand
+}
+
+func hostagentAction(cmd *cobra.Command, args []string) error {
+	ctx := cmd.Context()
+	pidfile, err := cmd.Flags().GetString("pidfile")
+	if err != nil {
+		return err
+	}
+	if pidfile != "" {
+		if existingPID, err := store.ReadPIDFile(pidfile); existingPID != 0 {
+			return fmt.Errorf("another hostagent may already be running with pid %d (pidfile %#q)", existingPID, pidfile)
+		} else if err != nil {
+			return fmt.Errorf("failed to determine if another hostagent is running: %w", err)
+		}
+		if err := store.WritePIDFile(pidfile, os.Getpid()); err != nil {
+			return err
+		}
+		defer os.RemoveAll(pidfile)
+	}
+	socket, err := cmd.Flags().GetString("socket")
+	if err != nil {
+		return err
+	}
+	if socket == "" {
+		return errors.New("socket must be specified (limactl version mismatch?)")
+	}
+
+	instName := args[0]
+
+	runGUI, err := cmd.Flags().GetBool("run-gui")
+	if err != nil {
+		return err
+	}
+	if runGUI {
+		// Without this the call to vz.RunGUI fails. Adding it here, as this has to be called before the vz cgo loads.
+		runtime.LockOSThread()
+		defer runtime.UnlockOSThread()
+	}
+
+	signalCh := make(chan os.Signal, 1)
+	signal.Notify(signalCh, os.Interrupt, syscall.SIGTERM)
+
+	stdout := &syncWriter{w: cmd.OutOrStdout()}
+	stderr := &syncWriter{w: cmd.ErrOrStderr()}
+	defer stdout.flush()
+	defer stderr.flush()
+
+	initLogrus(stderr)
+	var opts []hostagent.Opt
+	guestagentBinary, err := cmd.Flags().GetString("guestagent")
+	if err != nil {
+		return err
+	}
+	if guestagentBinary != "" {
+		opts = append(opts, hostagent.WithGuestAgentBinary(guestagentBinary))
+	}
+	nerdctlArchive, err := cmd.Flags().GetString("nerdctl-archive")
+	if err != nil {
+		return err
+	}
+	if nerdctlArchive != "" {
+		opts = append(opts, hostagent.WithNerdctlArchive(nerdctlArchive))
+	}
+	showProgress, err := cmd.Flags().GetBool("progress")
+	if err != nil {
+		return err
+	}
+	if showProgress {
+		opts = append(opts, hostagent.WithCloudInitProgress(showProgress))
+	}
+	ha, err := hostagent.New(ctx, instName, stdout, signalCh, opts...)
+	if err != nil {
+		return err
+	}
+
+	backend := &server.Backend{
+		Agent: ha,
+	}
+	r := http.NewServeMux()
+	server.AddRoutes(r, backend)
+	srv := &http.Server{Handler: r}
+	err = os.RemoveAll(socket)
+	if err != nil {
+		return err
+	}
+	var lc net.ListenConfig
+	l, err := lc.Listen(ctx, "unix", socket)
+	logrus.Infof("hostagent socket created at %s", socket)
+	if err != nil {
+		return err
+	}
+	go func() {
+		if serveErr := srv.Serve(l); serveErr != http.ErrServerClosed {
+			logrus.WithError(serveErr).Warn("hostagent API server exited with an error")
+		}
+	}()
+	defer srv.Close()
+	return ha.Run(ctx)
+}
+
+// syncer is implemented by *os.File.
+type syncer interface {
+	Sync() error
+}
+
+// syncInterval is how long syncWriter batches writes before flushing them.
+//
+// Flushing on every write serialised the whole hostagent behind one fsync per
+// record: logrus holds its output mutex across Out.Write, and the port
+// forwarder logs once per tunnel teardown, so a burst of closing connections
+// throttled all logging in the process.
+//
+// The flush cannot be dropped entirely. limactl start follows these files with
+// fsnotify, and on Windows the tailer stops seeing new lines without it.
+const syncInterval = 100 * time.Millisecond
+
+type syncWriter struct {
+	w io.Writer
+
+	mu    sync.Mutex
+	dirty bool
+	timer *time.Timer
+}
+
+func (w *syncWriter) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	written, err := w.w.Write(p)
+	if err == nil {
+		w.dirty = true
+		if w.timer == nil {
+			w.timer = time.AfterFunc(syncInterval, w.flush)
+		}
+	}
+	return written, err
+}
+
+// flush stops the pending timer and syncs any writes in the current batch.
+func (w *syncWriter) flush() {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	if w.timer != nil {
+		w.timer.Stop()
+		w.timer = nil
+	}
+	if !w.dirty {
+		return
+	}
+	if s, ok := w.w.(syncer); ok {
+		_ = s.Sync()
+	}
+	w.dirty = false
+}
+
+func initLogrus(stderr io.Writer) {
+	logrus.SetOutput(stderr)
+	// JSON logs are parsed in pkg/hostagent/events.Watcher()
+	logrus.SetFormatter(new(logrus.JSONFormatter))
+	// HostAgent logging is one level more verbose than the start command itself
+	if logrus.GetLevel() == logrus.DebugLevel {
+		logrus.SetLevel(logrus.TraceLevel)
+	} else {
+		logrus.SetLevel(logrus.DebugLevel)
+	}
+}

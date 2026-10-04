@@ -1,0 +1,240 @@
+diff -ruN a/pkg/reversesshfs/rooted.go b/pkg/reversesshfs/rooted.go
+--- a/pkg/reversesshfs/rooted.go	2026-10-02 20:31:16.091506951 +0200
++++ b/pkg/reversesshfs/rooted.go	2026-10-02 20:33:59.398020816 +0200
+@@ -56,7 +56,9 @@
+ 		noopRemovals:  make(map[string]time.Time),
+ 	}
+ 	handlers := sftp.Handlers{FileGet: h, FilePut: h, FileCmd: h, FileList: h}
+-	srv := sftp.NewRequestServer(rwc, handlers, sftp.WithStartDirectory(startDirectory(h.rootPath)))
++	// Sequential, as OpenSSH's sftp-server: otherwise two writes to the same range, or a write
++	// and the FSTAT or FSETSTAT sent after it, can run in either order.
++	srv := sftp.NewRequestServer(rwc, handlers, sftp.WithStartDirectory(startDirectory(h.rootPath)), sftp.WithRSSequential())
+ 	return srv, h, nil
+ }
+ 
+@@ -159,14 +161,27 @@
+ 	return h.root.Open(rel)
+ }
+ 
++// writableFile is a file opened by openFile: checked against readonlyNames, without following symlinks.
++// FSETSTAT applies to it directly. Files opened for reading only may have been opened through a symlink
++// to a read-only name, so FSETSTAT on them goes through the path checks of setstat.
++type writableFile struct{ *os.File }
++
+ // Filewrite implements sftp.FileWriter.
+ func (h *rootedHandlers) Filewrite(r *sftp.Request) (io.WriterAt, error) {
+-	return h.openFile(r)
++	f, err := h.openFile(r)
++	if err != nil {
++		return nil, err
++	}
++	return writableFile{f}, nil
+ }
+ 
+ // OpenFile implements sftp.OpenFileWriter.
+ func (h *rootedHandlers) OpenFile(r *sftp.Request) (sftp.WriterAtReaderAt, error) {
+-	return h.openFile(r)
++	f, err := h.openFile(r)
++	if err != nil {
++		return nil, err
++	}
++	return writableFile{f}, nil
+ }
+ 
+ // openMode returns the permissions sent with an Open request.
+@@ -184,6 +199,10 @@
+ func (h *rootedHandlers) Filecmd(r *sftp.Request) error {
+ 	switch r.Method {
+ 	case "Setstat":
++		// FSETSTAT: r.Filepath is where the file was opened, which may now be another file.
++		if f, ok := r.HandleFile().(writableFile); ok {
++			return h.fsetstat(f.File, r)
++		}
+ 		if h.isNoopTimes(r) {
+ 			return nil
+ 		}
+@@ -254,6 +273,21 @@
+ 		}
+ 		return listerAt(fis), nil
+ 	case "Stat":
++		// FSTAT: r.Filepath is where the file was opened, which may now be another file.
++		var f *os.File
++		switch hf := r.HandleFile().(type) {
++		case writableFile:
++			f = hf.File
++		case *os.File:
++			f = hf
++		}
++		if f != nil {
++			fi, err := f.Stat()
++			if err != nil {
++				return nil, err
++			}
++			return listerAt{fi}, nil
++		}
+ 		fi, err := h.root.Stat(rel)
+ 		if err != nil {
+ 			return nil, err
+diff -ruN a/pkg/reversesshfs/rooted_test.go b/pkg/reversesshfs/rooted_test.go
+--- a/pkg/reversesshfs/rooted_test.go	2026-10-02 20:31:16.091506951 +0200
++++ b/pkg/reversesshfs/rooted_test.go	2026-10-02 20:33:59.398020816 +0200
+@@ -233,6 +233,67 @@
+ 	}
+ }
+ 
++// FSTAT and FSETSTAT apply to the open file, not to whatever is now at the path it was opened with.
++func TestRootedFstatFsetstatAfterRename(t *testing.T) {
++	c, root := setupRooted(t, false)
++	p := func(s string) string { return filepath.Join(root, s) }
++	f, err := c.Create(p("src/a"))
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer f.Close()
++	if _, err := f.Write([]byte("hello")); err != nil {
++		t.Fatal(err)
++	}
++	if err := c.PosixRename(p("src/a"), p("src/b")); err != nil {
++		t.Fatal(err)
++	}
++	if err := os.WriteFile(p("src/a"), []byte("other file"), 0o644); err != nil {
++		t.Fatal(err)
++	}
++	if fi, err := f.Stat(); err != nil || fi.Size() != 5 {
++		t.Fatalf("Stat: %v, %v", fi, err)
++	}
++	if err := f.Truncate(2); err != nil {
++		t.Fatal(err)
++	}
++	if err := f.Chmod(0o600); err != nil {
++		t.Fatal(err)
++	}
++	if b, err := os.ReadFile(p("src/b")); err != nil || string(b) != "he" {
++		t.Fatalf("src/b: %q, %v", b, err)
++	}
++	if b, err := os.ReadFile(p("src/a")); err != nil || string(b) != "other file" {
++		t.Fatalf("src/a: %q, %v", b, err)
++	}
++	if runtime.GOOS != "windows" {
++		if fi, err := os.Stat(p("src/b")); err != nil || fi.Mode().Perm() != 0o600 {
++			t.Fatalf("src/b: %v, %v", fi, err)
++		}
++		if fi, err := os.Stat(p("src/a")); err != nil || fi.Mode().Perm() != 0o644 {
++			t.Fatalf("src/a: %v, %v", fi, err)
++		}
++	}
++}
++
++// A handle opened for reading may point into a read-only name through a symlink:
++// FSETSTAT on it must keep going through the path checks.
++func TestRootedFsetstatReadHandle(t *testing.T) {
++	c, root := setupRooted(t, false)
++	f, err := c.Open(filepath.Join(root, "configlink"))
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer f.Close()
++	if err := f.Truncate(0); err == nil {
++		t.Fatal("Truncate succeeded")
++	}
++	if err := f.Chmod(0o777); err == nil {
++		t.Fatal("Chmod succeeded")
++	}
++	assertUnchanged(t, root)
++}
++
+ // sshfs sends its open flags with the permissions alone as attributes.
+ func TestRootedOpenMode(t *testing.T) {
+ 	if runtime.GOOS == "windows" {
+diff -ruN a/pkg/reversesshfs/rooted_unix.go b/pkg/reversesshfs/rooted_unix.go
+--- a/pkg/reversesshfs/rooted_unix.go	2026-10-02 20:31:16.091506951 +0200
++++ b/pkg/reversesshfs/rooted_unix.go	2026-10-02 20:33:59.398020816 +0200
+@@ -251,6 +251,41 @@
+ 	return nil
+ }
+ 
++// fsetstat applies a FSETSTAT to the file f of the handle.
++func (h *rootedHandlers) fsetstat(f *os.File, r *sftp.Request) error {
++	flags := r.AttrFlags()
++	attrs := r.Attributes()
++	if attrs == nil {
++		return unix.EINVAL
++	}
++	fd := int(f.Fd())
++	if flags.Size {
++		if err := unix.Ftruncate(fd, int64(attrs.Size)); err != nil {
++			return &os.PathError{Op: "truncate", Path: f.Name(), Err: err}
++		}
++	}
++	if flags.Permissions {
++		if err := unix.Fchmod(fd, attrs.Mode&0o7777); err != nil {
++			return &os.PathError{Op: "chmod", Path: f.Name(), Err: err}
++		}
++	}
++	if flags.UidGid {
++		if err := unix.Fchown(fd, int(attrs.UID), int(attrs.GID)); err != nil {
++			return &os.PathError{Op: "chown", Path: f.Name(), Err: err}
++		}
++	}
++	if flags.Acmodtime {
++		tv := []unix.Timeval{
++			unix.NsecToTimeval(int64(attrs.Atime) * 1e9),
++			unix.NsecToTimeval(int64(attrs.Mtime) * 1e9),
++		}
++		if err := unix.Futimes(fd, tv); err != nil {
++			return &os.PathError{Op: "chtimes", Path: f.Name(), Err: err}
++		}
++	}
++	return nil
++}
++
+ // StatVFS implements sftp.StatVFSFileCmder.
+ func (h *rootedHandlers) StatVFS(r *sftp.Request) (*sftp.StatVFS, error) {
+ 	if _, err := h.rel(r.Filepath); err != nil {
+diff -ruN a/pkg/reversesshfs/rooted_windows.go b/pkg/reversesshfs/rooted_windows.go
+--- a/pkg/reversesshfs/rooted_windows.go	2026-10-02 20:31:16.091506951 +0200
++++ b/pkg/reversesshfs/rooted_windows.go	2026-10-02 20:33:59.398020816 +0200
+@@ -234,7 +234,8 @@
+ 		access = windows.FILE_GENERIC_READ | windows.FILE_GENERIC_WRITE
+ 		options = windows.FILE_NON_DIRECTORY_FILE
+ 	case pf.Write || pf.Append:
+-		access = windows.FILE_GENERIC_WRITE
++		// FILE_READ_ATTRIBUTES: for fsetstat, as FILE_GENERIC_WRITE lacks it.
++		access = windows.FILE_GENERIC_WRITE | windows.FILE_READ_ATTRIBUTES
+ 		options = windows.FILE_NON_DIRECTORY_FILE
+ 	default:
+ 		access = windows.FILE_GENERIC_READ
+@@ -439,7 +440,6 @@
+ 
+ func (h *rootedHandlers) setstat(r *sftp.Request) error {
+ 	flags := r.AttrFlags()
+-	attrs := r.Attributes()
+ 	if flags.UidGid {
+ 		return &os.PathError{Op: "chown", Path: r.Filepath, Err: syscall.EWINDOWS}
+ 	}
+@@ -453,6 +453,25 @@
+ 	}
+ 	defer windows.CloseHandle(parent)
+ 	defer windows.CloseHandle(fh)
++	return setstatHandle(fh, r)
++}
++
++// fsetstat applies a FSETSTAT to the file f of the handle.
++func (h *rootedHandlers) fsetstat(f *os.File, r *sftp.Request) error {
++	if r.AttrFlags().UidGid {
++		return &os.PathError{Op: "chown", Path: f.Name(), Err: syscall.EWINDOWS}
++	}
++	return setstatHandle(windows.Handle(f.Fd()), r)
++}
++
++// setstatHandle applies the attributes of r to fh. r.Filepath is only used in errors.
++
++func setstatHandle(fh windows.Handle, r *sftp.Request) error {
++	flags := r.AttrFlags()
++	attrs := r.Attributes()
++	if attrs == nil {
++		return windows.ERROR_INVALID_PARAMETER
++	}
+ 	if flags.Size {
+ 		if err := windows.Ftruncate(fh, int64(attrs.Size)); err != nil {
+ 			return &os.PathError{Op: "truncate", Path: r.Filepath, Err: err}

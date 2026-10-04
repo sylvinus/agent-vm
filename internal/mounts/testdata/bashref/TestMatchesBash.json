@@ -1,0 +1,274 @@
+{
+	"TestMatchesBash": [
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_volume_matches \"$1\" \"$2\"",
+			"Env": [
+				"HOME={T0}/002",
+				"HOME={T0}/001/home",
+				"AGENT_VM_STATE_DIR={T0}/001/home/.agent-vm"
+			],
+			"Args": [
+				"{T0}/001/home/proj",
+				"{T0}/001/home/proj"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_volume_matches \"$1\" \"$2\"",
+			"Env": [
+				"HOME={T0}/003",
+				"HOME={T0}/001/home",
+				"AGENT_VM_STATE_DIR={T0}/001/home/.agent-vm"
+			],
+			"Args": [
+				"{T0}/001/home/proj/",
+				"{T0}/001/home/proj"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_volume_matches \"$1\" \"$2\"",
+			"Env": [
+				"HOME={T0}/004",
+				"HOME={T0}/001/home",
+				"AGENT_VM_STATE_DIR={T0}/001/home/.agent-vm"
+			],
+			"Args": [
+				"{T0}/001/home/*",
+				"{T0}/001/home/proj"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_volume_matches \"$1\" \"$2\"",
+			"Env": [
+				"HOME={T0}/005",
+				"HOME={T0}/001/home",
+				"AGENT_VM_STATE_DIR={T0}/001/home/.agent-vm"
+			],
+			"Args": [
+				"~/proj",
+				"{T0}/001/home/proj"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_volume_matches \"$1\" \"$2\"",
+			"Env": [
+				"HOME={T0}/006",
+				"HOME={T0}/001/home",
+				"AGENT_VM_STATE_DIR={T0}/001/home/.agent-vm"
+			],
+			"Args": [
+				"~",
+				"{T0}/001/home/proj"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "",
+			"Code": 1
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_volume_matches \"$1\" \"$2\"",
+			"Env": [
+				"HOME={T0}/007",
+				"HOME={T0}/001/home",
+				"AGENT_VM_STATE_DIR={T0}/001/home/.agent-vm"
+			],
+			"Args": [
+				"~/p?oj",
+				"{T0}/001/home/proj"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_volume_matches \"$1\" \"$2\"",
+			"Env": [
+				"HOME={T0}/008",
+				"HOME={T0}/001/home",
+				"AGENT_VM_STATE_DIR={T0}/001/home/.agent-vm"
+			],
+			"Args": [
+				"~/[pq]roj",
+				"{T0}/001/home/proj"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_volume_matches \"$1\" \"$2\"",
+			"Env": [
+				"HOME={T0}/009",
+				"HOME={T0}/001/home",
+				"AGENT_VM_STATE_DIR={T0}/001/home/.agent-vm"
+			],
+			"Args": [
+				"~/[!p]roj",
+				"{T0}/001/home/proj"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "",
+			"Code": 1
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_volume_matches \"$1\" \"$2\"",
+			"Env": [
+				"HOME={T0}/010",
+				"HOME={T0}/001/home",
+				"AGENT_VM_STATE_DIR={T0}/001/home/.agent-vm"
+			],
+			"Args": [
+				"/*",
+				"{T0}/001/home/proj"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_volume_matches \"$1\" \"$2\"",
+			"Env": [
+				"HOME={T0}/011",
+				"HOME={T0}/001/home",
+				"AGENT_VM_STATE_DIR={T0}/001/home/.agent-vm"
+			],
+			"Args": [
+				"/",
+				"{T0}/001/home/proj"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "",
+			"Code": 1
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_volume_matches \"$1\" \"$2\"",
+			"Env": [
+				"HOME={T0}/012",
+				"HOME={T0}/001/home",
+				"AGENT_VM_STATE_DIR={T0}/001/home/.agent-vm"
+			],
+			"Args": [
+				"relative",
+				"{T0}/001/home/proj"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "Warning: Project filter 'relative' (from ~/.agent-vm/volumes) is not an absolute path, skipping the entry.\n",
+			"Code": 1
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_volume_matches \"$1\" \"$2\"",
+			"Env": [
+				"HOME={T0}/013",
+				"HOME={T0}/001/home",
+				"AGENT_VM_STATE_DIR={T0}/001/home/.agent-vm"
+			],
+			"Args": [
+				"~other/proj",
+				"{T0}/001/home/proj"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "Warning: Project filter '~other/proj' (from ~/.agent-vm/volumes) is not an absolute path, skipping the entry.\n",
+			"Code": 1
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_volume_matches \"$1\" \"$2\"",
+			"Env": [
+				"HOME={T0}/014",
+				"HOME={T0}/001/home",
+				"AGENT_VM_STATE_DIR={T0}/001/home/.agent-vm"
+			],
+			"Args": [
+				"{T0}/001/home/*/sub",
+				"{T0}/001/home/proj"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "",
+			"Code": 1
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_volume_matches \"$1\" \"$2\"",
+			"Env": [
+				"HOME={T0}/015",
+				"HOME={T0}/001/home",
+				"AGENT_VM_STATE_DIR={T0}/001/home/.agent-vm"
+			],
+			"Args": [
+				"~/pro[",
+				"{T0}/001/home/proj"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "",
+			"Code": 1
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_volume_matches \"$1\" \"$2\"",
+			"Env": [
+				"HOME={T0}/016",
+				"HOME={T0}/001/home",
+				"AGENT_VM_STATE_DIR={T0}/001/home/.agent-vm"
+			],
+			"Args": [
+				"~/pro\\j",
+				"{T0}/001/home/proj"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "",
+			"Code": 0
+		}
+	]
+}

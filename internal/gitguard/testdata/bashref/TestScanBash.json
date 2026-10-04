@@ -1,0 +1,654 @@
+{
+	"TestScanBash/absolute": [
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/002",
+				"HOME={T0}/001/home",
+				"GIT_CONFIG_NOSYSTEM=1",
+				"AGENT_VM_STATE_DIR={T0}/001/home/.agent-vm"
+			],
+			"Args": [
+				"_agent_vm_git_scan",
+				"{T0}/001/home/proj"
+			],
+			"Files": null,
+			"Stdout": "H\t.githooks\t.githooks\n",
+			"Stderr": "",
+			"Code": 0
+		}
+	],
+	"TestScanBash/across_shares": [
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/002",
+				"HOME={T0}/001/home",
+				"GIT_CONFIG_NOSYSTEM=1",
+				"AGENT_VM_STATE_DIR={T0}/001/home/.agent-vm"
+			],
+			"Args": [
+				"_agent_vm_git_scan",
+				"{T0}/001/home/proj"
+			],
+			"Files": null,
+			"Stdout": "R\tcore.fsmonitor = {T0}/001/sb/teamtools/fsmon.sh\nR\tconfig file {T0}/001/sb/teamtools/gitconfig\n",
+			"Stderr": "",
+			"Code": 0
+		}
+	],
+	"TestScanBash/bad_name": [
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/002",
+				"HOME={T0}/001/home",
+				"GIT_CONFIG_NOSYSTEM=1",
+				"AGENT_VM_STATE_DIR={T0}/001/home/.agent-vm"
+			],
+			"Args": [
+				"_agent_vm_git_scan",
+				"{T0}/001/home/proj"
+			],
+			"Files": null,
+			"Stdout": "H\ta\"b/x\ta\"b/x\n",
+			"Stderr": "",
+			"Code": 0
+		}
+	],
+	"TestScanBash/bare_repository_in_a_volume": [
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/002",
+				"HOME={T0}/001/home",
+				"GIT_CONFIG_NOSYSTEM=1",
+				"AGENT_VM_STATE_DIR={T0}/001/home/.agent-vm"
+			],
+			"Args": [
+				"_agent_vm_git_scan",
+				"{T0}/001/home/proj"
+			],
+			"Files": null,
+			"Stdout": "H\t{T0}/001/sb/remotes/proj.git/hooks\tproj.git/hooks\n",
+			"Stderr": "",
+			"Code": 0
+		}
+	],
+	"TestScanBash/config": [
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/002",
+				"HOME={T0}/001/home",
+				"GIT_CONFIG_NOSYSTEM=1",
+				"AGENT_VM_STATE_DIR={T0}/001/home/.agent-vm"
+			],
+			"Args": [
+				"_agent_vm_git_scan",
+				"{T0}/001/home/proj"
+			],
+			"Files": null,
+			"Stdout": "R\talias.t = !./t.sh\nR\talias.q = !\"./q.sh\" x\nR\tconfig file .gitconfig\nR\tcore.fsmonitor = ./watch.sh\nR\tfilter.x.clean = scripts/clean.sh %f\nR\tcredential.helper = 'tools/cred' --x=y\n",
+			"Stderr": "",
+			"Code": 0
+		}
+	],
+	"TestScanBash/dot-dot": [
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/002",
+				"HOME={T0}/001/home",
+				"GIT_CONFIG_NOSYSTEM=1",
+				"AGENT_VM_STATE_DIR={T0}/001/home/.agent-vm"
+			],
+			"Args": [
+				"_agent_vm_git_scan",
+				"{T0}/001/home/proj"
+			],
+			"Files": null,
+			"Stdout": "H\t.githooks\t.githooks\n",
+			"Stderr": "",
+			"Code": 0
+		}
+	],
+	"TestScanBash/git's_own_config_in_a_volume": [
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/002",
+				"HOME={T0}/001/home",
+				"GIT_CONFIG_NOSYSTEM=1",
+				"AGENT_VM_STATE_DIR={T0}/001/home/.agent-vm",
+				"XDG_CONFIG_HOME={T0}/001/sb/teamtools"
+			],
+			"Args": [
+				"_agent_vm_git_scan",
+				"{T0}/001/home/proj"
+			],
+			"Files": null,
+			"Stdout": "R\tconfig file {T0}/001/sb/teamtools/git/config\nR\tcore.fsmonitor = {T0}/001/sb/teamtools/fsmon.sh\n",
+			"Stderr": "",
+			"Code": 0
+		}
+	],
+	"TestScanBash/global_hooksPath_into_the_project": [
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/002",
+				"HOME={T0}/001/home",
+				"GIT_CONFIG_NOSYSTEM=1",
+				"AGENT_VM_STATE_DIR={T0}/001/home/.agent-vm"
+			],
+			"Args": [
+				"_agent_vm_git_scan",
+				"{T0}/001/home/proj"
+			],
+			"Files": null,
+			"Stdout": "H\thooks\thooks\n",
+			"Stderr": "",
+			"Code": 0
+		}
+	],
+	"TestScanBash/hook_links": [
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/002",
+				"HOME={T0}/001/home",
+				"GIT_CONFIG_NOSYSTEM=1",
+				"AGENT_VM_STATE_DIR={T0}/001/home/.agent-vm"
+			],
+			"Args": [
+				"_agent_vm_git_scan",
+				"{T0}/001/home/proj"
+			],
+			"Files": null,
+			"Stdout": "R\thook post-merge runs scripts/relay\nR\thook pre-commit runs scripts/pre-commit\nR\thook pre-push runs later/pre-push\nR\thook pre-rebase runs scripts/pre-commit\n",
+			"Stderr": "",
+			"Code": 0
+		}
+	],
+	"TestScanBash/hooksPath_linked": [
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/002",
+				"HOME={T0}/001/home",
+				"GIT_CONFIG_NOSYSTEM=1",
+				"AGENT_VM_STATE_DIR={T0}/001/home/.agent-vm"
+			],
+			"Args": [
+				"_agent_vm_git_scan",
+				"{T0}/001/home/proj"
+			],
+			"Files": null,
+			"Stdout": "H\t.githooks\t.githooks\nH\tscripts/hooks\tscripts/hooks\n",
+			"Stderr": "",
+			"Code": 0
+		}
+	],
+	"TestScanBash/hooks_above_the_project": [
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/002",
+				"HOME={T0}/001/home",
+				"GIT_CONFIG_NOSYSTEM=1",
+				"AGENT_VM_STATE_DIR={T0}/001/home/.agent-vm"
+			],
+			"Args": [
+				"_agent_vm_git_scan",
+				"{T0}/001/home/proj"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "",
+			"Code": 0
+		}
+	],
+	"TestScanBash/hooks_dir_linked": [
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/002",
+				"HOME={T0}/001/home",
+				"GIT_CONFIG_NOSYSTEM=1",
+				"AGENT_VM_STATE_DIR={T0}/001/home/.agent-vm"
+			],
+			"Args": [
+				"_agent_vm_git_scan",
+				"{T0}/001/home/proj"
+			],
+			"Files": null,
+			"Stdout": "H\tscripts/hooks\tscripts/hooks\n",
+			"Stderr": "",
+			"Code": 0
+		}
+	],
+	"TestScanBash/hooks_dir_not_there_yet": [
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/002",
+				"HOME={T0}/001/home",
+				"GIT_CONFIG_NOSYSTEM=1",
+				"AGENT_VM_STATE_DIR={T0}/001/home/.agent-vm"
+			],
+			"Args": [
+				"_agent_vm_git_scan",
+				"{T0}/001/home/proj"
+			],
+			"Files": null,
+			"Stdout": "H\ttools/hooks\ttools/hooks\n",
+			"Stderr": "",
+			"Code": 0
+		}
+	],
+	"TestScanBash/hooks_dir_through_a_relay": [
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/002",
+				"HOME={T0}/001/home",
+				"GIT_CONFIG_NOSYSTEM=1",
+				"AGENT_VM_STATE_DIR={T0}/001/home/.agent-vm"
+			],
+			"Args": [
+				"_agent_vm_git_scan",
+				"{T0}/001/home/proj"
+			],
+			"Files": null,
+			"Stdout": "H\tscripts/hooks-relay\tscripts/hooks-relay\n",
+			"Stderr": "",
+			"Code": 0
+		}
+	],
+	"TestScanBash/hooks_in_a_volume": [
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/002",
+				"HOME={T0}/001/home",
+				"GIT_CONFIG_NOSYSTEM=1",
+				"AGENT_VM_STATE_DIR={T0}/001/home/.agent-vm"
+			],
+			"Args": [
+				"_agent_vm_git_scan",
+				"{T0}/001/home/proj"
+			],
+			"Files": null,
+			"Stdout": "H\t{T0}/001/sb/teamtools/hooks\thooks\n",
+			"Stderr": "",
+			"Code": 0
+		}
+	],
+	"TestScanBash/husky": [
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/002",
+				"HOME={T0}/001/home",
+				"GIT_CONFIG_NOSYSTEM=1",
+				"AGENT_VM_STATE_DIR={T0}/001/home/.agent-vm"
+			],
+			"Args": [
+				"_agent_vm_git_scan",
+				"{T0}/001/home/proj"
+			],
+			"Files": null,
+			"Stdout": "H\t.husky/_\t.husky/_\n",
+			"Stderr": "",
+			"Code": 0
+		}
+	],
+	"TestScanBash/includes": [
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/002",
+				"HOME={T0}/001/home",
+				"GIT_CONFIG_NOSYSTEM=1",
+				"AGENT_VM_STATE_DIR={T0}/001/home/.agent-vm"
+			],
+			"Args": [
+				"_agent_vm_git_scan",
+				"{T0}/001/home/proj"
+			],
+			"Files": null,
+			"Stdout": "R\tconfig file later.gitconfig\nR\tconfig file home.gitconfig\n",
+			"Stderr": "",
+			"Code": 0
+		}
+	],
+	"TestScanBash/many_repositories": [
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/002",
+				"HOME={T0}/001/home",
+				"GIT_CONFIG_NOSYSTEM=1",
+				"AGENT_VM_STATE_DIR={T0}/001/home/.agent-vm"
+			],
+			"Args": [
+				"_agent_vm_git_scan",
+				"{T0}/001/home/proj"
+			],
+			"Files": null,
+			"Stdout": "R\tmore than 50 repositories in .: those after the 50th are not checked\n",
+			"Stderr": "",
+			"Code": 0
+		}
+	],
+	"TestScanBash/nested": [
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/002",
+				"HOME={T0}/001/home",
+				"GIT_CONFIG_NOSYSTEM=1",
+				"AGENT_VM_STATE_DIR={T0}/001/home/.agent-vm"
+			],
+			"Args": [
+				"_agent_vm_git_scan",
+				"{T0}/001/home/proj"
+			],
+			"Files": null,
+			"Stdout": "H\tlib/inner/.githooks\t.githooks\n",
+			"Stderr": "",
+			"Code": 0
+		}
+	],
+	"TestScanBash/node_modules": [
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/002",
+				"HOME={T0}/001/home",
+				"GIT_CONFIG_NOSYSTEM=1",
+				"AGENT_VM_STATE_DIR={T0}/001/home/.agent-vm"
+			],
+			"Args": [
+				"_agent_vm_git_scan",
+				"{T0}/001/home/proj"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "",
+			"Code": 0
+		}
+	],
+	"TestScanBash/nothing": [
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/002",
+				"HOME={T0}/001/home",
+				"GIT_CONFIG_NOSYSTEM=1",
+				"AGENT_VM_STATE_DIR={T0}/001/home/.agent-vm"
+			],
+			"Args": [
+				"_agent_vm_git_scan",
+				"{T0}/001/home/proj"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "",
+			"Code": 0
+		}
+	],
+	"TestScanBash/other_capitals": [
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/002",
+				"HOME={T0}/001/home",
+				"GIT_CONFIG_NOSYSTEM=1",
+				"AGENT_VM_STATE_DIR={T0}/001/home/.agent-vm"
+			],
+			"Args": [
+				"_agent_vm_git_scan",
+				"{T0}/001/home/proj"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "",
+			"Code": 0
+		}
+	],
+	"TestScanBash/other_scopes": [
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/002",
+				"HOME={T0}/001/home",
+				"GIT_CONFIG_NOSYSTEM=1",
+				"AGENT_VM_STATE_DIR={T0}/001/home/.agent-vm"
+			],
+			"Args": [
+				"_agent_vm_git_scan",
+				"{T0}/001/home/proj"
+			],
+			"Files": null,
+			"Stdout": "R\talias.g = !./g.sh\nR\tcore.editor = ./ed.sh\n",
+			"Stderr": "",
+			"Code": 0
+		}
+	],
+	"TestScanBash/outside": [
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/002",
+				"HOME={T0}/001/home",
+				"GIT_CONFIG_NOSYSTEM=1",
+				"AGENT_VM_STATE_DIR={T0}/001/home/.agent-vm"
+			],
+			"Args": [
+				"_agent_vm_git_scan",
+				"{T0}/001/home/proj"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "",
+			"Code": 0
+		}
+	],
+	"TestScanBash/project_in_a_repository": [
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/002",
+				"HOME={T0}/001/home",
+				"GIT_CONFIG_NOSYSTEM=1",
+				"AGENT_VM_STATE_DIR={T0}/001/home/.agent-vm"
+			],
+			"Args": [
+				"_agent_vm_git_scan",
+				"{T0}/001/home/proj"
+			],
+			"Files": null,
+			"Stdout": "H\thooks\thooks\n",
+			"Stderr": "",
+			"Code": 0
+		}
+	],
+	"TestScanBash/project_itself": [
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/002",
+				"HOME={T0}/001/home",
+				"GIT_CONFIG_NOSYSTEM=1",
+				"AGENT_VM_STATE_DIR={T0}/001/home/.agent-vm"
+			],
+			"Args": [
+				"_agent_vm_git_scan",
+				"{T0}/001/home/proj"
+			],
+			"Files": null,
+			"Stdout": "H\t.\t.\n",
+			"Stderr": "",
+			"Code": 0
+		}
+	],
+	"TestScanBash/protected_folder_link_and_control_characters": [
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/002",
+				"HOME={T0}/001/home",
+				"GIT_CONFIG_NOSYSTEM=1",
+				"AGENT_VM_STATE_DIR={T0}/001/home/.agent-vm"
+			],
+			"Args": [
+				"_agent_vm_git_scan",
+				"{T0}/001/home/proj"
+			],
+			"Files": null,
+			"Stdout": "H\t.githooks\t.githooks\nR\thook a?]0;x?b runs scripts/pre-commit\n",
+			"Stderr": "",
+			"Code": 0
+		}
+	],
+	"TestScanBash/read-only_volume_repo": [
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/002",
+				"HOME={T0}/001/home",
+				"GIT_CONFIG_NOSYSTEM=1",
+				"AGENT_VM_STATE_DIR={T0}/001/home/.agent-vm"
+			],
+			"Args": [
+				"_agent_vm_git_scan",
+				"{T0}/001/home/proj"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "",
+			"Code": 0
+		}
+	],
+	"TestScanBash/under_.Git": [
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/002",
+				"HOME={T0}/001/home",
+				"GIT_CONFIG_NOSYSTEM=1",
+				"AGENT_VM_STATE_DIR={T0}/001/home/.agent-vm"
+			],
+			"Args": [
+				"_agent_vm_git_scan",
+				"{T0}/001/home/proj"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "",
+			"Code": 0
+		}
+	],
+	"TestScanBash/volume_repo": [
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/002",
+				"HOME={T0}/001/home",
+				"GIT_CONFIG_NOSYSTEM=1",
+				"AGENT_VM_STATE_DIR={T0}/001/home/.agent-vm"
+			],
+			"Args": [
+				"_agent_vm_git_scan",
+				"{T0}/001/home/proj"
+			],
+			"Files": null,
+			"Stdout": "H\t{T0}/001/sb/vrepo/tools/hooks\ttools/hooks\nR\tcore.fsmonitor = ./fsmon.sh\n",
+			"Stderr": "",
+			"Code": 0
+		}
+	],
+	"TestScanBash/volume_through_a_symlink": [
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/002",
+				"HOME={T0}/001/home",
+				"GIT_CONFIG_NOSYSTEM=1",
+				"AGENT_VM_STATE_DIR={T0}/001/home/.agent-vm"
+			],
+			"Args": [
+				"_agent_vm_git_scan",
+				"{T0}/001/home/proj"
+			],
+			"Files": null,
+			"Stdout": "H\t{T0}/001/sb/data/code/app/.husky/_\t.husky/_\n",
+			"Stderr": "",
+			"Code": 0
+		}
+	]
+}

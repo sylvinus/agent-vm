@@ -1,0 +1,164 @@
+{
+	"TestCodePortsHostBash": [
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/001"
+			],
+			"Args": [
+				"_agent_vm_code_ports",
+				"proj-0000270f"
+			],
+			"Files": null,
+			"Stdout": "20008 20009 20010 20011 20012 20013 20014 20015 20016 20017 ",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/002"
+			],
+			"Args": [
+				"_agent_vm_code_host",
+				"proj-0000270f"
+			],
+			"Files": null,
+			"Stdout": "proj-0000270f.localhost\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/003"
+			],
+			"Args": [
+				"_agent_vm_code_ports",
+				"proj-ffffffff"
+			],
+			"Files": null,
+			"Stdout": "25589 25590 25591 25592 25593 25594 25595 25596 25597 25598 ",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/004"
+			],
+			"Args": [
+				"_agent_vm_code_host",
+				"proj-ffffffff"
+			],
+			"Files": null,
+			"Stdout": "proj-ffffffff.localhost\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/005"
+			],
+			"Args": [
+				"_agent_vm_code_ports",
+				"proj-00000000"
+			],
+			"Files": null,
+			"Stdout": "20000 20001 20002 20003 20004 20005 20006 20007 20008 20009 ",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/006"
+			],
+			"Args": [
+				"_agent_vm_code_host",
+				"proj-00000000"
+			],
+			"Files": null,
+			"Stdout": "proj-00000000.localhost\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/007"
+			],
+			"Args": [
+				"_agent_vm_code_ports",
+				"noHash"
+			],
+			"Files": null,
+			"Stdout": "24723 24724 24725 24726 24727 24728 24729 24730 24731 24732 ",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/008"
+			],
+			"Args": [
+				"_agent_vm_code_host",
+				"noHash"
+			],
+			"Files": null,
+			"Stdout": "nohash.localhost\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/009"
+			],
+			"Args": [
+				"_agent_vm_code_ports",
+				"LongLongLongLongLongLongLongLongLongLongLongLongLongLongLongLongLongLongLongLong-abcdef12"
+			],
+			"Files": null,
+			"Stdout": "21256 21257 21258 21259 21260 21261 21262 21263 21264 21265 ",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/010"
+			],
+			"Args": [
+				"_agent_vm_code_host",
+				"LongLongLongLongLongLongLongLongLongLongLongLongLongLongLongLongLongLongLongLong-abcdef12"
+			],
+			"Files": null,
+			"Stdout": "longlonglonglonglonglonglonglonglonglonglonglonglonglo-abcdef12.localhost\n",
+			"Stderr": "",
+			"Code": 0
+		}
+	]
+}

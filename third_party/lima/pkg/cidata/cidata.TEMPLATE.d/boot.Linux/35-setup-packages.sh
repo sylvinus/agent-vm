@@ -1,0 +1,59 @@
+#!/bin/sh
+
+# SPDX-FileCopyrightText: Copyright The Lima Authors
+# SPDX-License-Identifier: Apache-2.0
+
+set -eux
+
+update_fuse_conf() {
+	# Modify /etc/fuse.conf (/etc/fuse3.conf) to allow "-o allow_root"
+	if [ "${LIMA_CIDATA_MOUNTS}" -gt 0 ]; then
+		fuse_conf="/etc/fuse.conf"
+		if [ -e /etc/fuse3.conf ]; then
+			fuse_conf="/etc/fuse3.conf"
+		fi
+		if ! grep -q "^user_allow_other" "${fuse_conf}"; then
+			echo "user_allow_other" >>"${fuse_conf}"
+		fi
+	fi
+
+	# Some distribution (since Ubuntu-25.04) has an apparmor rule for fusermount3. It causes SSHFS mount failed.
+	# Related Issue: https://github.com/lima-vm/lima/issues/4908
+	# The profile only allows mounting under home, /mnt, /tmp and /media, but a mount point mirrors
+	# the host path, so it can be anywhere, such as /Users/USER from a macOS host or /c/Users/USER
+	# from a Windows one.
+	# Therefore, define a custom rule for each mount point to loosen the apparmor rule.
+	if [ -e "/etc/apparmor.d/fusermount3" ] && [ "${LIMA_CIDATA_MOUNTS}" -gt 0 ]; then
+		{
+			echo "# Lima overwrites this file on every boot."
+			# NOTE: Busybox sh does not support `for ((i=0;i<$N;i++))` form
+			for f in $(seq 0 $((LIMA_CIDATA_MOUNTS - 1))); do
+				mountpointvar="LIMA_CIDATA_MOUNTS_${f}_MOUNTPOINT"
+				mountpoint="$(eval echo \$"$mountpointvar")"
+				# The trailing slash matters because apparmor matches the mount point as a directory.
+				echo "mount fstype=@{fuse_types} options=(nosuid,nodev) options in (ro,rw,noatime,dirsync,nodiratime,noexec,sync) -> \"${mountpoint}/\","
+				echo "umount \"${mountpoint}/\","
+			done
+		} >"/etc/apparmor.d/local/fusermount3"
+		apparmor_parser -r /etc/apparmor.d/fusermount3
+	fi
+}
+
+# update_fuse_conf has to be called after installing all the packages,
+# otherwise apt-get fails with conflict
+if [ "${LIMA_CIDATA_MOUNTTYPE}" = "reverse-sshfs" ]; then
+	update_fuse_conf
+	echo "${LIMA_CIDATA_IID}" >/run/lima-fuse-ready
+fi
+
+SETUP_DNS=0
+if [ -n "${LIMA_CIDATA_UDP_DNS_LOCAL_PORT}" ] && [ "${LIMA_CIDATA_UDP_DNS_LOCAL_PORT}" -ne 0 ]; then
+	SETUP_DNS=1
+fi
+if [ -n "${LIMA_CIDATA_TCP_DNS_LOCAL_PORT}" ] && [ "${LIMA_CIDATA_TCP_DNS_LOCAL_PORT}" -ne 0 ]; then
+	SETUP_DNS=1
+fi
+if [ "${SETUP_DNS}" = 1 ]; then
+	# Try to setup iptables rule again, in case we just installed iptables
+	"${LIMA_CIDATA_MNT}/boot.Linux/09-host-dns-setup.sh"
+fi

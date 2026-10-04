@@ -41,7 +41,9 @@ from `/<code>/`.
 
 `public/install.sh` is served as-is at `/install.sh`, for
 `curl -fsSL https://www.agent-vm.org/install.sh | sh`. It is plain `sh`, not
-bash. Its tests are in `../tests/17-curl-installer.sh`, and CI runs `sh -n` on it. A change goes
+bash. It installs a release as `../release.sh` makes it, or a clone, and runs
+`agent-vm.sh install` in it. Its tests are in `../tests/installer.sh`, and CI
+runs `sh -n` on it. A change goes
 live with the next deploy of the site, not with a release.
 
 ## Social image

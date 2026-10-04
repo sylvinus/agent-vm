@@ -1,0 +1,64 @@
+images:
+# Try to use release-yyyyMMdd image if available. Note that release-yyyyMMdd will be removed after several months.
+
+- location: "https://cloud-images.ubuntu.com/releases/jammy/release-20260705/ubuntu-22.04-server-cloudimg-amd64.img"
+  arch: "x86_64"
+  digest: "sha256:ec3cdc1bf496078f645ccc8ac823e17609658753477ebc4e5fb730729ac5b434"
+  variant: "server"
+- location: "https://cloud-images.ubuntu.com/releases/jammy/release-20260705/ubuntu-22.04-server-cloudimg-arm64.img"
+  arch: "aarch64"
+  digest: "sha256:9c2ddc65079f9a285ca7c9efabdee6d58ff7dd2b08a130114426d2020506db7a"
+  variant: "server"
+- location: "https://cloud-images.ubuntu.com/releases/jammy/release-20260705/ubuntu-22.04-server-cloudimg-riscv64.img"
+  arch: "riscv64"
+  digest: "sha256:3d868b3ad9893960afae0d9033895d4eb28ad44630c99af02832516819fcdcd7"
+  variant: "server"
+- location: "https://cloud-images.ubuntu.com/releases/jammy/release-20260705/ubuntu-22.04-server-cloudimg-armhf.img"
+  arch: "armv7l"
+  digest: "sha256:c2dfafab922b7e6205f14056aad30c5d1d462d38fbd7d76d3db8c914be8f9169"
+  variant: "server"
+- location: "https://cloud-images.ubuntu.com/releases/jammy/release-20260705/ubuntu-22.04-server-cloudimg-s390x.img"
+  arch: "s390x"
+  digest: "sha256:e005f3978e158bd242ab1b8ca6bef502fdacbbb44a4d90b3d72bfc643044a604"
+  variant: "server"
+- location: "https://cloud-images.ubuntu.com/releases/jammy/release-20260705/ubuntu-22.04-server-cloudimg-ppc64el.img"
+  arch: "ppc64le"
+  digest: "sha256:45d34f8af318480b532fe5225e15dd39853cad246ada0e8e7897f674465bdf58"
+  variant: "server"
+# Fallback to the latest release image.
+# Hint: run `limactl prune` to invalidate the cache
+
+- location: https://cloud-images.ubuntu.com/releases/jammy/release/ubuntu-22.04-server-cloudimg-amd64.img
+  arch: x86_64
+  variant: "server"
+
+- location: https://cloud-images.ubuntu.com/releases/jammy/release/ubuntu-22.04-server-cloudimg-arm64.img
+  arch: aarch64
+  variant: "server"
+
+- location: https://cloud-images.ubuntu.com/releases/jammy/release/ubuntu-22.04-server-cloudimg-riscv64.img
+  arch: riscv64
+  variant: "server"
+
+- location: https://cloud-images.ubuntu.com/releases/jammy/release/ubuntu-22.04-server-cloudimg-armhf.img
+  arch: armv7l
+  variant: "server"
+
+- location: https://cloud-images.ubuntu.com/releases/jammy/release/ubuntu-22.04-server-cloudimg-s390x.img
+  arch: s390x
+  variant: "server"
+
+- location: https://cloud-images.ubuntu.com/releases/jammy/release/ubuntu-22.04-server-cloudimg-ppc64el.img
+  arch: ppc64le
+  variant: "server"
+
+# Try to use release-yyyyMMdd minimal image if available.
+- location: "https://cloud-images.ubuntu.com/minimal/releases/jammy/release-20260716/ubuntu-22.04-minimal-cloudimg-amd64.img"
+  arch: "x86_64"
+  digest: "sha256:421635d0eef145c0e65956a6d8d783ccace2a6d3baca5eaedd91f9a4e1213fab"
+  variant: "minimal"
+
+# Fallback minimal images
+- location: "https://cloud-images.ubuntu.com/minimal/releases/jammy/release/ubuntu-22.04-minimal-cloudimg-amd64.img"
+  arch: "x86_64"
+  variant: "minimal"

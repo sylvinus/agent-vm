@@ -1,0 +1,52 @@
+# Windows guest is currently experimental. It only runs on QEMU, and it requires plain: true.
+os: "Windows"
+vmType: "qemu"
+arch: "x86_64"
+
+images:
+# Windows server 2025 licensing guidance: https://www.microsoft.com/licensing/guidance/Windows-Server-2025
+# Windows server 2025 is only for x86-64.
+- location: "https://aka.ms/WinServ2025iso-enus"
+  arch: "x86_64"
+
+# Windows server does not require TPM by default. If you turn TPM on, you can use some security features like BitLocker disk encryption.
+tpm: null
+
+osOpts:
+  Windows:
+    # Virtio-win ISO contains virtio drivers for windows. It is necessary for lots of QEMU options which use virtio (virtio interface for mounting qcow2 disk, virtio-net, virtio-serial, virtio-rng, virtio-keyboard, and virtio-mouse)
+    # In addition, the driver for virtio-fs will be used in the future.
+    virtioWin:
+    - location: https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/archive-virtio/virtio-win-0.1.271-1/virtio-win-0.1.271.iso
+      arch: "x86_64"
+
+plain: true
+
+video:
+  # This is for development purpose. You can set `none`.
+  display: default
+
+# Windows VM doesn't support boot mode because there is no phase which is equivalent to Cloud-init's 'init' stage.
+# Currently Windows VM doesn't support yq mode.
+# provision:
+# - mode: system
+#   script: |
+#     Write-Output "this is system mode"
+# - mode: user
+#   script: |
+#     Write-Output "this is user mode"
+# # dependency is only run at once, when the guest is installed.
+# # Currently Windows VM does not support skipDefaultDependencyResolution.
+# - mode: dependency
+#   skipDefaultDependencyResolution: false
+#   script: |
+#     Write-Output "this is dependency mode"
+# # All data mode files are copied in `C:\ProgramData\Lima\provision\provision.data\`, and `path` is ignored.
+# - mode: data
+#   path: /this-field-is-ignored
+#   content: |
+#     FOO=bar
+# - mode: data
+#   path: /this-field-is-ignored
+#   content: |
+#     BAR=foo

@@ -1,0 +1,78 @@
+name: go
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  go:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    # Native Windows (no Git Bash) is not done yet: its job reports, and
+    # does not fail the run, until it is.
+    continue-on-error: ${{ matrix.os == 'windows-latest' }}
+    defaults:
+      run:
+        shell: bash
+    env:
+      # The Makefile's TAGS: what ships is what is tested.
+      GOFLAGS: -tags=yq_noxml,yq_nolua,yq_noini,yq_nohcl,yq_notoml,yq_noprops,yq_nocsv,yq_nouri,yq_nobase64,yq_nosh,yq_noshell
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The steps below run code from the PR branch.
+          persist-credentials: false
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: third_party is upstream plus patches/
+        if: runner.os == 'Linux'
+        run: make check-third-party
+
+      # Served as `curl | sh`: plain sh, not bash.
+      - name: Shell syntax
+        if: runner.os == 'Linux'
+        run: |
+          for f in agent-vm.sh agent-vm.setup.sh release.sh runtime.example.sh tests/*.sh tests/sftp/run tests/sftp/*.sh scripts/*; do
+            echo "bash -n $f"
+            bash -n "$f"
+          done
+          sh -n www/public/install.sh
+
+      - name: Build, with the guest agent and templates
+        if: runner.os != 'Windows'
+        run: make agent-vm
+
+      # No make there: built without the embedded files, whose tests skip.
+      - name: Build
+        if: runner.os == 'Windows'
+        run: go build -o _output/bin/agent-vm.exe ./cmd/agent-vm
+
+      - name: Vet
+        run: go vet . ./cmd/... ./internal/...
+
+      - name: Vet for Windows, amd64 and arm64
+        if: runner.os == 'Linux'
+        run: make check-windows
+
+      - name: Test
+        run: go test . ./cmd/... ./internal/...
+
+      - name: Tests of Lima, sshocker and pkg/sftp, patched
+        if: runner.os != 'Windows'
+        run: make test-third-party
+
+      # Where the file system folds names (APFS, NTFS), it is the oracle of
+      # the read-only names' matching; Linux's matches byte for byte.
+      - name: Fuzz read-only name matching against the file system
+        if: runner.os != 'Linux'
+        shell: bash
+        run: GOWORK="$PWD/tests/fuzz/go.work" go test -vet=off -run '^$' -fuzz '^FuzzSameNameFS$' -fuzztime 2m github.com/lima-vm/sshocker/pkg/reversesshfs

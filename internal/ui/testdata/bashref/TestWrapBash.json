@@ -1,0 +1,1044 @@
+{
+	"TestWrapBash": [
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$2\" | _agent_vm_wrap \"$1\"",
+			"Env": [
+				"HOME={T0}/001"
+			],
+			"Args": [
+				"8",
+				"An agent could write .git/config or .git/hooks in your projects, and git on this machine would run them, even when your editor or shell prompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword and then some more words after it\n"
+			],
+			"Files": null,
+			"Stdout": "An agent\ncould\nwrite\n.git/config\nor\n.git/hooks\nin your\nprojects,\nand git\non this\nmachine\nwould\nrun\nthem,\neven\nwhen\nyour\neditor\nor shell\nprompt\ncalls\ngit.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword\nand then\nsome\nmore\nwords\nafter it\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$2\" | _agent_vm_wrap \"$1\"",
+			"Env": [
+				"HOME={T0}/002"
+			],
+			"Args": [
+				"9",
+				"An agent could write .git/config or .git/hooks in your projects, and git on this machine would run them, even when your editor or shell prompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword and then some more words after it\n"
+			],
+			"Files": null,
+			"Stdout": "An agent\ncould\nwrite\n.git/config\nor\n.git/hooks\nin your\nprojects,\nand git\non this\nmachine\nwould run\nthem,\neven when\nyour\neditor or\nshell\nprompt\ncalls\ngit.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword\nand then\nsome more\nwords\nafter it\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$2\" | _agent_vm_wrap \"$1\"",
+			"Env": [
+				"HOME={T0}/003"
+			],
+			"Args": [
+				"10",
+				"An agent could write .git/config or .git/hooks in your projects, and git on this machine would run them, even when your editor or shell prompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword and then some more words after it\n"
+			],
+			"Files": null,
+			"Stdout": "An agent\ncould\nwrite\n.git/config\nor\n.git/hooks\nin your\nprojects,\nand git on\nthis\nmachine\nwould run\nthem, even\nwhen your\neditor or\nshell\nprompt\ncalls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword\nand then\nsome more\nwords\nafter it\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$2\" | _agent_vm_wrap \"$1\"",
+			"Env": [
+				"HOME={T0}/004"
+			],
+			"Args": [
+				"11",
+				"An agent could write .git/config or .git/hooks in your projects, and git on this machine would run them, even when your editor or shell prompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword and then some more words after it\n"
+			],
+			"Files": null,
+			"Stdout": "An agent\ncould write\n.git/config\nor\n.git/hooks\nin your\nprojects,\nand git on\nthis\nmachine\nwould run\nthem, even\nwhen your\neditor or\nshell\nprompt\ncalls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword\nand then\nsome more\nwords after\nit\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$2\" | _agent_vm_wrap \"$1\"",
+			"Env": [
+				"HOME={T0}/005"
+			],
+			"Args": [
+				"12",
+				"An agent could write .git/config or .git/hooks in your projects, and git on this machine would run them, even when your editor or shell prompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword and then some more words after it\n"
+			],
+			"Files": null,
+			"Stdout": "An agent\ncould write\n.git/config\nor\n.git/hooks\nin your\nprojects,\nand git on\nthis machine\nwould run\nthem, even\nwhen your\neditor or\nshell prompt\ncalls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword\nand then\nsome more\nwords after\nit\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$2\" | _agent_vm_wrap \"$1\"",
+			"Env": [
+				"HOME={T0}/006"
+			],
+			"Args": [
+				"13",
+				"An agent could write .git/config or .git/hooks in your projects, and git on this machine would run them, even when your editor or shell prompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword and then some more words after it\n"
+			],
+			"Files": null,
+			"Stdout": "An agent\ncould write\n.git/config\nor .git/hooks\nin your\nprojects, and\ngit on this\nmachine would\nrun them,\neven when\nyour editor\nor shell\nprompt calls\ngit.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword\nand then some\nmore words\nafter it\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$2\" | _agent_vm_wrap \"$1\"",
+			"Env": [
+				"HOME={T0}/007"
+			],
+			"Args": [
+				"14",
+				"An agent could write .git/config or .git/hooks in your projects, and git on this machine would run them, even when your editor or shell prompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword and then some more words after it\n"
+			],
+			"Files": null,
+			"Stdout": "An agent could\nwrite\n.git/config or\n.git/hooks in\nyour projects,\nand git on\nthis machine\nwould run\nthem, even\nwhen your\neditor or\nshell prompt\ncalls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword\nand then some\nmore words\nafter it\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$2\" | _agent_vm_wrap \"$1\"",
+			"Env": [
+				"HOME={T0}/008"
+			],
+			"Args": [
+				"15",
+				"An agent could write .git/config or .git/hooks in your projects, and git on this machine would run them, even when your editor or shell prompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword and then some more words after it\n"
+			],
+			"Files": null,
+			"Stdout": "An agent could\nwrite\n.git/config or\n.git/hooks in\nyour projects,\nand git on this\nmachine would\nrun them, even\nwhen your\neditor or shell\nprompt calls\ngit.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword\nand then some\nmore words\nafter it\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$2\" | _agent_vm_wrap \"$1\"",
+			"Env": [
+				"HOME={T0}/009"
+			],
+			"Args": [
+				"16",
+				"An agent could write .git/config or .git/hooks in your projects, and git on this machine would run them, even when your editor or shell prompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword and then some more words after it\n"
+			],
+			"Files": null,
+			"Stdout": "An agent could\nwrite\n.git/config or\n.git/hooks in\nyour projects,\nand git on this\nmachine would\nrun them, even\nwhen your editor\nor shell prompt\ncalls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword\nand then some\nmore words after\nit\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$2\" | _agent_vm_wrap \"$1\"",
+			"Env": [
+				"HOME={T0}/010"
+			],
+			"Args": [
+				"17",
+				"An agent could write .git/config or .git/hooks in your projects, and git on this machine would run them, even when your editor or shell prompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword and then some more words after it\n"
+			],
+			"Files": null,
+			"Stdout": "An agent could\nwrite .git/config\nor .git/hooks in\nyour projects,\nand git on this\nmachine would run\nthem, even when\nyour editor or\nshell prompt\ncalls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword\nand then some\nmore words after\nit\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$2\" | _agent_vm_wrap \"$1\"",
+			"Env": [
+				"HOME={T0}/011"
+			],
+			"Args": [
+				"18",
+				"An agent could write .git/config or .git/hooks in your projects, and git on this machine would run them, even when your editor or shell prompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword and then some more words after it\n"
+			],
+			"Files": null,
+			"Stdout": "An agent could\nwrite .git/config\nor .git/hooks in\nyour projects, and\ngit on this\nmachine would run\nthem, even when\nyour editor or\nshell prompt calls\ngit.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword\nand then some more\nwords after it\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$2\" | _agent_vm_wrap \"$1\"",
+			"Env": [
+				"HOME={T0}/012"
+			],
+			"Args": [
+				"19",
+				"An agent could write .git/config or .git/hooks in your projects, and git on this machine would run them, even when your editor or shell prompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword and then some more words after it\n"
+			],
+			"Files": null,
+			"Stdout": "An agent could\nwrite .git/config\nor .git/hooks in\nyour projects, and\ngit on this machine\nwould run them,\neven when your\neditor or shell\nprompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword\nand then some more\nwords after it\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$2\" | _agent_vm_wrap \"$1\"",
+			"Env": [
+				"HOME={T0}/013"
+			],
+			"Args": [
+				"20",
+				"An agent could write .git/config or .git/hooks in your projects, and git on this machine would run them, even when your editor or shell prompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword and then some more words after it\n"
+			],
+			"Files": null,
+			"Stdout": "An agent could write\n.git/config or\n.git/hooks in your\nprojects, and git on\nthis machine would\nrun them, even when\nyour editor or shell\nprompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword\nand then some more\nwords after it\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$2\" | _agent_vm_wrap \"$1\"",
+			"Env": [
+				"HOME={T0}/014"
+			],
+			"Args": [
+				"21",
+				"An agent could write .git/config or .git/hooks in your projects, and git on this machine would run them, even when your editor or shell prompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword and then some more words after it\n"
+			],
+			"Files": null,
+			"Stdout": "An agent could write\n.git/config or\n.git/hooks in your\nprojects, and git on\nthis machine would\nrun them, even when\nyour editor or shell\nprompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword\nand then some more\nwords after it\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$2\" | _agent_vm_wrap \"$1\"",
+			"Env": [
+				"HOME={T0}/015"
+			],
+			"Args": [
+				"22",
+				"An agent could write .git/config or .git/hooks in your projects, and git on this machine would run them, even when your editor or shell prompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword and then some more words after it\n"
+			],
+			"Files": null,
+			"Stdout": "An agent could write\n.git/config or\n.git/hooks in your\nprojects, and git on\nthis machine would run\nthem, even when your\neditor or shell prompt\ncalls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword\nand then some more\nwords after it\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$2\" | _agent_vm_wrap \"$1\"",
+			"Env": [
+				"HOME={T0}/016"
+			],
+			"Args": [
+				"23",
+				"An agent could write .git/config or .git/hooks in your projects, and git on this machine would run them, even when your editor or shell prompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword and then some more words after it\n"
+			],
+			"Files": null,
+			"Stdout": "An agent could write\n.git/config or\n.git/hooks in your\nprojects, and git on\nthis machine would run\nthem, even when your\neditor or shell prompt\ncalls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword\nand then some more\nwords after it\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$2\" | _agent_vm_wrap \"$1\"",
+			"Env": [
+				"HOME={T0}/017"
+			],
+			"Args": [
+				"24",
+				"An agent could write .git/config or .git/hooks in your projects, and git on this machine would run them, even when your editor or shell prompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword and then some more words after it\n"
+			],
+			"Files": null,
+			"Stdout": "An agent could write\n.git/config or\n.git/hooks in your\nprojects, and git on\nthis machine would run\nthem, even when your\neditor or shell prompt\ncalls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword\nand then some more words\nafter it\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$2\" | _agent_vm_wrap \"$1\"",
+			"Env": [
+				"HOME={T0}/018"
+			],
+			"Args": [
+				"25",
+				"An agent could write .git/config or .git/hooks in your projects, and git on this machine would run them, even when your editor or shell prompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword and then some more words after it\n"
+			],
+			"Files": null,
+			"Stdout": "An agent could write\n.git/config or .git/hooks\nin your projects, and git\non this machine would run\nthem, even when your\neditor or shell prompt\ncalls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword\nand then some more words\nafter it\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$2\" | _agent_vm_wrap \"$1\"",
+			"Env": [
+				"HOME={T0}/019"
+			],
+			"Args": [
+				"26",
+				"An agent could write .git/config or .git/hooks in your projects, and git on this machine would run them, even when your editor or shell prompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword and then some more words after it\n"
+			],
+			"Files": null,
+			"Stdout": "An agent could write\n.git/config or .git/hooks\nin your projects, and git\non this machine would run\nthem, even when your\neditor or shell prompt\ncalls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword\nand then some more words\nafter it\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$2\" | _agent_vm_wrap \"$1\"",
+			"Env": [
+				"HOME={T0}/020"
+			],
+			"Args": [
+				"27",
+				"An agent could write .git/config or .git/hooks in your projects, and git on this machine would run them, even when your editor or shell prompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword and then some more words after it\n"
+			],
+			"Files": null,
+			"Stdout": "An agent could write\n.git/config or .git/hooks\nin your projects, and git\non this machine would run\nthem, even when your editor\nor shell prompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword\nand then some more words\nafter it\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$2\" | _agent_vm_wrap \"$1\"",
+			"Env": [
+				"HOME={T0}/021"
+			],
+			"Args": [
+				"28",
+				"An agent could write .git/config or .git/hooks in your projects, and git on this machine would run them, even when your editor or shell prompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword and then some more words after it\n"
+			],
+			"Files": null,
+			"Stdout": "An agent could write\n.git/config or .git/hooks in\nyour projects, and git on\nthis machine would run them,\neven when your editor or\nshell prompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword\nand then some more words\nafter it\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$2\" | _agent_vm_wrap \"$1\"",
+			"Env": [
+				"HOME={T0}/022"
+			],
+			"Args": [
+				"29",
+				"An agent could write .git/config or .git/hooks in your projects, and git on this machine would run them, even when your editor or shell prompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword and then some more words after it\n"
+			],
+			"Files": null,
+			"Stdout": "An agent could write\n.git/config or .git/hooks in\nyour projects, and git on\nthis machine would run them,\neven when your editor or\nshell prompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword\nand then some more words\nafter it\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$2\" | _agent_vm_wrap \"$1\"",
+			"Env": [
+				"HOME={T0}/023"
+			],
+			"Args": [
+				"30",
+				"An agent could write .git/config or .git/hooks in your projects, and git on this machine would run them, even when your editor or shell prompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword and then some more words after it\n"
+			],
+			"Files": null,
+			"Stdout": "An agent could write\n.git/config or .git/hooks in\nyour projects, and git on this\nmachine would run them, even\nwhen your editor or shell\nprompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword\nand then some more words after\nit\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$2\" | _agent_vm_wrap \"$1\"",
+			"Env": [
+				"HOME={T0}/024"
+			],
+			"Args": [
+				"31",
+				"An agent could write .git/config or .git/hooks in your projects, and git on this machine would run them, even when your editor or shell prompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword and then some more words after it\n"
+			],
+			"Files": null,
+			"Stdout": "An agent could write\n.git/config or .git/hooks in\nyour projects, and git on this\nmachine would run them, even\nwhen your editor or shell\nprompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword\nand then some more words after\nit\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$2\" | _agent_vm_wrap \"$1\"",
+			"Env": [
+				"HOME={T0}/025"
+			],
+			"Args": [
+				"32",
+				"An agent could write .git/config or .git/hooks in your projects, and git on this machine would run them, even when your editor or shell prompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword and then some more words after it\n"
+			],
+			"Files": null,
+			"Stdout": "An agent could write .git/config\nor .git/hooks in your projects,\nand git on this machine would\nrun them, even when your editor\nor shell prompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword\nand then some more words after\nit\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$2\" | _agent_vm_wrap \"$1\"",
+			"Env": [
+				"HOME={T0}/026"
+			],
+			"Args": [
+				"33",
+				"An agent could write .git/config or .git/hooks in your projects, and git on this machine would run them, even when your editor or shell prompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword and then some more words after it\n"
+			],
+			"Files": null,
+			"Stdout": "An agent could write .git/config\nor .git/hooks in your projects,\nand git on this machine would run\nthem, even when your editor or\nshell prompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword\nand then some more words after it\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$2\" | _agent_vm_wrap \"$1\"",
+			"Env": [
+				"HOME={T0}/027"
+			],
+			"Args": [
+				"34",
+				"An agent could write .git/config or .git/hooks in your projects, and git on this machine would run them, even when your editor or shell prompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword and then some more words after it\n"
+			],
+			"Files": null,
+			"Stdout": "An agent could write .git/config\nor .git/hooks in your projects,\nand git on this machine would run\nthem, even when your editor or\nshell prompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword\nand then some more words after it\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$2\" | _agent_vm_wrap \"$1\"",
+			"Env": [
+				"HOME={T0}/028"
+			],
+			"Args": [
+				"35",
+				"An agent could write .git/config or .git/hooks in your projects, and git on this machine would run them, even when your editor or shell prompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword and then some more words after it\n"
+			],
+			"Files": null,
+			"Stdout": "An agent could write .git/config or\n.git/hooks in your projects, and\ngit on this machine would run them,\neven when your editor or shell\nprompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword\nand then some more words after it\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$2\" | _agent_vm_wrap \"$1\"",
+			"Env": [
+				"HOME={T0}/029"
+			],
+			"Args": [
+				"36",
+				"An agent could write .git/config or .git/hooks in your projects, and git on this machine would run them, even when your editor or shell prompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword and then some more words after it\n"
+			],
+			"Files": null,
+			"Stdout": "An agent could write .git/config or\n.git/hooks in your projects, and git\non this machine would run them, even\nwhen your editor or shell prompt\ncalls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword\nand then some more words after it\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$2\" | _agent_vm_wrap \"$1\"",
+			"Env": [
+				"HOME={T0}/030"
+			],
+			"Args": [
+				"37",
+				"An agent could write .git/config or .git/hooks in your projects, and git on this machine would run them, even when your editor or shell prompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword and then some more words after it\n"
+			],
+			"Files": null,
+			"Stdout": "An agent could write .git/config or\n.git/hooks in your projects, and git\non this machine would run them, even\nwhen your editor or shell prompt\ncalls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword\nand then some more words after it\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$2\" | _agent_vm_wrap \"$1\"",
+			"Env": [
+				"HOME={T0}/031"
+			],
+			"Args": [
+				"38",
+				"An agent could write .git/config or .git/hooks in your projects, and git on this machine would run them, even when your editor or shell prompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword and then some more words after it\n"
+			],
+			"Files": null,
+			"Stdout": "An agent could write .git/config or\n.git/hooks in your projects, and git\non this machine would run them, even\nwhen your editor or shell prompt calls\ngit.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword\nand then some more words after it\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$2\" | _agent_vm_wrap \"$1\"",
+			"Env": [
+				"HOME={T0}/032"
+			],
+			"Args": [
+				"39",
+				"An agent could write .git/config or .git/hooks in your projects, and git on this machine would run them, even when your editor or shell prompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword and then some more words after it\n"
+			],
+			"Files": null,
+			"Stdout": "An agent could write .git/config or\n.git/hooks in your projects, and git on\nthis machine would run them, even when\nyour editor or shell prompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword\nand then some more words after it\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$2\" | _agent_vm_wrap \"$1\"",
+			"Env": [
+				"HOME={T0}/033"
+			],
+			"Args": [
+				"40",
+				"An agent could write .git/config or .git/hooks in your projects, and git on this machine would run them, even when your editor or shell prompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword and then some more words after it\n"
+			],
+			"Files": null,
+			"Stdout": "An agent could write .git/config or\n.git/hooks in your projects, and git on\nthis machine would run them, even when\nyour editor or shell prompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword\nand then some more words after it\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$2\" | _agent_vm_wrap \"$1\"",
+			"Env": [
+				"HOME={T0}/034"
+			],
+			"Args": [
+				"41",
+				"An agent could write .git/config or .git/hooks in your projects, and git on this machine would run them, even when your editor or shell prompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword and then some more words after it\n"
+			],
+			"Files": null,
+			"Stdout": "An agent could write .git/config or\n.git/hooks in your projects, and git on\nthis machine would run them, even when\nyour editor or shell prompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword\nand then some more words after it\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$2\" | _agent_vm_wrap \"$1\"",
+			"Env": [
+				"HOME={T0}/035"
+			],
+			"Args": [
+				"42",
+				"An agent could write .git/config or .git/hooks in your projects, and git on this machine would run them, even when your editor or shell prompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword and then some more words after it\n"
+			],
+			"Files": null,
+			"Stdout": "An agent could write .git/config or\n.git/hooks in your projects, and git on\nthis machine would run them, even when\nyour editor or shell prompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword\nand then some more words after it\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$2\" | _agent_vm_wrap \"$1\"",
+			"Env": [
+				"HOME={T0}/036"
+			],
+			"Args": [
+				"43",
+				"An agent could write .git/config or .git/hooks in your projects, and git on this machine would run them, even when your editor or shell prompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword and then some more words after it\n"
+			],
+			"Files": null,
+			"Stdout": "An agent could write .git/config or\n.git/hooks in your projects, and git on\nthis machine would run them, even when your\neditor or shell prompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword\nand then some more words after it\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$2\" | _agent_vm_wrap \"$1\"",
+			"Env": [
+				"HOME={T0}/037"
+			],
+			"Args": [
+				"44",
+				"An agent could write .git/config or .git/hooks in your projects, and git on this machine would run them, even when your editor or shell prompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword and then some more words after it\n"
+			],
+			"Files": null,
+			"Stdout": "An agent could write .git/config or\n.git/hooks in your projects, and git on this\nmachine would run them, even when your\neditor or shell prompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword\nand then some more words after it\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$2\" | _agent_vm_wrap \"$1\"",
+			"Env": [
+				"HOME={T0}/038"
+			],
+			"Args": [
+				"45",
+				"An agent could write .git/config or .git/hooks in your projects, and git on this machine would run them, even when your editor or shell prompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword and then some more words after it\n"
+			],
+			"Files": null,
+			"Stdout": "An agent could write .git/config or\n.git/hooks in your projects, and git on this\nmachine would run them, even when your editor\nor shell prompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword\nand then some more words after it\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$2\" | _agent_vm_wrap \"$1\"",
+			"Env": [
+				"HOME={T0}/039"
+			],
+			"Args": [
+				"46",
+				"An agent could write .git/config or .git/hooks in your projects, and git on this machine would run them, even when your editor or shell prompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword and then some more words after it\n"
+			],
+			"Files": null,
+			"Stdout": "An agent could write .git/config or .git/hooks\nin your projects, and git on this machine\nwould run them, even when your editor or shell\nprompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword\nand then some more words after it\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$2\" | _agent_vm_wrap \"$1\"",
+			"Env": [
+				"HOME={T0}/040"
+			],
+			"Args": [
+				"47",
+				"An agent could write .git/config or .git/hooks in your projects, and git on this machine would run them, even when your editor or shell prompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword and then some more words after it\n"
+			],
+			"Files": null,
+			"Stdout": "An agent could write .git/config or .git/hooks\nin your projects, and git on this machine would\nrun them, even when your editor or shell prompt\ncalls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword\nand then some more words after it\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$2\" | _agent_vm_wrap \"$1\"",
+			"Env": [
+				"HOME={T0}/041"
+			],
+			"Args": [
+				"48",
+				"An agent could write .git/config or .git/hooks in your projects, and git on this machine would run them, even when your editor or shell prompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword and then some more words after it\n"
+			],
+			"Files": null,
+			"Stdout": "An agent could write .git/config or .git/hooks\nin your projects, and git on this machine would\nrun them, even when your editor or shell prompt\ncalls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword\nand then some more words after it\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$2\" | _agent_vm_wrap \"$1\"",
+			"Env": [
+				"HOME={T0}/042"
+			],
+			"Args": [
+				"49",
+				"An agent could write .git/config or .git/hooks in your projects, and git on this machine would run them, even when your editor or shell prompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword and then some more words after it\n"
+			],
+			"Files": null,
+			"Stdout": "An agent could write .git/config or .git/hooks in\nyour projects, and git on this machine would run\nthem, even when your editor or shell prompt calls\ngit.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword\nand then some more words after it\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$2\" | _agent_vm_wrap \"$1\"",
+			"Env": [
+				"HOME={T0}/043"
+			],
+			"Args": [
+				"50",
+				"An agent could write .git/config or .git/hooks in your projects, and git on this machine would run them, even when your editor or shell prompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword and then some more words after it\n"
+			],
+			"Files": null,
+			"Stdout": "An agent could write .git/config or .git/hooks in\nyour projects, and git on this machine would run\nthem, even when your editor or shell prompt calls\ngit.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword\nand then some more words after it\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$2\" | _agent_vm_wrap \"$1\"",
+			"Env": [
+				"HOME={T0}/044"
+			],
+			"Args": [
+				"51",
+				"An agent could write .git/config or .git/hooks in your projects, and git on this machine would run them, even when your editor or shell prompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword and then some more words after it\n"
+			],
+			"Files": null,
+			"Stdout": "An agent could write .git/config or .git/hooks in\nyour projects, and git on this machine would run\nthem, even when your editor or shell prompt calls\ngit.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword\nand then some more words after it\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$2\" | _agent_vm_wrap \"$1\"",
+			"Env": [
+				"HOME={T0}/045"
+			],
+			"Args": [
+				"52",
+				"An agent could write .git/config or .git/hooks in your projects, and git on this machine would run them, even when your editor or shell prompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword and then some more words after it\n"
+			],
+			"Files": null,
+			"Stdout": "An agent could write .git/config or .git/hooks in\nyour projects, and git on this machine would run\nthem, even when your editor or shell prompt calls\ngit.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword\nand then some more words after it\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$2\" | _agent_vm_wrap \"$1\"",
+			"Env": [
+				"HOME={T0}/046"
+			],
+			"Args": [
+				"53",
+				"An agent could write .git/config or .git/hooks in your projects, and git on this machine would run them, even when your editor or shell prompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword and then some more words after it\n"
+			],
+			"Files": null,
+			"Stdout": "An agent could write .git/config or .git/hooks in\nyour projects, and git on this machine would run\nthem, even when your editor or shell prompt calls\ngit.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword\nand then some more words after it\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$2\" | _agent_vm_wrap \"$1\"",
+			"Env": [
+				"HOME={T0}/047"
+			],
+			"Args": [
+				"54",
+				"An agent could write .git/config or .git/hooks in your projects, and git on this machine would run them, even when your editor or shell prompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword and then some more words after it\n"
+			],
+			"Files": null,
+			"Stdout": "An agent could write .git/config or .git/hooks in your\nprojects, and git on this machine would run them, even\nwhen your editor or shell prompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword\nand then some more words after it\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$2\" | _agent_vm_wrap \"$1\"",
+			"Env": [
+				"HOME={T0}/048"
+			],
+			"Args": [
+				"55",
+				"An agent could write .git/config or .git/hooks in your projects, and git on this machine would run them, even when your editor or shell prompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword and then some more words after it\n"
+			],
+			"Files": null,
+			"Stdout": "An agent could write .git/config or .git/hooks in your\nprojects, and git on this machine would run them, even\nwhen your editor or shell prompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword\nand then some more words after it\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$2\" | _agent_vm_wrap \"$1\"",
+			"Env": [
+				"HOME={T0}/049"
+			],
+			"Args": [
+				"56",
+				"An agent could write .git/config or .git/hooks in your projects, and git on this machine would run them, even when your editor or shell prompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword and then some more words after it\n"
+			],
+			"Files": null,
+			"Stdout": "An agent could write .git/config or .git/hooks in your\nprojects, and git on this machine would run them, even\nwhen your editor or shell prompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword\nand then some more words after it\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$2\" | _agent_vm_wrap \"$1\"",
+			"Env": [
+				"HOME={T0}/050"
+			],
+			"Args": [
+				"57",
+				"An agent could write .git/config or .git/hooks in your projects, and git on this machine would run them, even when your editor or shell prompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword and then some more words after it\n"
+			],
+			"Files": null,
+			"Stdout": "An agent could write .git/config or .git/hooks in your\nprojects, and git on this machine would run them, even\nwhen your editor or shell prompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword\nand then some more words after it\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$2\" | _agent_vm_wrap \"$1\"",
+			"Env": [
+				"HOME={T0}/051"
+			],
+			"Args": [
+				"58",
+				"An agent could write .git/config or .git/hooks in your projects, and git on this machine would run them, even when your editor or shell prompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword and then some more words after it\n"
+			],
+			"Files": null,
+			"Stdout": "An agent could write .git/config or .git/hooks in your\nprojects, and git on this machine would run them, even\nwhen your editor or shell prompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword\nand then some more words after it\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$2\" | _agent_vm_wrap \"$1\"",
+			"Env": [
+				"HOME={T0}/052"
+			],
+			"Args": [
+				"59",
+				"An agent could write .git/config or .git/hooks in your projects, and git on this machine would run them, even when your editor or shell prompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword and then some more words after it\n"
+			],
+			"Files": null,
+			"Stdout": "An agent could write .git/config or .git/hooks in your\nprojects, and git on this machine would run them, even when\nyour editor or shell prompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword\nand then some more words after it\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$2\" | _agent_vm_wrap \"$1\"",
+			"Env": [
+				"HOME={T0}/053"
+			],
+			"Args": [
+				"60",
+				"An agent could write .git/config or .git/hooks in your projects, and git on this machine would run them, even when your editor or shell prompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword and then some more words after it\n"
+			],
+			"Files": null,
+			"Stdout": "An agent could write .git/config or .git/hooks in your\nprojects, and git on this machine would run them, even when\nyour editor or shell prompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword\nand then some more words after it\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$2\" | _agent_vm_wrap \"$1\"",
+			"Env": [
+				"HOME={T0}/054"
+			],
+			"Args": [
+				"61",
+				"An agent could write .git/config or .git/hooks in your projects, and git on this machine would run them, even when your editor or shell prompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword and then some more words after it\n"
+			],
+			"Files": null,
+			"Stdout": "An agent could write .git/config or .git/hooks in your\nprojects, and git on this machine would run them, even when\nyour editor or shell prompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword\nand then some more words after it\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$2\" | _agent_vm_wrap \"$1\"",
+			"Env": [
+				"HOME={T0}/055"
+			],
+			"Args": [
+				"62",
+				"An agent could write .git/config or .git/hooks in your projects, and git on this machine would run them, even when your editor or shell prompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword and then some more words after it\n"
+			],
+			"Files": null,
+			"Stdout": "An agent could write .git/config or .git/hooks in your\nprojects, and git on this machine would run them, even when\nyour editor or shell prompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword\nand then some more words after it\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$2\" | _agent_vm_wrap \"$1\"",
+			"Env": [
+				"HOME={T0}/056"
+			],
+			"Args": [
+				"63",
+				"An agent could write .git/config or .git/hooks in your projects, and git on this machine would run them, even when your editor or shell prompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword and then some more words after it\n"
+			],
+			"Files": null,
+			"Stdout": "An agent could write .git/config or .git/hooks in your\nprojects, and git on this machine would run them, even when\nyour editor or shell prompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword\nand then some more words after it\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$2\" | _agent_vm_wrap \"$1\"",
+			"Env": [
+				"HOME={T0}/057"
+			],
+			"Args": [
+				"64",
+				"An agent could write .git/config or .git/hooks in your projects, and git on this machine would run them, even when your editor or shell prompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword and then some more words after it\n"
+			],
+			"Files": null,
+			"Stdout": "An agent could write .git/config or .git/hooks in your projects,\nand git on this machine would run them, even when your editor or\nshell prompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword\nand then some more words after it\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$2\" | _agent_vm_wrap \"$1\"",
+			"Env": [
+				"HOME={T0}/058"
+			],
+			"Args": [
+				"65",
+				"An agent could write .git/config or .git/hooks in your projects, and git on this machine would run them, even when your editor or shell prompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword and then some more words after it\n"
+			],
+			"Files": null,
+			"Stdout": "An agent could write .git/config or .git/hooks in your projects,\nand git on this machine would run them, even when your editor or\nshell prompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword\nand then some more words after it\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$2\" | _agent_vm_wrap \"$1\"",
+			"Env": [
+				"HOME={T0}/059"
+			],
+			"Args": [
+				"66",
+				"An agent could write .git/config or .git/hooks in your projects, and git on this machine would run them, even when your editor or shell prompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword and then some more words after it\n"
+			],
+			"Files": null,
+			"Stdout": "An agent could write .git/config or .git/hooks in your projects,\nand git on this machine would run them, even when your editor or\nshell prompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword\nand then some more words after it\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$2\" | _agent_vm_wrap \"$1\"",
+			"Env": [
+				"HOME={T0}/060"
+			],
+			"Args": [
+				"67",
+				"An agent could write .git/config or .git/hooks in your projects, and git on this machine would run them, even when your editor or shell prompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword and then some more words after it\n"
+			],
+			"Files": null,
+			"Stdout": "An agent could write .git/config or .git/hooks in your projects,\nand git on this machine would run them, even when your editor or\nshell prompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword\nand then some more words after it\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$2\" | _agent_vm_wrap \"$1\"",
+			"Env": [
+				"HOME={T0}/061"
+			],
+			"Args": [
+				"68",
+				"An agent could write .git/config or .git/hooks in your projects, and git on this machine would run them, even when your editor or shell prompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword and then some more words after it\n"
+			],
+			"Files": null,
+			"Stdout": "An agent could write .git/config or .git/hooks in your projects, and\ngit on this machine would run them, even when your editor or shell\nprompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword\nand then some more words after it\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$2\" | _agent_vm_wrap \"$1\"",
+			"Env": [
+				"HOME={T0}/062"
+			],
+			"Args": [
+				"69",
+				"An agent could write .git/config or .git/hooks in your projects, and git on this machine would run them, even when your editor or shell prompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword and then some more words after it\n"
+			],
+			"Files": null,
+			"Stdout": "An agent could write .git/config or .git/hooks in your projects, and\ngit on this machine would run them, even when your editor or shell\nprompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword\nand then some more words after it\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$2\" | _agent_vm_wrap \"$1\"",
+			"Env": [
+				"HOME={T0}/063"
+			],
+			"Args": [
+				"70",
+				"An agent could write .git/config or .git/hooks in your projects, and git on this machine would run them, even when your editor or shell prompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword and then some more words after it\n"
+			],
+			"Files": null,
+			"Stdout": "An agent could write .git/config or .git/hooks in your projects, and\ngit on this machine would run them, even when your editor or shell\nprompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword\nand then some more words after it\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$2\" | _agent_vm_wrap \"$1\"",
+			"Env": [
+				"HOME={T0}/064"
+			],
+			"Args": [
+				"71",
+				"An agent could write .git/config or .git/hooks in your projects, and git on this machine would run them, even when your editor or shell prompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword and then some more words after it\n"
+			],
+			"Files": null,
+			"Stdout": "An agent could write .git/config or .git/hooks in your projects, and\ngit on this machine would run them, even when your editor or shell\nprompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword\nand then some more words after it\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$2\" | _agent_vm_wrap \"$1\"",
+			"Env": [
+				"HOME={T0}/065"
+			],
+			"Args": [
+				"72",
+				"An agent could write .git/config or .git/hooks in your projects, and git on this machine would run them, even when your editor or shell prompt calls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword and then some more words after it\n"
+			],
+			"Files": null,
+			"Stdout": "An agent could write .git/config or .git/hooks in your projects, and git\non this machine would run them, even when your editor or shell prompt\ncalls git.\n\n  brew unlink lima 2\u003e/dev/null; brew install sylvinus/tap/lima-sylvinus with a long command line that must stay whole\nshort\naveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword\nand then some more words after it\n",
+			"Stderr": "",
+			"Code": 0
+		}
+	]
+}

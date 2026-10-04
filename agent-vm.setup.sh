@@ -56,7 +56,7 @@ INSTALL_CODE_VIBE="${AGENT_VM_INSTALL_CODE_VIBE:-0}"
 if [[ "$INSTALL_CODE_CLAUDE$INSTALL_CODE_CODEX$INSTALL_CODE_VIBE" == *1* ]]; then
   INSTALL_CODE_SERVER=1
 fi
-# MCP servers wired into every installed agent's config (see lib/setup.sh).
+# MCP servers wired into every installed agent's config (see `agent-vm setup --help`).
 INSTALL_MCP_CHROME="${AGENT_VM_INSTALL_MCP_CHROME:-1}"
 INSTALL_MCP_PLAYWRIGHT="${AGENT_VM_INSTALL_MCP_PLAYWRIGHT:-0}"
 
@@ -419,7 +419,7 @@ code_server_schemas() {
 }
 
 if [[ "$INSTALL_CODE_SERVER" == "1" ]]; then
-  # The editor of `agent-vm code` (lib/code.sh). No password here: every VM
+  # The editor of `agent-vm code` (internal/cli/code.go). No password here: every VM
   # is a copy of this disk, so each one makes its own on first use.
   echo "Installing code-server..."
   curl -fsSL https://code-server.dev/install.sh | sh
@@ -432,7 +432,7 @@ if [[ "$INSTALL_CODE_SERVER" == "1" ]]; then
     code-server "${extensions[@]}" </dev/null
   fi
   # chat.disableAIFeatures turns off the GitHub Copilot chat and completions
-  # that code-server ships (lib/code.sh also disables the extension), and
+  # that code-server ships (code.go also disables the extension), and
   # chat.mcp.gallery.enabled its MCP gallery. telemetry.*: code-server's
   # --disable-telemetry leaves the built-in extensions sending telemetry. The
   # editor downloads no JSON schema: setup does, once, into the machine
@@ -485,7 +485,7 @@ if [[ "$INSTALL_CODE_SERVER" == "1" ]]; then
   fi
   # Codex and Vibe have no setting for it: their extensions start in the mode
   # the agent's own config names. These match the flags the command line gets
-  # (_agent_vm_agent in agent-vm.sh).
+  # (agents in internal/cli/commands.go).
   if [[ "$INSTALL_CODE_CODEX" == "1" ]]; then
     toml_prepend "$HOME/.codex/config.toml" sandbox_mode '"danger-full-access"'
     toml_prepend "$HOME/.codex/config.toml" approval_policy '"never"'

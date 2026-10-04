@@ -1,0 +1,353 @@
+From c9a1b6c423390fcfe60a106c8b985b011045fd9a Mon Sep 17 00:00:00 2001
+From: Sylvain Zimmer <sylvain@sylvainzimmer.com>
+Date: Wed, 23 Sep 2026 22:56:03 +0200
+Subject: [PATCH 1/2] mounts: add sshfs.readonlyNames
+
+A writable project mount lets the guest write .git/hooks or .git/config,
+which then run on the host the next time git is used in the project.
+
+sshfs.readonlyNames lists file names that the guest cannot modify, at
+any depth of the mount. The builtin SFTP server of sshocker enforces
+it on the host, so it holds against a compromised guest.
+
+Validation requires mountType reverse-sshfs, and sftpDriver builtin on
+every mount, because the OpenSSH sftp-server serves any host path to
+the guest. It also rejects entries that are not plain file names.
+
+Assisted-by: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+Signed-off-by: Sylvain Zimmer <sylvain@sylvainzimmer.com>
+---
+ pkg/hostagent/mount.go                  |  1 +
+ pkg/limatmpl/embed.go                   |  4 ++
+ pkg/limatmpl/embed_test.go              |  4 +-
+ pkg/limatype/lima_yaml.go               |  2 +
+ pkg/limayaml/defaults.go                |  3 ++
+ pkg/limayaml/defaults_test.go           |  2 +
+ pkg/limayaml/validate.go                | 29 ++++++++++++++
+ pkg/limayaml/validate_test.go           | 52 +++++++++++++++++++++++++
+ templates/default.yaml                  |  4 ++
+ website/content/en/docs/config/mount.md | 33 +++++++++++++++-
+ website/content/en/docs/examples/ai.md  | 47 ++++++++++++++++++++++
+ 11 files changed, 178 insertions(+), 3 deletions(-)
+
+diff --git a/pkg/hostagent/mount.go b/pkg/hostagent/mount.go
+index 4bc058f2..ebc4b77c 100644
+--- a/pkg/hostagent/mount.go
++++ b/pkg/hostagent/mount.go
+@@ -91,6 +91,7 @@ func (a *HostAgent) setupMount(ctx context.Context, m limatype.Mount) (*mount, e
+ 		Port:                    sshPort,
+ 		RemotePath:              *m.MountPoint,
+ 		Readonly:                !(*m.Writable),
++		ReadonlyNames:           m.SSHFS.ReadonlyNames,
+ 		SSHFSAdditionalArgs:     []string{"-o", sshfsOptions},
+ 	}
+ 	if runtime.GOOS == "windows" {
+diff --git a/pkg/limatmpl/embed.go b/pkg/limatmpl/embed.go
+index c269d41c..7ef2e999 100644
+--- a/pkg/limatmpl/embed.go
++++ b/pkg/limatmpl/embed.go
+@@ -466,6 +466,10 @@ func (tmpl *Template) combineMounts() {
+ 				tmpl.copyListEntryField(mounts, dst, src, "sshfs.sftpDriver")
+ 				dest.SSHFS.SFTPDriver = mount.SSHFS.SFTPDriver
+ 			}
++			if dest.SSHFS.ReadonlyNames == nil && mount.SSHFS.ReadonlyNames != nil {
++				tmpl.copyListEntryField(mounts, dst, src, "sshfs.readonlyNames")
++				dest.SSHFS.ReadonlyNames = mount.SSHFS.ReadonlyNames
++			}
+ 			// NineP
+ 			if dest.NineP.SecurityModel == nil && mount.NineP.SecurityModel != nil {
+ 				tmpl.copyListEntryField(mounts, dst, src, "9p.securityModel")
+diff --git a/pkg/limatmpl/embed_test.go b/pkg/limatmpl/embed_test.go
+index c3d5916d..c9776854 100644
+--- a/pkg/limatmpl/embed_test.go
++++ b/pkg/limatmpl/embed_test.go
+@@ -189,8 +189,8 @@ mounts:
+ 		// This entry can be deleted when the previous one no longer fails
+ 		"mounts append, but merge fields on shared mountPoint (no comments version)",
+ 		`mounts: [{location: loc1}, {location: loc1, mountPoint: loc2}]`,
+-		`mounts: [{location: loc1, mountPoint: loc2, writable: true, sshfs: {followSymlinks: true}}, {location: loc1, mountPoint: loc3, writable: true}]`,
+-		`mounts: [{location: loc1}, {location: loc1, mountPoint: loc2, writable: true, sshfs: {followSymlinks: true}}, {location: loc1, mountPoint: loc3, writable: true}]`,
++		`mounts: [{location: loc1, mountPoint: loc2, writable: true, sshfs: {followSymlinks: true, readonlyNames: [.git]}}, {location: loc1, mountPoint: loc3, writable: true}]`,
++		`mounts: [{location: loc1}, {location: loc1, mountPoint: loc2, writable: true, sshfs: {followSymlinks: true, readonlyNames: [.git]}}, {location: loc1, mountPoint: loc3, writable: true}]`,
+ 	},
+ 	{
+ 		"template: URLs are not embedded when embedAll is false",
+diff --git a/pkg/limatype/lima_yaml.go b/pkg/limatype/lima_yaml.go
+index f0d53fb2..a155e40c 100644
+--- a/pkg/limatype/lima_yaml.go
++++ b/pkg/limatype/lima_yaml.go
+@@ -186,6 +186,8 @@ type SSHFS struct {
+ 	Cache          *bool       `yaml:"cache,omitempty" json:"cache,omitempty" jsonschema:"nullable"`
+ 	FollowSymlinks *bool       `yaml:"followSymlinks,omitempty" json:"followSymlinks,omitempty" jsonschema:"nullable"`
+ 	SFTPDriver     *SFTPDriver `yaml:"sftpDriver,omitempty" json:"sftpDriver,omitempty" jsonschema:"nullable"`
++	// ReadonlyNames makes every path with a component matching one of these names read-only.
++	ReadonlyNames []string `yaml:"readonlyNames,omitempty" json:"readonlyNames,omitempty"`
+ }
+ 
+ type NineP struct {
+diff --git a/pkg/limayaml/defaults.go b/pkg/limayaml/defaults.go
+index 28492d2b..1984575b 100644
+--- a/pkg/limayaml/defaults.go
++++ b/pkg/limayaml/defaults.go
+@@ -767,6 +767,9 @@ func FillDefault(ctx context.Context, y, d, o *limatype.LimaYAML, filePath strin
+ 			if mount.SSHFS.SFTPDriver != nil {
+ 				mounts[i].SSHFS.SFTPDriver = mount.SSHFS.SFTPDriver
+ 			}
++			if mount.SSHFS.ReadonlyNames != nil {
++				mounts[i].SSHFS.ReadonlyNames = mount.SSHFS.ReadonlyNames
++			}
+ 			if mount.NineP.SecurityModel != nil {
+ 				mounts[i].NineP.SecurityModel = mount.NineP.SecurityModel
+ 			}
+diff --git a/pkg/limayaml/defaults_test.go b/pkg/limayaml/defaults_test.go
+index 916e4d8a..e6666be8 100644
+--- a/pkg/limayaml/defaults_test.go
++++ b/pkg/limayaml/defaults_test.go
+@@ -621,6 +621,7 @@ func TestFillDefault(t *testing.T) {
+ 				SSHFS: limatype.SSHFS{
+ 					Cache:          new(false),
+ 					FollowSymlinks: new(true),
++					ReadonlyNames:  []string{".git"},
+ 				},
+ 				NineP: limatype.NineP{
+ 					SecurityModel:   new("mapped-file"),
+@@ -724,6 +725,7 @@ func TestFillDefault(t *testing.T) {
+ 	expect.Mounts[0].Writable = new(true)
+ 	expect.Mounts[0].SSHFS.Cache = new(false)
+ 	expect.Mounts[0].SSHFS.FollowSymlinks = new(true)
++	expect.Mounts[0].SSHFS.ReadonlyNames = []string{".git"}
+ 	expect.Mounts[0].NineP.SecurityModel = new("mapped-file")
+ 	expect.Mounts[0].NineP.ProtocolVersion = new("9p2000")
+ 	expect.Mounts[0].NineP.Msize = new("8KiB")
+diff --git a/pkg/limayaml/validate.go b/pkg/limayaml/validate.go
+index 5a6aaee0..10f693b0 100644
+--- a/pkg/limayaml/validate.go
++++ b/pkg/limayaml/validate.go
+@@ -178,6 +178,10 @@ func Validate(y *limatype.LimaYAML, warn bool) error {
+ 		}
+ 	}
+ 
++	if err := validateReadonlyNames(y); err != nil {
++		errs = errors.Join(errs, err)
++	}
++
+ 	if warn && runtime.GOOS != "linux" {
+ 		for i, mount := range y.Mounts {
+ 			if mount.Virtiofs.QueueSize != nil {
+@@ -654,6 +658,31 @@ func validateParamIsUsed(y *limatype.LimaYAML) error {
+ 	return nil
+ }
+ 
++// validateReadonlyNames rejects configurations where `sshfs.readonlyNames` would not be enforced on the host.
++// Every mount must use the builtin SFTP driver, as the OpenSSH sftp-server lets a compromised guest
++// access any host path, including the read-only ones of the other mounts.
++func validateReadonlyNames(y *limatype.LimaYAML) error {
++	used := slices.ContainsFunc(y.Mounts, func(m limatype.Mount) bool { return len(m.SSHFS.ReadonlyNames) > 0 })
++	if !used {
++		return nil
++	}
++	var errs error
++	if y.MountType == nil || *y.MountType != limatype.REVSSHFS {
++		errs = errors.Join(errs, fmt.Errorf("field `mounts[*].sshfs.readonlyNames` requires `mountType` to be %#q", limatype.REVSSHFS))
++	}
++	for i, m := range y.Mounts {
++		if m.SSHFS.SFTPDriver == nil || *m.SSHFS.SFTPDriver != limatype.SFTPDriverBuiltin {
++			errs = errors.Join(errs, fmt.Errorf("field `mounts[%d].sshfs.sftpDriver` must be %#q when any mount sets `sshfs.readonlyNames`", i, limatype.SFTPDriverBuiltin))
++		}
++		for _, name := range m.SSHFS.ReadonlyNames {
++			if name == "" || name == "." || name == ".." || strings.ContainsAny(name, `/\`) {
++				errs = errors.Join(errs, fmt.Errorf("field `mounts[%d].sshfs.readonlyNames` must contain file names, got %#q", i, name))
++			}
++		}
++	}
++	return errs
++}
++
+ func validatePort(field string, port int) error {
+ 	switch {
+ 	case port < 0:
+diff --git a/pkg/limayaml/validate_test.go b/pkg/limayaml/validate_test.go
+index 38c3503f..2fa9e4e0 100644
+--- a/pkg/limayaml/validate_test.go
++++ b/pkg/limayaml/validate_test.go
+@@ -302,6 +302,58 @@ additionalDisks:
+ 	assert.Error(t, err, "field `additionalDisks[0].name is invalid`: identifier must not be empty")
+ }
+ 
++func TestValidateReadonlyNames(t *testing.T) {
++	images := `images: [{"location": "/"}]`
++	dir1, dir2 := t.TempDir(), t.TempDir()
++	mounts := func(sshfs1, sshfs2 string) string {
++		return fmt.Sprintf("mounts: [{location: %q, writable: true, sshfs: %s}, {location: %q, sshfs: %s}]", dir1, sshfs1, dir2, sshfs2)
++	}
++	builtin := "{sftpDriver: builtin}"
++	protected := "{sftpDriver: builtin, readonlyNames: [.git]}"
++	tests := []struct {
++		name    string
++		config  string
++		wantErr string
++	}{
++		{
++			name:   "valid",
++			config: "mountType: reverse-sshfs\n" + mounts(protected, builtin),
++		},
++		{
++			name:    "virtiofs",
++			config:  "mountType: virtiofs\n" + mounts(protected, builtin),
++			wantErr: "field `mounts[*].sshfs.readonlyNames` requires `mountType` to be `reverse-sshfs`",
++		},
++		{
++			name:    "default driver",
++			config:  "mountType: reverse-sshfs\n" + mounts("{readonlyNames: [.git]}", builtin),
++			wantErr: "field `mounts[0].sshfs.sftpDriver` must be `builtin` when any mount sets `sshfs.readonlyNames`",
++		},
++		{
++			name:    "other mount with openssh-sftp-server",
++			config:  "mountType: reverse-sshfs\n" + mounts(protected, "{sftpDriver: openssh-sftp-server}"),
++			wantErr: "field `mounts[1].sshfs.sftpDriver` must be `builtin` when any mount sets `sshfs.readonlyNames`",
++		},
++		{
++			name:    "path instead of name",
++			config:  "mountType: reverse-sshfs\n" + mounts("{sftpDriver: builtin, readonlyNames: [.git/hooks]}", builtin),
++			wantErr: "field `mounts[0].sshfs.readonlyNames` must contain file names, got `.git/hooks`",
++		},
++	}
++	for _, tt := range tests {
++		t.Run(tt.name, func(t *testing.T) {
++			y, err := Load(t.Context(), []byte(tt.config+"\n"+images), "lima.yaml")
++			assert.NilError(t, err)
++			err = Validate(y, false)
++			if tt.wantErr == "" {
++				assert.NilError(t, err)
++			} else {
++				assert.Error(t, err, tt.wantErr)
++			}
++		})
++	}
++}
++
+ func TestValidateParamName(t *testing.T) {
+ 	images := `images: [{"location": "/"}]`
+ 	validProvision := `provision: [{"script": "echo $PARAM_name $PARAM_NAME $PARAM_Name_123"}]`
+diff --git a/templates/default.yaml b/templates/default.yaml
+index bd00a66f..36520678 100644
+--- a/templates/default.yaml
++++ b/templates/default.yaml
+@@ -81,6 +81,10 @@ mounts: []
+ #    # SFTP driver, "builtin" or "openssh-sftp-server". "openssh-sftp-server" is recommended.
+ #    # 🟢 Builtin default: "openssh-sftp-server" if OpenSSH SFTP Server binary is found, otherwise "builtin"
+ #    sftpDriver: null
++#    # File names that are read-only at any depth, enforced by the host even against a compromised guest.
++#    # Requires `sftpDriver: builtin` on every mount. Not supported on Windows hosts.
++#    # 🟢 Builtin default: []
++#    readonlyNames: []
+ #  9p:
+ #    # Supported security models are "passthrough", "mapped-xattr", "mapped-file" and "none".
+ #    # "mapped-xattr" and "mapped-file" are useful for persistent chown but incompatible with symlinks.
+diff --git a/website/content/en/docs/config/mount.md b/website/content/en/docs/config/mount.md
+index 8b9a177d..88d16af9 100644
+--- a/website/content/en/docs/config/mount.md
++++ b/website/content/en/docs/config/mount.md
+@@ -65,9 +65,40 @@ Cygwin-based one. Only if that finds nothing does the generic search apply.
+ This matters when a Cygwin-based OpenSSH (Git for Windows, MSYS2) and the native Windows OpenSSH are both
+ installed. The host path handed to the server is always the native `C:/Users/USER` form, which both kinds resolve.
+ 
++#### Read-only names
++
++`sshfs.readonlyNames` lists file names that the guest cannot modify, at any depth of the mount.
++For example, `.git` keeps a repository's hooks and config out of reach of the guest, while the
++working tree stays writable:
++
++```yaml
++mountType: "reverse-sshfs"
++mounts:
++- location: "~/src/project"
++  writable: true
++  sshfs:
++    sftpDriver: "builtin"
++    readonlyNames: [".git"]
++```
++
++This is enforced by the builtin SFTP server on the host, so it also holds against a compromised guest.
++The server does not follow symlinks when writing, and matches names case-insensitively.
++Reading is still allowed, so tools such as `git status` work in the guest, while `git commit` does not.
++
++[`mountInotify`](#mount-inotify) also works for read-only names: the server accepts setting the access and
++modification times of such a file to its current modification time, without modifying the file.
++
++Every mount of the instance must use `sftpDriver: "builtin"`, as the OpenSSH SFTP server lets
++a compromised guest access any host path.
++
++On Windows hosts, the server also denies 8.3 short names (e.g. `GIT~1`) and NTFS streams
++(e.g. `.git::$INDEX_ALLOCATION`) of read-only names, and does not write through junctions.
++The builtin SFTP driver does not support creating symlinks on Windows hosts.
++
+ #### Caveats
+ - A mount is disabled when the SSH connection was shut down.
+-- A compromised `sshfs` process in the guest may have access to unexposed host directories.
++- With `sftpDriver: "openssh-sftp-server"`, a compromised `sshfs` process in the guest may have access to unexposed host directories.
++  The builtin driver only serves the mounted directory on Linux and macOS hosts.
+ 
+ ### 9p
+ 
+diff --git a/website/content/en/docs/examples/ai.md b/website/content/en/docs/examples/ai.md
+index 2d8b985e..65f84599 100644
+--- a/website/content/en/docs/examples/ai.md
++++ b/website/content/en/docs/examples/ai.md
+@@ -131,6 +131,53 @@ See also <https://github.com/anomalyco/opencode>.
+ {{< /tabpane >}}
+ 
+ 
++# Protecting `.git` from the agent
++
++ | ⚡ Requirement | Lima >= 2.3 |
++ |----------------|-------------|
++
++A writable project mount lets the agent write `.git/hooks/*` or `.git/config` (e.g., `core.fsmonitor`),
++which run on the host the next time you use `git` in the project.
++`sshfs.readonlyNames` keeps the working tree writable, with live updates on both sides,
++while `.git` stays read-only for the guest:
++
++```yaml
++# agent.yaml
++# Unlike template:default, this base does not mount the home directory.
++base: template:_images/ubuntu
++mountType: "reverse-sshfs"
++mountInotify: true
++mounts:
++- location: "~/my-project"
++  writable: true
++  sshfs:
++    sftpDriver: "builtin"
++    readonlyNames: [".git"]
++```
++
++```bash
++limactl start --name=agent ./agent.yaml
++cd ~/my-project
++limactl shell agent claude
++```
++
++The project must be the only host directory mounted in the guest, and every mount must use `sftpDriver: "builtin"`.
++
++This is enforced by the SFTP server running on the host, not by the guest, so it also holds when the agent gains root
++in the guest.
++`.git` is protected at any depth, including nested repositories and names differing only by case.
++See [Filesystem mounts » Read-only names](../config/mount.md#read-only-names) for details.
++
++The agent can still read `.git` and run `git status`, `git diff` and `git log`, but not `git commit`.
++Review and commit its changes from the host.
++
++Other files in the working tree remain writable by the agent, so be careful with files that tools run on the host:
++- `core.hooksPath` pointing into the working tree (e.g., `.husky`)
++- `.envrc` (direnv), `.vscode/tasks.json`, `Makefile`, `package.json` scripts, etc.
++
++Setting `git config --global safe.bareRepository explicit` on the host also prevents `git` from using a bare repository
++that the agent could create outside of `.git`.
++
+ # Syncing Working Directory
+ 
+  | ⚡ Requirement | Lima >= 2.1 |
+-- 
+2.47.3
+
