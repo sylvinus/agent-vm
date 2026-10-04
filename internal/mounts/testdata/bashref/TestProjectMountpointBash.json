@@ -1,0 +1,175 @@
+{
+	"TestProjectMountpointBash": [
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_project_mountpoint \"$@\"",
+			"Env": [
+				"HOME={T0}/003",
+				"HOME={T0}/002/home",
+				"AGENT_VM_STATE_DIR={T0}/002/home/.agent-vm"
+			],
+			"Args": [
+				"{T0}/002/home/proj",
+				"sub/new",
+				"{T0}/002/data/a"
+			],
+			"Files": null,
+			"Stdout": "{T0}/002/home/proj/sub/new\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_project_mountpoint \"$@\"",
+			"Env": [
+				"HOME={T0}/006",
+				"HOME={T0}/005/home",
+				"AGENT_VM_STATE_DIR={T0}/005/home/.agent-vm"
+			],
+			"Args": [
+				"{T0}/005/home/proj",
+				"deep/a/b",
+				"{T0}/005/data/a"
+			],
+			"Files": null,
+			"Stdout": "{T0}/005/home/proj/deep/a/b\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_project_mountpoint \"$@\"",
+			"Env": [
+				"HOME={T0}/009",
+				"HOME={T0}/008/home",
+				"AGENT_VM_STATE_DIR={T0}/008/home/.agent-vm"
+			],
+			"Args": [
+				"{T0}/008/home/proj",
+				"f.txt",
+				"{T0}/008/data/file.txt"
+			],
+			"Files": null,
+			"Stdout": "{T0}/008/home/proj/f.txt\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_project_mountpoint \"$@\"",
+			"Env": [
+				"HOME={T0}/012",
+				"HOME={T0}/011/home",
+				"AGENT_VM_STATE_DIR={T0}/011/home/.agent-vm"
+			],
+			"Args": [
+				"{T0}/011/home/proj",
+				"../out",
+				"{T0}/011/data/a"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "Warning: Mount destination '../out' (from ~/.agent-vm/volumes) goes out of the project with '..', skipping.\n",
+			"Code": 1
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_project_mountpoint \"$@\"",
+			"Env": [
+				"HOME={T0}/015",
+				"HOME={T0}/014/home",
+				"AGENT_VM_STATE_DIR={T0}/014/home/.agent-vm"
+			],
+			"Args": [
+				"{T0}/014/home/proj",
+				".",
+				"{T0}/014/data/a"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "Warning: Mount destination '.' (from ~/.agent-vm/volumes) is the project itself, skipping.\n",
+			"Code": 1
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_project_mountpoint \"$@\"",
+			"Env": [
+				"HOME={T0}/018",
+				"HOME={T0}/017/home",
+				"AGENT_VM_STATE_DIR={T0}/017/home/.agent-vm"
+			],
+			"Args": [
+				"{T0}/017/home/proj",
+				"link/x",
+				"{T0}/017/data/a"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "Warning: Mount destination 'link/x' (from ~/.agent-vm/volumes) goes through a symlink in the project ({T0}/017/home/proj/link), skipping.\n",
+			"Code": 1
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_project_mountpoint \"$@\"",
+			"Env": [
+				"HOME={T0}/021",
+				"HOME={T0}/020/home",
+				"AGENT_VM_STATE_DIR={T0}/020/home/.agent-vm"
+			],
+			"Args": [
+				"{T0}/020/home/proj",
+				"sub",
+				"{T0}/020/data/file.txt"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "Warning: Mount destination 'sub' (from ~/.agent-vm/volumes) goes through a symlink in the project, or is not a file there, skipping.\n",
+			"Code": 1
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_project_mountpoint \"$@\"",
+			"Env": [
+				"HOME={T0}/024",
+				"HOME={T0}/023/home",
+				"AGENT_VM_STATE_DIR={T0}/023/home/.agent-vm"
+			],
+			"Args": [
+				"{T0}/023/home/proj",
+				"plainfile",
+				"{T0}/023/data/a"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "Warning: Mount destination 'plainfile' (from ~/.agent-vm/volumes) goes through a symlink in the project, or is not a directory there, skipping.\n",
+			"Code": 1
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_project_mountpoint \"$@\"",
+			"Env": [
+				"HOME={T0}/027",
+				"HOME={T0}/026/home",
+				"AGENT_VM_STATE_DIR={T0}/026/home/.agent-vm"
+			],
+			"Args": [
+				"{T0}/026/home/proj",
+				"./sub/./x/",
+				"{T0}/026/data/a"
+			],
+			"Files": null,
+			"Stdout": "{T0}/026/home/proj/sub/x\n",
+			"Stderr": "",
+			"Code": 0
+		}
+	]
+}

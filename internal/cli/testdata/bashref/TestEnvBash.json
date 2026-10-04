@@ -1,0 +1,570 @@
+{
+	"TestEnvBash": [
+		{
+			"Dir": "{T0}/002",
+			"Stdin": "",
+			"Snippet": "agent-vm \"$@\"",
+			"Env": [
+				"HOME={T0}/006",
+				"PWD={T0}/002",
+				"AGENT_VM_STATE_DIR={T0}/004"
+			],
+			"Args": [
+				"env",
+				"list"
+			],
+			"Files": [
+				"{T0}/004/env",
+				"{T0}/002/.agent-vm.env"
+			],
+			"Stdout": "",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{T0}/002",
+			"Stdin": "",
+			"Snippet": "agent-vm \"$@\"",
+			"Env": [
+				"HOME={T0}/008",
+				"PWD={T0}/002",
+				"AGENT_VM_STATE_DIR={T0}/004"
+			],
+			"Args": [
+				"env",
+				"get",
+				"A"
+			],
+			"Files": [
+				"{T0}/004/env",
+				"{T0}/002/.agent-vm.env"
+			],
+			"Stdout": "",
+			"Stderr": "",
+			"Code": 1
+		},
+		{
+			"Dir": "{T0}/002",
+			"Stdin": "",
+			"Snippet": "agent-vm \"$@\"",
+			"Env": [
+				"HOME={T0}/010",
+				"PWD={T0}/002",
+				"AGENT_VM_STATE_DIR={T0}/004"
+			],
+			"Args": [
+				"env",
+				"has",
+				"A"
+			],
+			"Files": [
+				"{T0}/004/env",
+				"{T0}/002/.agent-vm.env"
+			],
+			"Stdout": "",
+			"Stderr": "",
+			"Code": 1
+		},
+		{
+			"Dir": "{T0}/012",
+			"Stdin": "",
+			"Snippet": "agent-vm \"$@\"",
+			"Env": [
+				"HOME={T0}/016",
+				"PWD={T0}/012",
+				"AGENT_VM_STATE_DIR={T0}/014"
+			],
+			"Args": [
+				"env",
+				"set",
+				"A",
+				"O'Brien"
+			],
+			"Files": [
+				"{T0}/014/env",
+				"{T0}/012/.agent-vm.env"
+			],
+			"Stdout": "",
+			"Stderr": "",
+			"Code": 0,
+			"Out": {
+				"{T0}/014/env": "A='O'\"'\"'Brien'\n"
+			}
+		},
+		{
+			"Dir": "{T0}/012",
+			"Stdin": "",
+			"Snippet": "agent-vm \"$@\"",
+			"Env": [
+				"HOME={T0}/018",
+				"PWD={T0}/012",
+				"AGENT_VM_STATE_DIR={T0}/014"
+			],
+			"Args": [
+				"env",
+				"get",
+				"A"
+			],
+			"Files": [
+				"{T0}/014/env",
+				"{T0}/012/.agent-vm.env"
+			],
+			"Stdout": "O'Brien\n",
+			"Stderr": "",
+			"Code": 0,
+			"Out": {
+				"{T0}/014/env": "A='O'\"'\"'Brien'\n"
+			}
+		},
+		{
+			"Dir": "{T0}/012",
+			"Stdin": "",
+			"Snippet": "agent-vm \"$@\"",
+			"Env": [
+				"HOME={T0}/020",
+				"PWD={T0}/012",
+				"AGENT_VM_STATE_DIR={T0}/014"
+			],
+			"Args": [
+				"env"
+			],
+			"Files": [
+				"{T0}/014/env",
+				"{T0}/012/.agent-vm.env"
+			],
+			"Stdout": "A\n",
+			"Stderr": "",
+			"Code": 0,
+			"Out": {
+				"{T0}/014/env": "A='O'\"'\"'Brien'\n"
+			}
+		},
+		{
+			"Dir": "{T0}/022",
+			"Stdin": "piped\n",
+			"Snippet": "agent-vm \"$@\"",
+			"Env": [
+				"HOME={T0}/026",
+				"PWD={T0}/022",
+				"AGENT_VM_STATE_DIR={T0}/024"
+			],
+			"Args": [
+				"env",
+				"set",
+				"A"
+			],
+			"Files": [
+				"{T0}/024/env",
+				"{T0}/022/.agent-vm.env"
+			],
+			"Stdout": "",
+			"Stderr": "",
+			"Code": 0,
+			"Out": {
+				"{T0}/024/env": "A='piped'\n"
+			}
+		},
+		{
+			"Dir": "{T0}/022",
+			"Stdin": "multi\nline\n",
+			"Snippet": "agent-vm \"$@\"",
+			"Env": [
+				"HOME={T0}/028",
+				"PWD={T0}/022",
+				"AGENT_VM_STATE_DIR={T0}/024"
+			],
+			"Args": [
+				"env",
+				"set",
+				"B"
+			],
+			"Files": [
+				"{T0}/024/env",
+				"{T0}/022/.agent-vm.env"
+			],
+			"Stdout": "",
+			"Stderr": "",
+			"Code": 0,
+			"Out": {
+				"{T0}/024/env": "A='piped'\nB='multi\nline'\n"
+			}
+		},
+		{
+			"Dir": "{T0}/022",
+			"Stdin": "",
+			"Snippet": "agent-vm \"$@\"",
+			"Env": [
+				"HOME={T0}/030",
+				"PWD={T0}/022",
+				"AGENT_VM_STATE_DIR={T0}/024"
+			],
+			"Args": [
+				"env",
+				"get",
+				"B"
+			],
+			"Files": [
+				"{T0}/024/env",
+				"{T0}/022/.agent-vm.env"
+			],
+			"Stdout": "multi\nline\n",
+			"Stderr": "",
+			"Code": 0,
+			"Out": {
+				"{T0}/024/env": "A='piped'\nB='multi\nline'\n"
+			}
+		},
+		{
+			"Dir": "{T0}/022",
+			"Stdin": "",
+			"Snippet": "agent-vm \"$@\"",
+			"Env": [
+				"HOME={T0}/032",
+				"PWD={T0}/022",
+				"AGENT_VM_STATE_DIR={T0}/024"
+			],
+			"Args": [
+				"env",
+				"set",
+				"A",
+				"again"
+			],
+			"Files": [
+				"{T0}/024/env",
+				"{T0}/022/.agent-vm.env"
+			],
+			"Stdout": "",
+			"Stderr": "",
+			"Code": 0,
+			"Out": {
+				"{T0}/024/env": "B='multi\nline'\nA='again'\n"
+			}
+		},
+		{
+			"Dir": "{T0}/022",
+			"Stdin": "",
+			"Snippet": "agent-vm \"$@\"",
+			"Env": [
+				"HOME={T0}/034",
+				"PWD={T0}/022",
+				"AGENT_VM_STATE_DIR={T0}/024"
+			],
+			"Args": [
+				"env",
+				"list"
+			],
+			"Files": [
+				"{T0}/024/env",
+				"{T0}/022/.agent-vm.env"
+			],
+			"Stdout": "B\nA\n",
+			"Stderr": "",
+			"Code": 0,
+			"Out": {
+				"{T0}/024/env": "B='multi\nline'\nA='again'\n"
+			}
+		},
+		{
+			"Dir": "{T0}/022",
+			"Stdin": "",
+			"Snippet": "agent-vm \"$@\"",
+			"Env": [
+				"HOME={T0}/036",
+				"PWD={T0}/022",
+				"AGENT_VM_STATE_DIR={T0}/024"
+			],
+			"Args": [
+				"env",
+				"unset",
+				"A"
+			],
+			"Files": [
+				"{T0}/024/env",
+				"{T0}/022/.agent-vm.env"
+			],
+			"Stdout": "",
+			"Stderr": "",
+			"Code": 0,
+			"Out": {
+				"{T0}/024/env": "B='multi\nline'\n"
+			}
+		},
+		{
+			"Dir": "{T0}/022",
+			"Stdin": "",
+			"Snippet": "agent-vm \"$@\"",
+			"Env": [
+				"HOME={T0}/038",
+				"PWD={T0}/022",
+				"AGENT_VM_STATE_DIR={T0}/024"
+			],
+			"Args": [
+				"env",
+				"list"
+			],
+			"Files": [
+				"{T0}/024/env",
+				"{T0}/022/.agent-vm.env"
+			],
+			"Stdout": "B\n",
+			"Stderr": "",
+			"Code": 0,
+			"Out": {
+				"{T0}/024/env": "B='multi\nline'\n"
+			}
+		},
+		{
+			"Dir": "{T0}/040",
+			"Stdin": "",
+			"Snippet": "agent-vm \"$@\"",
+			"Env": [
+				"HOME={T0}/044",
+				"PWD={T0}/040",
+				"AGENT_VM_STATE_DIR={T0}/042"
+			],
+			"Args": [
+				"env",
+				"set",
+				"A"
+			],
+			"Files": [
+				"{T0}/042/env",
+				"{T0}/040/.agent-vm.env"
+			],
+			"Stdout": "",
+			"Stderr": "Error: 'agent-vm env set A' needs a VALUE, as an argument or on stdin.\n",
+			"Code": 1
+		},
+		{
+			"Dir": "{T0}/040",
+			"Stdin": "",
+			"Snippet": "agent-vm \"$@\"",
+			"Env": [
+				"HOME={T0}/046",
+				"PWD={T0}/040",
+				"AGENT_VM_STATE_DIR={T0}/042"
+			],
+			"Args": [
+				"env",
+				"set",
+				"1A",
+				"x"
+			],
+			"Files": [
+				"{T0}/042/env",
+				"{T0}/040/.agent-vm.env"
+			],
+			"Stdout": "",
+			"Stderr": "Error: '1A' is not a valid environment variable name.\n",
+			"Code": 1
+		},
+		{
+			"Dir": "{T0}/040",
+			"Stdin": "",
+			"Snippet": "agent-vm \"$@\"",
+			"Env": [
+				"HOME={T0}/048",
+				"PWD={T0}/040",
+				"AGENT_VM_STATE_DIR={T0}/042"
+			],
+			"Args": [
+				"env",
+				"set"
+			],
+			"Files": [
+				"{T0}/042/env",
+				"{T0}/040/.agent-vm.env"
+			],
+			"Stdout": "",
+			"Stderr": "Error: 'agent-vm env set' needs a KEY.\n",
+			"Code": 1
+		},
+		{
+			"Dir": "{T0}/040",
+			"Stdin": "",
+			"Snippet": "agent-vm \"$@\"",
+			"Env": [
+				"HOME={T0}/050",
+				"PWD={T0}/040",
+				"AGENT_VM_STATE_DIR={T0}/042"
+			],
+			"Args": [
+				"env",
+				"set",
+				"A",
+				"b",
+				"c"
+			],
+			"Files": [
+				"{T0}/042/env",
+				"{T0}/040/.agent-vm.env"
+			],
+			"Stdout": "",
+			"Stderr": "Error: too many arguments for 'agent-vm env set'. Quote a value with spaces.\nUsage: agent-vm env {set KEY [VALUE]|get KEY|has KEY|unset KEY|list}\n",
+			"Code": 1
+		},
+		{
+			"Dir": "{T0}/040",
+			"Stdin": "",
+			"Snippet": "agent-vm \"$@\"",
+			"Env": [
+				"HOME={T0}/052",
+				"PWD={T0}/040",
+				"AGENT_VM_STATE_DIR={T0}/042"
+			],
+			"Args": [
+				"env",
+				"frob"
+			],
+			"Files": [
+				"{T0}/042/env",
+				"{T0}/040/.agent-vm.env"
+			],
+			"Stdout": "",
+			"Stderr": "Usage: agent-vm env {set KEY [VALUE]|get KEY|has KEY|unset KEY|list}\n",
+			"Code": 1
+		},
+		{
+			"Dir": "{T0}/040",
+			"Stdin": "",
+			"Snippet": "agent-vm \"$@\"",
+			"Env": [
+				"HOME={T0}/054",
+				"PWD={T0}/040",
+				"AGENT_VM_STATE_DIR={T0}/042"
+			],
+			"Args": [
+				"env",
+				"get",
+				"A",
+				"B"
+			],
+			"Files": [
+				"{T0}/042/env",
+				"{T0}/040/.agent-vm.env"
+			],
+			"Stdout": "",
+			"Stderr": "Error: too many arguments for 'agent-vm env get'. Quote a value with spaces.\nUsage: agent-vm env {set KEY [VALUE]|get KEY|has KEY|unset KEY|list}\n",
+			"Code": 1
+		},
+		{
+			"Dir": "{T0}/040",
+			"Stdin": "",
+			"Snippet": "agent-vm \"$@\"",
+			"Env": [
+				"HOME={T0}/056",
+				"PWD={T0}/040",
+				"AGENT_VM_STATE_DIR={T0}/042"
+			],
+			"Args": [
+				"env",
+				"list",
+				"x"
+			],
+			"Files": [
+				"{T0}/042/env",
+				"{T0}/040/.agent-vm.env"
+			],
+			"Stdout": "",
+			"Stderr": "Error: too many arguments for 'agent-vm env list'. Quote a value with spaces.\nUsage: agent-vm env {set KEY [VALUE]|get KEY|has KEY|unset KEY|list}\n",
+			"Code": 1
+		},
+		{
+			"Dir": "{T0}/040",
+			"Stdin": "",
+			"Snippet": "agent-vm \"$@\"",
+			"Env": [
+				"HOME={T0}/058",
+				"PWD={T0}/040",
+				"AGENT_VM_STATE_DIR={T0}/042"
+			],
+			"Args": [
+				"env",
+				"unset",
+				"NOPE"
+			],
+			"Files": [
+				"{T0}/042/env",
+				"{T0}/040/.agent-vm.env"
+			],
+			"Stdout": "",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{T0}/060",
+			"Stdin": "",
+			"Snippet": "agent-vm \"$@\"",
+			"Env": [
+				"HOME={T0}/064",
+				"PWD={T0}/060",
+				"AGENT_VM_STATE_DIR={T0}/062"
+			],
+			"Args": [
+				"project-env",
+				"set",
+				"K",
+				"v"
+			],
+			"Files": [
+				"{T0}/062/env",
+				"{T0}/060/.agent-vm.env"
+			],
+			"Stdout": "",
+			"Stderr": "",
+			"Code": 0,
+			"Out": {
+				"{T0}/060/.agent-vm.env": "K='v'\n"
+			}
+		},
+		{
+			"Dir": "{T0}/060",
+			"Stdin": "",
+			"Snippet": "agent-vm \"$@\"",
+			"Env": [
+				"HOME={T0}/066",
+				"PWD={T0}/060",
+				"AGENT_VM_STATE_DIR={T0}/062"
+			],
+			"Args": [
+				"project-env",
+				"get",
+				"K"
+			],
+			"Files": [
+				"{T0}/062/env",
+				"{T0}/060/.agent-vm.env"
+			],
+			"Stdout": "v\n",
+			"Stderr": "",
+			"Code": 0,
+			"Out": {
+				"{T0}/060/.agent-vm.env": "K='v'\n"
+			}
+		},
+		{
+			"Dir": "{T0}/060",
+			"Stdin": "",
+			"Snippet": "agent-vm \"$@\"",
+			"Env": [
+				"HOME={T0}/068",
+				"PWD={T0}/060",
+				"AGENT_VM_STATE_DIR={T0}/062"
+			],
+			"Args": [
+				"project-env",
+				"list"
+			],
+			"Files": [
+				"{T0}/062/env",
+				"{T0}/060/.agent-vm.env"
+			],
+			"Stdout": "K\n",
+			"Stderr": "",
+			"Code": 0,
+			"Out": {
+				"{T0}/060/.agent-vm.env": "K='v'\n"
+			}
+		}
+	]
+}

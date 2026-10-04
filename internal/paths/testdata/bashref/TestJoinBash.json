@@ -1,0 +1,225 @@
+{
+	"TestJoinBash": [
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/001"
+			],
+			"Args": [
+				"_agent_vm_path_join",
+				"/a/b",
+				"c"
+			],
+			"Files": null,
+			"Stdout": "/a/b/c\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/002"
+			],
+			"Args": [
+				"_agent_vm_path_join",
+				"/a/b/",
+				"./c/"
+			],
+			"Files": null,
+			"Stdout": "/a/b/c\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/003"
+			],
+			"Args": [
+				"_agent_vm_path_join",
+				"/a/b",
+				"../c"
+			],
+			"Files": null,
+			"Stdout": "/a/c\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/004"
+			],
+			"Args": [
+				"_agent_vm_path_join",
+				"/a/b",
+				"../../.."
+			],
+			"Files": null,
+			"Stdout": "/\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/005"
+			],
+			"Args": [
+				"_agent_vm_path_join",
+				"/a/b",
+				"../../../x"
+			],
+			"Files": null,
+			"Stdout": "/x\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/006"
+			],
+			"Args": [
+				"_agent_vm_path_join",
+				"/",
+				"x"
+			],
+			"Files": null,
+			"Stdout": "/x\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/007"
+			],
+			"Args": [
+				"_agent_vm_path_join",
+				"/",
+				".."
+			],
+			"Files": null,
+			"Stdout": "/\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/008"
+			],
+			"Args": [
+				"_agent_vm_path_join",
+				"",
+				"x"
+			],
+			"Files": null,
+			"Stdout": "/x\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/009"
+			],
+			"Args": [
+				"_agent_vm_path_join",
+				"/a",
+				"b//c/./d/../e"
+			],
+			"Files": null,
+			"Stdout": "/a/b/c/e\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/010"
+			],
+			"Args": [
+				"_agent_vm_path_join",
+				"/a/b",
+				""
+			],
+			"Files": null,
+			"Stdout": "/a/b\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/011"
+			],
+			"Args": [
+				"_agent_vm_path_join",
+				"C:",
+				"Users/x/../y"
+			],
+			"Files": null,
+			"Stdout": "C:/Users/y\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/012"
+			],
+			"Args": [
+				"_agent_vm_path_join",
+				"/a",
+				"../"
+			],
+			"Files": null,
+			"Stdout": "/\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/013"
+			],
+			"Args": [
+				"_agent_vm_path_join",
+				"/a/b",
+				"c/.."
+			],
+			"Files": null,
+			"Stdout": "/a/b\n",
+			"Stderr": "",
+			"Code": 0
+		}
+	]
+}

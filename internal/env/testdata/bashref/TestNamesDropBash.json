@@ -1,0 +1,1516 @@
+{
+	"TestNamesDropBash": [
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines list -",
+			"Env": [
+				"HOME={T0}/001"
+			],
+			"Args": [
+				""
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines drop - \"$2\"",
+			"Env": [
+				"HOME={T0}/002"
+			],
+			"Args": [
+				"",
+				"A"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines drop - \"$2\"",
+			"Env": [
+				"HOME={T0}/003"
+			],
+			"Args": [
+				"",
+				"B"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines list -",
+			"Env": [
+				"HOME={T0}/004"
+			],
+			"Args": [
+				"A=1\n"
+			],
+			"Files": null,
+			"Stdout": "A\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines drop - \"$2\"",
+			"Env": [
+				"HOME={T0}/005"
+			],
+			"Args": [
+				"A=1\n",
+				"A"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines drop - \"$2\"",
+			"Env": [
+				"HOME={T0}/006"
+			],
+			"Args": [
+				"A=1\n",
+				"B"
+			],
+			"Files": null,
+			"Stdout": "A=1\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines list -",
+			"Env": [
+				"HOME={T0}/007"
+			],
+			"Args": [
+				"A=1"
+			],
+			"Files": null,
+			"Stdout": "A\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines drop - \"$2\"",
+			"Env": [
+				"HOME={T0}/008"
+			],
+			"Args": [
+				"A=1",
+				"A"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines drop - \"$2\"",
+			"Env": [
+				"HOME={T0}/009"
+			],
+			"Args": [
+				"A=1",
+				"B"
+			],
+			"Files": null,
+			"Stdout": "A=1\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines list -",
+			"Env": [
+				"HOME={T0}/010"
+			],
+			"Args": [
+				"export A=1\nB=2\n"
+			],
+			"Files": null,
+			"Stdout": "A\nB\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines drop - \"$2\"",
+			"Env": [
+				"HOME={T0}/011"
+			],
+			"Args": [
+				"export A=1\nB=2\n",
+				"A"
+			],
+			"Files": null,
+			"Stdout": "B=2\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines drop - \"$2\"",
+			"Env": [
+				"HOME={T0}/012"
+			],
+			"Args": [
+				"export A=1\nB=2\n",
+				"B"
+			],
+			"Files": null,
+			"Stdout": "export A=1\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines list -",
+			"Env": [
+				"HOME={T0}/013"
+			],
+			"Args": [
+				"  export   A='x y'\n"
+			],
+			"Files": null,
+			"Stdout": "A\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines drop - \"$2\"",
+			"Env": [
+				"HOME={T0}/014"
+			],
+			"Args": [
+				"  export   A='x y'\n",
+				"A"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines drop - \"$2\"",
+			"Env": [
+				"HOME={T0}/015"
+			],
+			"Args": [
+				"  export   A='x y'\n",
+				"B"
+			],
+			"Files": null,
+			"Stdout": "  export   A='x y'\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines list -",
+			"Env": [
+				"HOME={T0}/016"
+			],
+			"Args": [
+				"A='multi\nline\nB=inside'\nB=2\n"
+			],
+			"Files": null,
+			"Stdout": "A\nB\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines drop - \"$2\"",
+			"Env": [
+				"HOME={T0}/017"
+			],
+			"Args": [
+				"A='multi\nline\nB=inside'\nB=2\n",
+				"A"
+			],
+			"Files": null,
+			"Stdout": "B=2\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines drop - \"$2\"",
+			"Env": [
+				"HOME={T0}/018"
+			],
+			"Args": [
+				"A='multi\nline\nB=inside'\nB=2\n",
+				"B"
+			],
+			"Files": null,
+			"Stdout": "A='multi\nline\nB=inside'\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines list -",
+			"Env": [
+				"HOME={T0}/019"
+			],
+			"Args": [
+				"A='open\nB=2\n"
+			],
+			"Files": null,
+			"Stdout": "A\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines drop - \"$2\"",
+			"Env": [
+				"HOME={T0}/020"
+			],
+			"Args": [
+				"A='open\nB=2\n",
+				"A"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines drop - \"$2\"",
+			"Env": [
+				"HOME={T0}/021"
+			],
+			"Args": [
+				"A='open\nB=2\n",
+				"B"
+			],
+			"Files": null,
+			"Stdout": "A='open\nB=2\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines list -",
+			"Env": [
+				"HOME={T0}/022"
+			],
+			"Args": [
+				"A=\"plain\"\nB=\"$HOME\"\n"
+			],
+			"Files": null,
+			"Stdout": "A\nB\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines drop - \"$2\"",
+			"Env": [
+				"HOME={T0}/023"
+			],
+			"Args": [
+				"A=\"plain\"\nB=\"$HOME\"\n",
+				"A"
+			],
+			"Files": null,
+			"Stdout": "B=\"$HOME\"\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines drop - \"$2\"",
+			"Env": [
+				"HOME={T0}/024"
+			],
+			"Args": [
+				"A=\"plain\"\nB=\"$HOME\"\n",
+				"B"
+			],
+			"Files": null,
+			"Stdout": "A=\"plain\"\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines list -",
+			"Env": [
+				"HOME={T0}/025"
+			],
+			"Args": [
+				"A=x # comment\nB=y#notcomment\n"
+			],
+			"Files": null,
+			"Stdout": "A\nB\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines drop - \"$2\"",
+			"Env": [
+				"HOME={T0}/026"
+			],
+			"Args": [
+				"A=x # comment\nB=y#notcomment\n",
+				"A"
+			],
+			"Files": null,
+			"Stdout": "B=y#notcomment\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines drop - \"$2\"",
+			"Env": [
+				"HOME={T0}/027"
+			],
+			"Args": [
+				"A=x # comment\nB=y#notcomment\n",
+				"B"
+			],
+			"Files": null,
+			"Stdout": "A=x # comment\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines list -",
+			"Env": [
+				"HOME={T0}/028"
+			],
+			"Args": [
+				"A=x;rm -rf /\n"
+			],
+			"Files": null,
+			"Stdout": "A\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines drop - \"$2\"",
+			"Env": [
+				"HOME={T0}/029"
+			],
+			"Args": [
+				"A=x;rm -rf /\n",
+				"A"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines drop - \"$2\"",
+			"Env": [
+				"HOME={T0}/030"
+			],
+			"Args": [
+				"A=x;rm -rf /\n",
+				"B"
+			],
+			"Files": null,
+			"Stdout": "A=x;rm -rf /\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines list -",
+			"Env": [
+				"HOME={T0}/031"
+			],
+			"Args": [
+				"A=$(id)\n"
+			],
+			"Files": null,
+			"Stdout": "A\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines drop - \"$2\"",
+			"Env": [
+				"HOME={T0}/032"
+			],
+			"Args": [
+				"A=$(id)\n",
+				"A"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines drop - \"$2\"",
+			"Env": [
+				"HOME={T0}/033"
+			],
+			"Args": [
+				"A=$(id)\n",
+				"B"
+			],
+			"Files": null,
+			"Stdout": "A=$(id)\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines list -",
+			"Env": [
+				"HOME={T0}/034"
+			],
+			"Args": [
+				"A=$HOME\n"
+			],
+			"Files": null,
+			"Stdout": "A\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines drop - \"$2\"",
+			"Env": [
+				"HOME={T0}/035"
+			],
+			"Args": [
+				"A=$HOME\n",
+				"A"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines drop - \"$2\"",
+			"Env": [
+				"HOME={T0}/036"
+			],
+			"Args": [
+				"A=$HOME\n",
+				"B"
+			],
+			"Files": null,
+			"Stdout": "A=$HOME\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines list -",
+			"Env": [
+				"HOME={T0}/037"
+			],
+			"Args": [
+				"B=1\nA=x$y\n"
+			],
+			"Files": null,
+			"Stdout": "B\nA\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines drop - \"$2\"",
+			"Env": [
+				"HOME={T0}/038"
+			],
+			"Args": [
+				"B=1\nA=x$y\n",
+				"A"
+			],
+			"Files": null,
+			"Stdout": "B=1\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines drop - \"$2\"",
+			"Env": [
+				"HOME={T0}/039"
+			],
+			"Args": [
+				"B=1\nA=x$y\n",
+				"B"
+			],
+			"Files": null,
+			"Stdout": "A=x$y\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines list -",
+			"Env": [
+				"HOME={T0}/040"
+			],
+			"Args": [
+				"A=~/x\n"
+			],
+			"Files": null,
+			"Stdout": "A\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines drop - \"$2\"",
+			"Env": [
+				"HOME={T0}/041"
+			],
+			"Args": [
+				"A=~/x\n",
+				"A"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines drop - \"$2\"",
+			"Env": [
+				"HOME={T0}/042"
+			],
+			"Args": [
+				"A=~/x\n",
+				"B"
+			],
+			"Files": null,
+			"Stdout": "A=~/x\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines list -",
+			"Env": [
+				"HOME={T0}/043"
+			],
+			"Args": [
+				"# just a comment\n\n   \nA=1\r\nB='crlf'\r\n"
+			],
+			"Files": null,
+			"Stdout": "A\nB\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines drop - \"$2\"",
+			"Env": [
+				"HOME={T0}/044"
+			],
+			"Args": [
+				"# just a comment\n\n   \nA=1\r\nB='crlf'\r\n",
+				"A"
+			],
+			"Files": null,
+			"Stdout": "# just a comment\n\n   \nB='crlf'\r\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines drop - \"$2\"",
+			"Env": [
+				"HOME={T0}/045"
+			],
+			"Args": [
+				"# just a comment\n\n   \nA=1\r\nB='crlf'\r\n",
+				"B"
+			],
+			"Files": null,
+			"Stdout": "# just a comment\n\n   \nA=1\r\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines list -",
+			"Env": [
+				"HOME={T0}/046"
+			],
+			"Args": [
+				"A=1\nA=2\n"
+			],
+			"Files": null,
+			"Stdout": "A\nA\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines drop - \"$2\"",
+			"Env": [
+				"HOME={T0}/047"
+			],
+			"Args": [
+				"A=1\nA=2\n",
+				"A"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines drop - \"$2\"",
+			"Env": [
+				"HOME={T0}/048"
+			],
+			"Args": [
+				"A=1\nA=2\n",
+				"B"
+			],
+			"Files": null,
+			"Stdout": "A=1\nA=2\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines list -",
+			"Env": [
+				"HOME={T0}/049"
+			],
+			"Args": [
+				"A='it'\"'\"'s'\n"
+			],
+			"Files": null,
+			"Stdout": "A\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines drop - \"$2\"",
+			"Env": [
+				"HOME={T0}/050"
+			],
+			"Args": [
+				"A='it'\"'\"'s'\n",
+				"A"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines drop - \"$2\"",
+			"Env": [
+				"HOME={T0}/051"
+			],
+			"Args": [
+				"A='it'\"'\"'s'\n",
+				"B"
+			],
+			"Files": null,
+			"Stdout": "A='it'\"'\"'s'\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines list -",
+			"Env": [
+				"HOME={T0}/052"
+			],
+			"Args": [
+				"not an assignment\nA=1\n"
+			],
+			"Files": null,
+			"Stdout": "A\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines drop - \"$2\"",
+			"Env": [
+				"HOME={T0}/053"
+			],
+			"Args": [
+				"not an assignment\nA=1\n",
+				"A"
+			],
+			"Files": null,
+			"Stdout": "not an assignment\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines drop - \"$2\"",
+			"Env": [
+				"HOME={T0}/054"
+			],
+			"Args": [
+				"not an assignment\nA=1\n",
+				"B"
+			],
+			"Files": null,
+			"Stdout": "not an assignment\nA=1\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines list -",
+			"Env": [
+				"HOME={T0}/055"
+			],
+			"Args": [
+				"A=x\\\ny\n"
+			],
+			"Files": null,
+			"Stdout": "A\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines drop - \"$2\"",
+			"Env": [
+				"HOME={T0}/056"
+			],
+			"Args": [
+				"A=x\\\ny\n",
+				"A"
+			],
+			"Files": null,
+			"Stdout": "y\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines drop - \"$2\"",
+			"Env": [
+				"HOME={T0}/057"
+			],
+			"Args": [
+				"A=x\\\ny\n",
+				"B"
+			],
+			"Files": null,
+			"Stdout": "A=x\\\ny\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines list -",
+			"Env": [
+				"HOME={T0}/058"
+			],
+			"Args": [
+				"A= 1\n"
+			],
+			"Files": null,
+			"Stdout": "A\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines drop - \"$2\"",
+			"Env": [
+				"HOME={T0}/059"
+			],
+			"Args": [
+				"A= 1\n",
+				"A"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines drop - \"$2\"",
+			"Env": [
+				"HOME={T0}/060"
+			],
+			"Args": [
+				"A= 1\n",
+				"B"
+			],
+			"Files": null,
+			"Stdout": "A= 1\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines list -",
+			"Env": [
+				"HOME={T0}/061"
+			],
+			"Args": [
+				"A=\tB\n"
+			],
+			"Files": null,
+			"Stdout": "A\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines drop - \"$2\"",
+			"Env": [
+				"HOME={T0}/062"
+			],
+			"Args": [
+				"A=\tB\n",
+				"A"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines drop - \"$2\"",
+			"Env": [
+				"HOME={T0}/063"
+			],
+			"Args": [
+				"A=\tB\n",
+				"B"
+			],
+			"Files": null,
+			"Stdout": "A=\tB\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines list -",
+			"Env": [
+				"HOME={T0}/064"
+			],
+			"Args": [
+				"1A=x\n"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines drop - \"$2\"",
+			"Env": [
+				"HOME={T0}/065"
+			],
+			"Args": [
+				"1A=x\n",
+				"A"
+			],
+			"Files": null,
+			"Stdout": "1A=x\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines drop - \"$2\"",
+			"Env": [
+				"HOME={T0}/066"
+			],
+			"Args": [
+				"1A=x\n",
+				"B"
+			],
+			"Files": null,
+			"Stdout": "1A=x\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines list -",
+			"Env": [
+				"HOME={T0}/067"
+			],
+			"Args": [
+				"A=x y\n"
+			],
+			"Files": null,
+			"Stdout": "A\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines drop - \"$2\"",
+			"Env": [
+				"HOME={T0}/068"
+			],
+			"Args": [
+				"A=x y\n",
+				"A"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines drop - \"$2\"",
+			"Env": [
+				"HOME={T0}/069"
+			],
+			"Args": [
+				"A=x y\n",
+				"B"
+			],
+			"Files": null,
+			"Stdout": "A=x y\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines list -",
+			"Env": [
+				"HOME={T0}/070"
+			],
+			"Args": [
+				"A='x' # c\n"
+			],
+			"Files": null,
+			"Stdout": "A\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines drop - \"$2\"",
+			"Env": [
+				"HOME={T0}/071"
+			],
+			"Args": [
+				"A='x' # c\n",
+				"A"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines drop - \"$2\"",
+			"Env": [
+				"HOME={T0}/072"
+			],
+			"Args": [
+				"A='x' # c\n",
+				"B"
+			],
+			"Files": null,
+			"Stdout": "A='x' # c\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines list -",
+			"Env": [
+				"HOME={T0}/073"
+			],
+			"Args": [
+				"A=$'esc\\'aped'\nB=after\n"
+			],
+			"Files": null,
+			"Stdout": "A\nB\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines drop - \"$2\"",
+			"Env": [
+				"HOME={T0}/074"
+			],
+			"Args": [
+				"A=$'esc\\'aped'\nB=after\n",
+				"A"
+			],
+			"Files": null,
+			"Stdout": "B=after\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines drop - \"$2\"",
+			"Env": [
+				"HOME={T0}/075"
+			],
+			"Args": [
+				"A=$'esc\\'aped'\nB=after\n",
+				"B"
+			],
+			"Files": null,
+			"Stdout": "A=$'esc\\'aped'\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines list -",
+			"Env": [
+				"HOME={T0}/076"
+			],
+			"Args": [
+				"A=\"dq \\\" esc\"\nB=after\n"
+			],
+			"Files": null,
+			"Stdout": "A\nB\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines drop - \"$2\"",
+			"Env": [
+				"HOME={T0}/077"
+			],
+			"Args": [
+				"A=\"dq \\\" esc\"\nB=after\n",
+				"A"
+			],
+			"Files": null,
+			"Stdout": "B=after\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines drop - \"$2\"",
+			"Env": [
+				"HOME={T0}/078"
+			],
+			"Args": [
+				"A=\"dq \\\" esc\"\nB=after\n",
+				"B"
+			],
+			"Files": null,
+			"Stdout": "A=\"dq \\\" esc\"\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines list -",
+			"Env": [
+				"HOME={T0}/079"
+			],
+			"Args": [
+				"A='a'\"b\"c\n"
+			],
+			"Files": null,
+			"Stdout": "A\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines drop - \"$2\"",
+			"Env": [
+				"HOME={T0}/080"
+			],
+			"Args": [
+				"A='a'\"b\"c\n",
+				"A"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines drop - \"$2\"",
+			"Env": [
+				"HOME={T0}/081"
+			],
+			"Args": [
+				"A='a'\"b\"c\n",
+				"B"
+			],
+			"Files": null,
+			"Stdout": "A='a'\"b\"c\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines list -",
+			"Env": [
+				"HOME={T0}/082"
+			],
+			"Args": [
+				"export\tA=1\nexport B\n"
+			],
+			"Files": null,
+			"Stdout": "A\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines drop - \"$2\"",
+			"Env": [
+				"HOME={T0}/083"
+			],
+			"Args": [
+				"export\tA=1\nexport B\n",
+				"A"
+			],
+			"Files": null,
+			"Stdout": "export B\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines drop - \"$2\"",
+			"Env": [
+				"HOME={T0}/084"
+			],
+			"Args": [
+				"export\tA=1\nexport B\n",
+				"B"
+			],
+			"Files": null,
+			"Stdout": "export\tA=1\nexport B\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines list -",
+			"Env": [
+				"HOME={T0}/085"
+			],
+			"Args": [
+				"A=x # ' not a quote\nB=1\n"
+			],
+			"Files": null,
+			"Stdout": "A\nB\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines drop - \"$2\"",
+			"Env": [
+				"HOME={T0}/086"
+			],
+			"Args": [
+				"A=x # ' not a quote\nB=1\n",
+				"A"
+			],
+			"Files": null,
+			"Stdout": "B=1\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines drop - \"$2\"",
+			"Env": [
+				"HOME={T0}/087"
+			],
+			"Args": [
+				"A=x # ' not a quote\nB=1\n",
+				"B"
+			],
+			"Files": null,
+			"Stdout": "A=x # ' not a quote\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines list -",
+			"Env": [
+				"HOME={T0}/088"
+			],
+			"Args": [
+				"A='x # not a comment'\nB=1\n"
+			],
+			"Files": null,
+			"Stdout": "A\nB\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines drop - \"$2\"",
+			"Env": [
+				"HOME={T0}/089"
+			],
+			"Args": [
+				"A='x # not a comment'\nB=1\n",
+				"A"
+			],
+			"Files": null,
+			"Stdout": "B=1\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines drop - \"$2\"",
+			"Env": [
+				"HOME={T0}/090"
+			],
+			"Args": [
+				"A='x # not a comment'\nB=1\n",
+				"B"
+			],
+			"Files": null,
+			"Stdout": "A='x # not a comment'\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines list -",
+			"Env": [
+				"HOME={T0}/091"
+			],
+			"Args": [
+				"A=café\nB='naïve'\n"
+			],
+			"Files": null,
+			"Stdout": "A\nB\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines drop - \"$2\"",
+			"Env": [
+				"HOME={T0}/092"
+			],
+			"Args": [
+				"A=café\nB='naïve'\n",
+				"A"
+			],
+			"Files": null,
+			"Stdout": "B='naïve'\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines drop - \"$2\"",
+			"Env": [
+				"HOME={T0}/093"
+			],
+			"Args": [
+				"A=café\nB='naïve'\n",
+				"B"
+			],
+			"Files": null,
+			"Stdout": "A=café\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines list -",
+			"Env": [
+				"HOME={T0}/094"
+			],
+			"Args": [
+				{
+					"base64": "QT2S/wo="
+				}
+			],
+			"Files": null,
+			"Stdout": "A\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines drop - \"$2\"",
+			"Env": [
+				"HOME={T0}/095"
+			],
+			"Args": [
+				{
+					"base64": "QT2S/wo="
+				},
+				"A"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "printf '%s' \"$1\" | _agent_vm_env_lines drop - \"$2\"",
+			"Env": [
+				"HOME={T0}/096"
+			],
+			"Args": [
+				{
+					"base64": "QT2S/wo="
+				},
+				"B"
+			],
+			"Files": null,
+			"Stdout": {
+				"base64": "QT2S/wo="
+			},
+			"Stderr": "",
+			"Code": 0
+		}
+	]
+}

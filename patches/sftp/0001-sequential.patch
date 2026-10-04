@@ -1,0 +1,106 @@
+diff -ruN a/packet-manager.go b/packet-manager.go
+--- a/packet-manager.go	2026-10-02 20:30:47.814637533 +0200
++++ b/packet-manager.go	2026-10-02 20:30:47.822648126 +0200
+@@ -20,6 +20,8 @@
+ 	packetCount uint32
+ 	// it is not nil if the allocator is enabled
+ 	alloc *allocator
++	// sequential processes every packet in a single worker, in the order received
++	sequential bool
+ }
+ 
+ type packetSender interface {
+@@ -112,6 +114,21 @@
+ // maximizing throughput of file transfers.
+ func (s *packetManager) workerChan(runWorker func(chan orderedRequest),
+ ) chan orderedRequest {
++	if s.sequential {
++		ch := make(chan orderedRequest)
++		runWorker(ch)
++		pktChan := make(chan orderedRequest, SftpServerWorkerCount)
++		go func() {
++			for pkt := range pktChan {
++				s.incomingPacket(pkt)
++				ch <- pkt
++			}
++			close(ch)
++			s.close()
++		}()
++		return pktChan
++	}
++
+ 	// multiple workers for faster read/writes
+ 	rwChan := make(chan orderedRequest, SftpServerWorkerCount)
+ 	for i := 0; i < SftpServerWorkerCount; i++ {
+diff -ruN a/packet-manager_test.go b/packet-manager_test.go
+--- a/packet-manager_test.go	2026-10-02 20:30:47.814637533 +0200
++++ b/packet-manager_test.go	2026-10-02 20:30:47.822648126 +0200
+@@ -3,7 +3,9 @@
+ import (
+ 	"encoding"
+ 	"fmt"
++	"sync"
+ 	"testing"
++	"time"
+ 
+ 	"github.com/stretchr/testify/assert"
+ )
+@@ -125,3 +127,36 @@
+ func (p sshFxpClosePacket) String() string {
+ 	return fmt.Sprintf("ClPkt:%d", p.ID)
+ }
++
++// A slow WRITE must still run before the WRITE and the FSETSTAT sent after it.
++func TestPacketManagerSequential(t *testing.T) {
++	sender := newTestSender()
++	s := newPktMgr(sender)
++	s.sequential = true
++	var mu sync.Mutex
++	var done []uint32
++	runWorker := func(ch chan orderedRequest) {
++		go func() {
++			for pkt := range ch {
++				if pkt.id() == 1 {
++					time.Sleep(50 * time.Millisecond)
++				}
++				mu.Lock()
++				done = append(done, pkt.id())
++				mu.Unlock()
++				s.readyPacket(s.newOrderedResponse(&sshFxpStatusPacket{ID: pkt.id()}, pkt.orderID()))
++			}
++		}()
++	}
++	pktChan := s.workerChan(runWorker)
++	for _, p := range []requestPacket{&sshFxpWritePacket{ID: 1}, &sshFxpWritePacket{ID: 2}, &sshFxpFsetstatPacket{ID: 3}} {
++		pktChan <- s.newOrderedRequest(p)
++	}
++	for range 3 {
++		<-sender.sent
++	}
++	close(pktChan)
++	mu.Lock()
++	defer mu.Unlock()
++	assert.Equal(t, []uint32{1, 2, 3}, done)
++}
+diff -ruN a/request-server.go b/request-server.go
+--- a/request-server.go	2026-10-02 20:30:47.818642830 +0200
++++ b/request-server.go	2026-10-02 20:30:47.822648126 +0200
+@@ -74,6 +74,18 @@
+ 	}
+ }
+ 
++// WithRSSequential processes requests one at a time, in the order they are received.
++//
++// By default, reads and writes run concurrently with each other and with the other
++// requests, so a request can see or undo the effect of a write sent before it:
++// two writes to the same range can land in either order, and a FSTAT or FSETSTAT
++// sent after a WRITE can run before it. OpenSSH's sftp-server is sequential.
++func WithRSSequential() RequestServerOption {
++	return func(rs *RequestServer) {
++		rs.pktMgr.sequential = true
++	}
++}
++
+ // NewRequestServer creates/allocates/returns new RequestServer.
+ // Normally there will be one server per user-session.
+ func NewRequestServer(rwc io.ReadWriteCloser, h Handlers, options ...RequestServerOption) *RequestServer {

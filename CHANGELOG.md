@@ -1,5 +1,165 @@
 # Changelog
 
+## Unreleased
+
+agent-vm 0.3 is one Go binary with Lima built in (see PLAN_0.3.0.md). The
+bash version (`agent-vm.sh`, `lib/`) is gone from the repository: 0.2.x
+stays on its tags. Changes so far, against 0.2.1:
+
+### Added
+
+- Network isolation: a VM reaches the internet, not your machine (its
+  loopback, where the other VMs' ports are forwarded, and its own
+  addresses) nor your local networks. `~/.agent-vm/network` opens holes,
+  one per line: `allow 192.168.1.10:5432`, `allow 10.0.0.0/8`, `allow
+  localhost:11434` (a service on your machine's loopback, which the VM
+  reaches at 192.168.5.2). `domain github.com` lines make those domains
+  and their subdomains the only names of the internet the VMs reach:
+  other names do not resolve, and an address is reachable once agent-vm's
+  DNS gave it for one of them. A line agent-vm cannot read stops a start,
+  and `setup`, with the line named; `doctor` checks the file.
+  `AGENT_VM_UNSAFE_OPEN_NETWORK=1` turns isolation off. QEMU VMs get their own network stack, as vz ones have, so
+  this holds for both.
+- A desktop notification when a port the VM listens on is forwarded to your
+  machine, and when it is not because a program of yours uses it.
+  `AGENT_VM_NOTIFY=0` turns them off.
+- Files your machine runs without asking are guarded: when the VM writes,
+  creates, renames or removes `.envrc`, `.vscode/tasks.json`,
+  `.vscode/settings.json`, `.vscode/launch.json`, `.pre-commit-config.yaml`,
+  `lefthook.yml` or `mise.toml`, a dialog asks you first (allowed until the
+  VM stops; a no holds a minute). Without a dialog to show, the write is
+  refused and a notification says so. `~/.agent-vm/guarded` adds paths, one
+  per line, and `!path` removes one of the defaults.
+  `AGENT_VM_GUARDED_WRITES=deny` refuses them all without asking.
+- Windows, natively (experimental, not yet tried on a Windows machine): host
+  paths are kept as C:/Users/me/proj, drive-aware, and the VM sees them as
+  0.2 did, /c/Users/me/proj, under the same VM names. The volumes file takes
+  C:/x and C:\x, and 0.2's /c/x, in its sources and project filters. QEMU's
+  folder goes on PATH at every start, a failed start says when the Windows
+  Hypervisor Platform feature is off, and `install` gives the PATH line in
+  PowerShell's syntax. QEMU 7.2 or later is needed, for the VM's own
+  network stack.
+- Releases have Windows binaries too (amd64, arm64), signed when
+  `release.sh` is given a code-signing certificate.
+
+### Changed
+
+- A port the VM listens on is no longer forwarded when a program of your
+  machine uses it: on macOS, the forward took that program's local
+  connections (a Lima patch).
+- A VM name too long for Lima's socket paths under your home is cut in its
+  folder part, the hash of the whole path kept: such a folder could not get
+  a VM.
+- The binary leaves out the formats of yq that Lima does not use: about 10%
+  smaller.
+
+- Lima is built in, with the patches that keep `.git` read-only and fix the
+  SFTP server (patches/README.md): no limactl to install, no Lima build to
+  download, and `setup` no longer offers one. A start never asks about a
+  Lima that cannot protect `.git`: `info`'s `security_questions` no longer
+  has `lima` or `lima-unknown`, `doctor`'s Lima section says which Lima is
+  built in, and `help` says so.
+- The VMs live in `~/.agent-vm/lima` (`AGENT_VM_LIMA_HOME` overrides), apart
+  from your own Lima's. The first command that needs them offers to move
+  0.2's from `~/.lima` (or `$LIMA_HOME`), once, stopping running ones first:
+  they keep their shares and settings. Lima's `_config` there is not taken.
+  `AGENT_VM_LIMA_HOME` may not be your own Lima's home.
+- VM names lose their `agent-vm-` prefix, needed only while they shared
+  `~/.lima` with your own VMs: `proj-1a2b3c4d`, and `base` for the base
+  template. 0.2's VMs are renamed as they are moved. This gives back to
+  folder names the room `~/.agent-vm/lima` takes in Lima's socket paths
+  (104 characters on macOS). `stop` and `rm` take any name `list` shows.
+- With `--unsafe-writable-git`, the shares stay reverse-sshfs, served by the
+  built-in SFTP server confined to them, without the read-only names; 0.2
+  went back to Lima's default mount type.
+- A VM from a base built by 0.1.0 is no longer migrated in place: a start
+  refuses it and says to run `setup`, then `--reset`.
+- `install` links the agent-vm binary (a copy where no link can be made,
+  replaced by the next `install`); `uninstall` removes it. Both replace or
+  remove 0.2's link to `agent-vm.sh`.
+- A release is a tarball per platform (macOS and Linux, arm64 and
+  x86_64): the binary and `agent-vm.sh`, which runs it. The curl installer
+  takes the one of the machine; its `--version` and `--git` work as in
+  0.2. In a clone, `agent-vm.sh` builds agent-vm first (Go, and on macOS
+  the Xcode command line tools), and again after a `git pull`. The Linux
+  binaries are built without cgo: the VMs' DNS lookups go through Go's
+  resolver there.
+- What 0.2 left keeps working: its link to `agent-vm.sh` on the PATH runs
+  the new binary (built first in a clone), and a shell rc that sources
+  `agent-vm.sh` gets an `agent-vm` function running it. Running the curl
+  installer again, or `install`, replaces the link with one to the binary.
+- `agent-vm.sh` sourced from a shell rc no longer loads agent-vm into the
+  shell: it defines a function running it. `install` says the line can go.
+- `version --min`'s "Update it" line is always the curl installer's, until
+  0.3's install methods are settled.
+- agent-vm makes and starts no VM while Lima's `default.yaml` or
+  `override.yaml` is in `~/.agent-vm/lima/_config`: they add to every VM's
+  config (shares, mount type), which agent-vm sets alone. `doctor` names
+  them. Its `base.yaml` is not mixed into the base VM either.
+- Messages that named `limactl list` name `agent-vm list`.
+- `--tty` also gives the command a terminal when only stdin is one.
+- `help` says how deep the git check looks: the repository holding each
+  share, and those up to two folders below it, 50 per share.
+- A VM config Lima refuses is reported with Lima's reason, and `--reset`.
+- `env get` and `project-env get` read non-ASCII values as written (`café`
+  came back mangled), and as the VM sources the file: CRs ending lines are
+  dropped, inside quoted values too; a value with a CR left in it is
+  refused.
+- A volume's project filter with non-ASCII characters matches as written.
+- A project or volume path with `&`, `<` or `>` is shared as is (they came
+  out escaped, as another folder). One with `{{`, which Lima expands as a
+  template, or bytes that are not UTF-8 is refused: Lima would share
+  another folder. agent-vm checks that Lima keeps every share as written.
+- `doctor` and `info` only look: they no longer move 0.2's VMs (which stops
+  running ones); `doctor` says when some are still to move.
+- A single-file volume that is a symlink (stow's dotfiles) reaches the VM.
+- When the first sshfs mount fails, Lima's retry keeps the share's options
+  (`cache=no`) instead of replacing them (a Lima patch).
+- A running VM with more read-only names than the project now needs (a
+  hooks folder moved) keeps running: extra names protect more, and the next
+  boot drops them. 0.2 asked to restart it, and aborted without a terminal.
+
+### Security
+
+- A failed `setup` prints the end of its log without escape sequences: the
+  log holds what the VM printed.
+- A hooks folder name declined at start no longer hides the other risks
+  under it: with `core.hooksPath tools/hooks` and `core.fsmonitor
+  tools/fsmon.sh`, a no to making every `tools` read-only now lists
+  fsmonitor too.
+- A git config file in a folder with non-ASCII characters is found: git
+  quotes such paths, and 0.2 missed them.
+- A git setting whose path goes through a symlink in the project, halfway
+  along a chain of links, is now caught: 0.2 resolved the whole path at
+  once and never saw that link, which the VM could retarget.
+- A hooks folder in a writable volume inside the repository (a volume on
+  `.husky` with `core.hooksPath .husky/_`) is warned about and asked: no
+  read-only name covers it. 0.2 made `_` read-only and left
+  `.husky/pre-commit` writable.
+- More git settings that name a command are checked: `mergetool`,
+  `difftool`, `browser` and `man` tool paths, `guitool.*.cmd`,
+  `trailer.*.cmd`, `submodule.*.update`, `remote.*.uploadpack` and
+  `receivepack`, `tar.*.command`, `instaweb.httpd`, the `sendemail`
+  commands and `gpg.ssh.defaultKeyCommand`.
+- Your own Lima home (`~/.lima` or `$LIMA_HOME`) is refused as a project,
+  as in 0.2: its `_config/user` key logs into your other Lima VMs.
+- A git setting's command that names a file without a `/` (`alias.b =
+  !bash build.sh`) is checked against the shares: it runs from the top of
+  the repository, which the VM can write.
+- On macOS, a read-only name is matched as APFS matches names: whatever
+  the Unicode normalization (`é` or `e` and a combining accent) and with
+  full case folding (`ß` as `ss`). 0.2 compared case only, so a hooks
+  folder with such a name could be written under another spelling.
+- What the VM printed during `setup` (its window and, on failure, its log)
+  is shown without any control character: bell, backspace, and the C1
+  controls some terminals take for escape sequences, not only ESC.
+- No VM starts with a share served by anything but the built-in SFTP
+  server over reverse-sshfs, the one confined to its folder, whatever the
+  options: Lima's default SFTP server lets the VM read (or write) any file
+  you can. 0.2 allowed it with `.git` left writable, and refused a writable
+  share from Lima's `_config` under `--readonly` only after the VM had
+  booted and got your env.
+
 ## 0.2.1
 
 ### Added

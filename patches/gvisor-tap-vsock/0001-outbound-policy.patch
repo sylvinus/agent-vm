@@ -1,0 +1,119 @@
+diff -ruN a/pkg/services/forwarder/tcp.go b/pkg/services/forwarder/tcp.go
+--- a/pkg/services/forwarder/tcp.go	2026-10-04 20:14:52.706297344 +0200
++++ b/pkg/services/forwarder/tcp.go	2026-10-04 20:17:54.018676901 +0200
+@@ -4,8 +4,10 @@
+ 	"context"
+ 	"fmt"
+ 	"net"
++	"net/netip"
+ 	"sync"
+ 
++	"github.com/containers/gvisor-tap-vsock/pkg/types"
+ 	"github.com/inetaf/tcpproxy"
+ 	log "github.com/sirupsen/logrus"
+ 	"gvisor.dev/gvisor/pkg/tcpip"
+@@ -17,7 +19,7 @@
+ 
+ const linkLocalSubnet = "169.254.0.0/16"
+ 
+-func TCP(s *stack.Stack, nat map[tcpip.Address]tcpip.Address, natLock *sync.Mutex, ec2MetadataAccess bool) *tcp.Forwarder {
++func TCP(s *stack.Stack, nat map[tcpip.Address]tcpip.Address, natLock *sync.Mutex, ec2MetadataAccess bool, outbound types.Outbound) *tcp.Forwarder {
+ 	return tcp.NewForwarder(s, 0, 10, func(r *tcp.ForwarderRequest) {
+ 		localAddress := r.ID().LocalAddress
+ 
+@@ -31,6 +33,10 @@
+ 			localAddress = replaced
+ 		}
+ 		natLock.Unlock()
++		if dst, ok := netip.AddrFromSlice(localAddress.AsSlice()); !ok || !outbound.Allows("tcp", netip.AddrPortFrom(dst, r.ID().LocalPort)) {
++			r.Complete(true)
++			return
++		}
+ 		outbound, err := net.Dial("tcp", net.JoinHostPort(localAddress.String(), fmt.Sprint(r.ID().LocalPort)))
+ 		if err != nil {
+ 			log.Tracef("net.Dial() = %v", err)
+diff -ruN a/pkg/services/forwarder/udp.go b/pkg/services/forwarder/udp.go
+--- a/pkg/services/forwarder/udp.go	2026-10-04 20:14:52.706297344 +0200
++++ b/pkg/services/forwarder/udp.go	2026-10-04 20:17:59.454310606 +0200
+@@ -2,9 +2,11 @@
+ 
+ import (
+ 	"net"
++	"net/netip"
+ 	"strconv"
+ 	"sync"
+ 
++	"github.com/containers/gvisor-tap-vsock/pkg/types"
+ 	log "github.com/sirupsen/logrus"
+ 	"gvisor.dev/gvisor/pkg/tcpip"
+ 	"gvisor.dev/gvisor/pkg/tcpip/adapters/gonet"
+@@ -14,7 +16,7 @@
+ 	"gvisor.dev/gvisor/pkg/waiter"
+ )
+ 
+-func UDP(s *stack.Stack, nat map[tcpip.Address]tcpip.Address, natLock *sync.Mutex, ec2MetadataAccess bool) *udp.Forwarder {
++func UDP(s *stack.Stack, nat map[tcpip.Address]tcpip.Address, natLock *sync.Mutex, ec2MetadataAccess bool, outbound types.Outbound) *udp.Forwarder {
+ 	return udp.NewForwarder(s, func(r *udp.ForwarderRequest) {
+ 		localAddress := r.ID().LocalAddress
+ 
+@@ -27,6 +29,9 @@
+ 			localAddress = replaced
+ 		}
+ 		natLock.Unlock()
++		if dst, ok := netip.AddrFromSlice(localAddress.AsSlice()); !ok || !outbound.Allows("udp", netip.AddrPortFrom(dst, r.ID().LocalPort)) {
++			return
++		}
+ 
+ 		var wq waiter.Queue
+ 		ep, tcpErr := r.CreateEndpoint(&wq)
+diff -ruN a/pkg/types/configuration.go b/pkg/types/configuration.go
+--- a/pkg/types/configuration.go	2026-10-04 20:14:52.706297344 +0200
++++ b/pkg/types/configuration.go	2026-10-04 20:17:45.476413976 +0200
+@@ -2,9 +2,19 @@
+ 
+ import (
+ 	"net"
++	"net/netip"
+ 	"regexp"
+ )
+ 
++// Outbound decides whether the guest may reach dst over network ("tcp" or
++// "udp"): see Configuration.Outbound.
++type Outbound func(network string, dst netip.AddrPort) bool
++
++// Allows reports whether o lets the guest reach dst: all, when nil.
++func (o Outbound) Allows(network string, dst netip.AddrPort) bool {
++	return o == nil || o(network, dst)
++}
++
+ type Configuration struct {
+ 	// Print packets on stderr
+ 	Debug bool `yaml:"debug,omitempty"`
+@@ -53,6 +63,12 @@
+ 
+ 	// EC2 Metadata Service Access
+ 	Ec2MetadataAccess bool `yaml:"ec2MetadataAccess,omitempty"`
++
++	// Outbound, when set, decides whether the virtual network opens a
++	// connection the guest asks for: network is "tcp" or "udp", dst the
++	// destination once NAT applied. A refused TCP connection is reset, a
++	// refused UDP datagram dropped.
++	Outbound Outbound `yaml:"-"`
+ }
+ 
+ type Protocol string
+diff -ruN a/pkg/virtualnetwork/services.go b/pkg/virtualnetwork/services.go
+--- a/pkg/virtualnetwork/services.go	2026-10-04 20:14:52.706297344 +0200
++++ b/pkg/virtualnetwork/services.go	2026-10-04 20:18:02.314615007 +0200
+@@ -24,9 +24,9 @@
+ 	var natLock sync.Mutex
+ 	translation := parseNATTable(configuration)
+ 
+-	tcpForwarder := forwarder.TCP(s, translation, &natLock, configuration.Ec2MetadataAccess)
++	tcpForwarder := forwarder.TCP(s, translation, &natLock, configuration.Ec2MetadataAccess, configuration.Outbound)
+ 	s.SetTransportProtocolHandler(tcp.ProtocolNumber, tcpForwarder.HandlePacket)
+-	udpForwarder := forwarder.UDP(s, translation, &natLock, configuration.Ec2MetadataAccess)
++	udpForwarder := forwarder.UDP(s, translation, &natLock, configuration.Ec2MetadataAccess, configuration.Outbound)
+ 	s.SetTransportProtocolHandler(udp.ProtocolNumber, udpForwarder.HandlePacket)
+ 
+ 	dnsMux, err := dnsServer(configuration, s)

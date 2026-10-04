@@ -1,0 +1,58 @@
+name: Release
+on:
+  push:
+    tags:
+    - 'v*'
+    - 'test-action-release-*'
+permissions:
+  contents: read
+jobs:
+  release:
+    strategy:
+      matrix:
+        go-version: [stable]
+        os: [ubuntu-24.04]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    permissions:
+      contents: write  # for releases
+      id-token: write  # for provenances
+      attestations: write  # for provenances
+    steps:
+    - uses: actions/checkout@v7
+      with:
+        path: go/src/github.com/lima-vm/sshocker
+    - uses: actions/setup-go@v7
+      with:
+        go-version: ${{ matrix.go-version }}
+    - name: "Compile binaries"
+      working-directory:  go/src/github.com/lima-vm/sshocker
+      run: make cross
+    - name: "SHA256SUMS"
+      working-directory:  go/src/github.com/lima-vm/sshocker
+      run: ( cd ./bin; sha256sum sshocker-* ) | tee /tmp/SHA256SUMS
+    - name: "Prepare the release note"
+      working-directory:  go/src/github.com/lima-vm/sshocker
+      run: |
+        cat << EOF | tee /tmp/release-note.txt
+        #### Changes
+        (To be documented)
+
+        #### Install
+        \`\`\`
+        curl -o sshocker --fail -L https://github.com/${{ github.repository }}/releases/download/${tag}/sshocker-\$(uname -s)-\$(uname -m)
+        chmod +x sshocker
+        \`\`\`
+
+        #### About the binaries
+        The binaries were built automatically on GitHub Actions.
+        See the log to verify SHA256SUMS.
+        https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        EOF
+    - name: "Create release"
+      working-directory:  go/src/github.com/lima-vm/sshocker
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        tag="${GITHUB_REF##*/}"
+        gh release create -F /tmp/release-note.txt --draft --title "${tag}" "${tag}" ./bin/* /tmp/SHA256SUMS

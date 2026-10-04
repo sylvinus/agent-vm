@@ -3,36 +3,60 @@
 # Cut an agent-vm release.
 #
 #   ./release.sh X.Y.Z             check, then tag, push and publish
-#   ./release.sh X.Y.Z --dry-run   run every check, change nothing
+#   ./release.sh X.Y.Z --dry-run   run every check and build, change nothing
 #   ./release.sh X.Y.Z --yes       no confirmation prompt
-#   ./release.sh X.Y.Z --bypass-checks   without waiting for the test workflow
+#   ./release.sh X.Y.Z --bypass-checks   without waiting for the CI workflow
+#   ./release.sh X.Y.Z --not-latest      not GitHub's latest release
 #   ./release.sh notes X.Y.Z       print that version's CHANGELOG.md section
 #
+# --not-latest: the curl installer keeps installing the latest release, and
+# this one only with --version X.Y.Z; the Homebrew formula is left alone.
+# RELEASE_BRANCH=<branch> releases from that branch instead of main. See
+# RELEASING.md.
+#
 # It bumps and commits nothing. First, in an ordinary commit on main: set
-# AGENT_VM_VERSION in agent-vm.sh and add a "## X.Y.Z" section to CHANGELOG.md.
-# Push it and let CI pass. This script then checks that commit and publishes it:
+# NEXT_VERSION := X.Y.Z in the Makefile and rename CHANGELOG.md's "##
+# Unreleased" to "## X.Y.Z". Push it and let CI pass. This script then checks
+# that commit and publishes it:
 #
 #   1. clean tree, on main, level with origin/main, tag vX.Y.Z not taken (or
 #      already on this commit with no release: a failed run, resumed at 5)
-#   2. agent-vm.sh reports X.Y.Z, CHANGELOG.md has a non-empty X.Y.Z section
-#   3. the test workflow passed on this commit
+#   2. the Makefile's NEXT_VERSION is X.Y.Z, CHANGELOG.md has a non-empty
+#      X.Y.Z section
+#   3. the CI workflow passed on this commit
 #   4. annotated tag vX.Y.Z, pushed
-#   5. GitHub release: the CHANGELOG section as notes, plus a tarball made by
-#      `git archive` (without www/ and the tests) and its SHA256SUMS. The tarball is built here, so its
-#      checksum does not depend on how GitHub generates archives.
-#   6. the url and sha256 lines for the Homebrew formula. With
+#   5. GitHub release: the CHANGELOG section as notes, plus
+#      agent-vm-X.Y.Z-<os>-<arch>.tar.gz for each platform and their
+#      SHA256SUMS. Each tarball holds that platform's binary, agent-vm, built
+#      here from the tag, and agent-vm.sh: the curl installer takes the one
+#      of the machine, unpacks it and runs `agent-vm.sh install`.
+#   6. the url and sha256 lines for the Homebrew formula, per platform. With
 #      AGENT_VM_TAP=<path to a homebrew-tap clone>, Formula/agent-vm.rb there
-#      (checked to exist before step 1) is updated too, and the commands to
-#      commit it are printed.
+#      (checked to exist before step 1) is updated too: each url naming a
+#      platform's tarball, and the sha256 after it. The commands to commit it
+#      are printed.
 #
-# Needs git, gh (logged in) and shasum or sha256sum. A dry run reads origin
-# without fetching, and without gh skips the checks that need it, with a
+# Runs on macOS: the macOS binaries need its SDK (vz, through cgo) and
+# codesign, and its Go builds the Linux and Windows ones too (without cgo,
+# which they never use). A dry run elsewhere builds those only, with a
 # warning.
+#
+# The Windows binaries are signed (Authenticode, with osslsigncode) when
+# AGENT_VM_WINDOWS_PFX names the certificate and key, a PKCS#12 file, and
+# AGENT_VM_WINDOWS_PFX_PASS is its password; timestamped by
+# AGENT_VM_WINDOWS_TIMESTAMP (default http://timestamp.digicert.com; empty:
+# none). Without, they are unsigned, with a warning: Windows warns before
+# running one downloaded by a browser.
+#
+# Needs git, make, Go, the Xcode command line tools, gh (logged in) and
+# shasum or sha256sum. A dry run reads origin without fetching, and without
+# gh skips the checks that need it, with a warning.
 
 set -euo pipefail
 
 REPO_DIR="$(CDPATH= cd -P -- "$(dirname "${BASH_SOURCE[0]:-$0}")" >/dev/null && pwd)"
 BRANCH="${RELEASE_BRANCH:-main}"
+PLATFORMS="darwin-arm64 darwin-amd64 linux-arm64 linux-amd64 windows-arm64 windows-amd64"
 
 c_g=''; c_y=''; c_r=''; c_0=''
 if [ -t 1 ]; then c_g=$'\033[32m'; c_y=$'\033[33m'; c_r=$'\033[31m'; c_0=$'\033[0m'; fi
@@ -41,7 +65,7 @@ warn() { printf '%s!%s %s\n' "$c_y" "$c_0" "$*"; }
 die()  { printf '%s✗%s %s\n' "$c_r" "$c_0" "$*" >&2; exit 1; }
 
 usage() {
-  sed -n '5,9p' "$0" | sed 's/^# \{0,1\}//' >&2
+  sed -n '5,10p' "$0" | sed 's/^# \{0,1\}//' >&2
   exit 2
 }
 
@@ -76,6 +100,46 @@ run() {
   [ -n "$DRY_RUN" ] || "$@"
 }
 
+# package <ref> <version> <outdir> <platform>...: in outdir, built from ref,
+# agent-vm-<version>-<platform>.tar.gz for each platform, holding the binary
+# (agent-vm), agent-vm.sh and the docs.
+package() {
+  local ref="$1" version="$2" out="$3"; shift 3
+  local src="$out/src" stage p os arch bin
+  mkdir -p "$src"
+  git -C "$REPO_DIR" archive "$ref" | tar -x -C "$src"
+  for p in "$@"; do
+    os="${p%-*}"; arch="${p#*-}"
+    stage="$out/stage-$p/agent-vm-$version"
+    mkdir -p "$stage"
+    echo "  building $p"
+    # The Makefile sets cgo (macOS only). GOWORK=off: a go.work above $WORK
+    # would take part in the build.
+    make -C "$src" clean >/dev/null
+    env -u CGO_ENABLED GOWORK=off make -C "$src" agent-vm GOOS="$os" GOARCH="$arch" VERSION="$version" \
+      >"$out/build-$p.log" 2>&1 || { tail -n 20 "$out/build-$p.log" >&2; die "the $p build failed: $out/build-$p.log"; }
+    bin=agent-vm
+    [ "$os" != windows ] || bin=agent-vm.exe
+    cp "$src/_output/bin/$bin" "$src/agent-vm.sh" "$src/LICENSE" "$src/README.md" "$src/CHANGELOG.md" \
+      "$src/runtime.example.sh" "$stage/"
+    [ "$os" != windows ] || [ -z "${AGENT_VM_WINDOWS_PFX:-}" ] || sign_windows "$stage/$bin" "$out"
+    tar -czf "$out/agent-vm-$version-$p.tar.gz" -C "$out/stage-$p" "agent-vm-$version"
+  done
+}
+
+# sign_windows <exe> <workdir>: Authenticode signature (see the top). The
+# password goes through a file, not the command line.
+sign_windows() {
+  local exe="$1" pass="$2/pfx-pass" ts="${AGENT_VM_WINDOWS_TIMESTAMP-http://timestamp.digicert.com}"
+  local args=(sign -pkcs12 "$AGENT_VM_WINDOWS_PFX" -readpass "$pass" -h sha256 -n agent-vm -i https://www.agent-vm.org/)
+  [ -z "$ts" ] || args+=(-t "$ts")
+  ( umask 077; printf '%s' "${AGENT_VM_WINDOWS_PFX_PASS:-}" > "$pass" )
+  osslsigncode "${args[@]}" -in "$exe" -out "$exe.signed" >"$exe.sign.log" 2>&1 \
+    || { rm -f "$pass"; cat "$exe.sign.log" >&2; die "could not sign $exe"; }
+  rm -f "$pass" "$exe.sign.log"
+  mv "$exe.signed" "$exe"
+}
+
 # --- arguments -----------------------------------------------------------------
 [ $# -ge 1 ] || usage
 if [ "$1" = "notes" ]; then
@@ -89,19 +153,36 @@ fi
 VERSION="$1"; shift
 valid_version "$VERSION" || die "not a version: '$VERSION' (expected X.Y.Z)"
 TAG="v$VERSION"
-DRY_RUN=""; ASSUME_YES=""; BYPASS_CHECKS=""
+DRY_RUN=""; ASSUME_YES=""; BYPASS_CHECKS=""; NOT_LATEST=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --dry-run) DRY_RUN=1 ;;
     --yes)     ASSUME_YES=1 ;;
     --bypass-checks) BYPASS_CHECKS=1 ;;
+    --not-latest) NOT_LATEST=1 ;;
     *)         usage ;;
   esac
   shift
 done
 
 cd "$REPO_DIR"
-command -v git >/dev/null 2>&1 || die "git is required"
+for t in git make go; do
+  command -v "$t" >/dev/null 2>&1 || die "$t is required"
+done
+if [ -n "${AGENT_VM_RELEASE_TEST_NO_MACOS:-}" ]; then
+  # tests/release.sh, against a throwaway repository: the whole run, here.
+  PLATFORMS="linux-arm64 linux-amd64 windows-arm64 windows-amd64"
+elif [ "$(uname -s)" != Darwin ]; then
+  [ -n "$DRY_RUN" ] || die "a release is built on macOS: the macOS binaries need its SDK and codesign"
+  PLATFORMS="linux-arm64 linux-amd64 windows-arm64 windows-amd64"
+  warn "not on macOS: this dry run builds the Linux and Windows binaries only"
+fi
+if [ -n "${AGENT_VM_WINDOWS_PFX:-}" ]; then
+  command -v osslsigncode >/dev/null 2>&1 || die "osslsigncode is required to sign the Windows binaries (brew install osslsigncode)"
+  [ -f "$AGENT_VM_WINDOWS_PFX" ] || die "no file at $AGENT_VM_WINDOWS_PFX (AGENT_VM_WINDOWS_PFX)"
+else
+  warn "AGENT_VM_WINDOWS_PFX is not set: the Windows binaries are not signed"
+fi
 # A dry run changes nothing, here included: no fetch (origin is read with
 # ls-remote), and gh only for reading, skipped with a warning when it is
 # missing or not logged in.
@@ -167,33 +248,33 @@ fi
 
 # --- 2. version and changelog --------------------------------------------------
 echo "Checking the version"
-reported="$(bash ./agent-vm.sh version)"
-[ "$reported" = "$VERSION" ] \
-  || die "agent-vm.sh reports $reported: set AGENT_VM_VERSION=\"$VERSION\" and commit"
-ok "agent-vm.sh reports $VERSION"
+next="$(awk '$1 == "NEXT_VERSION" && $2 == ":=" { print $3 }' Makefile)"
+[ "$next" = "$VERSION" ] \
+  || die "the Makefile's NEXT_VERSION is '$next': set it to $VERSION and commit"
+ok "the Makefile's NEXT_VERSION is $VERSION"
 
 NOTES="$(changelog_notes "$VERSION")"
 [ -n "$NOTES" ] || die "CHANGELOG.md has no '## $VERSION' section, or it is empty"
 ok "CHANGELOG.md has a $VERSION section ($(printf '%s\n' "$NOTES" | wc -l | tr -d ' ') lines)"
 
 # --- 3. tests ------------------------------------------------------------------
-# CI is the authority: it runs bash 3.2, which this machine may lack.
+# CI is the authority: it runs on Linux, macOS and Windows.
 # --bypass-checks skips the workflow only: the checks above decide what the
 # tag and the release are, and still apply.
 echo "Checking the tests"
 ci="skipped"
-[ -z "$GH" ] || [ -n "$BYPASS_CHECKS" ] || ci="$(gh run list --workflow test.yml --commit "$head" --limit 1 \
+[ -z "$GH" ] || [ -n "$BYPASS_CHECKS" ] || ci="$(gh run list --workflow go.yml --commit "$head" --limit 1 \
         --json status,conclusion --jq '.[0] | "\(.status) \(.conclusion)"' 2>/dev/null || true)"
 case "$ci" in
   skipped)
-    if [ -n "$BYPASS_CHECKS" ]; then warn "the test workflow on ${head:0:12} was not checked (--bypass-checks)"
-    else warn "the test workflow on ${head:0:12} was not checked (no gh)"; fi ;;
-  "completed success") ok "the test workflow passed on ${head:0:12}" ;;
-  "")                  die "no test workflow run for ${head:0:12}: push and wait for CI" ;;
-  completed*)          die "the test workflow did not pass on ${head:0:12} ($ci)" ;;
-  *)                   die "the test workflow is still running on ${head:0:12} ($ci)" ;;
+    if [ -n "$BYPASS_CHECKS" ]; then warn "the CI workflow on ${head:0:12} was not checked (--bypass-checks)"
+    else warn "the CI workflow on ${head:0:12} was not checked (no gh)"; fi ;;
+  "completed success") ok "the CI workflow passed on ${head:0:12}" ;;
+  "")                  die "no CI workflow run for ${head:0:12}: push and wait for CI" ;;
+  completed*)          die "the CI workflow did not pass on ${head:0:12} ($ci)" ;;
+  *)                   die "the CI workflow is still running on ${head:0:12} ($ci)" ;;
 esac
-for f in agent-vm.sh lib/*.sh agent-vm.setup.sh install.sh runtime.example.sh test.sh tests/*.sh test-e2e.sh release.sh; do
+for f in agent-vm.sh agent-vm.setup.sh runtime.example.sh release.sh tests/*.sh scripts/*; do
   bash -n "$f" || die "syntax error in $f"
 done
 sh -n www/public/install.sh || die "syntax error in www/public/install.sh"
@@ -210,11 +291,10 @@ elif [ -z "$ASSUME_YES" ]; then
   case "$reply" in [Yy]*) ;; *) echo "Aborted, nothing was changed."; exit 1 ;; esac
 fi
 
-# --- 4-5. tag, push, release ---------------------------------------------------
+# --- 4-5. tag, push, build, release ----------------------------------------------
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 printf '%s\n' "$NOTES" > "$WORK/notes.md"
-TARBALL="agent-vm-$VERSION.tar.gz"
 
 if [ -z "$RESUME" ]; then
   run git tag -a "$TAG" -m "agent-vm $VERSION"
@@ -224,43 +304,61 @@ elif [ -z "$(git ls-remote --tags origin "refs/tags/$TAG")" ]; then
   # needs it on origin.
   run git push origin "refs/tags/$TAG"
 elif ! git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
-  # Resumed from a tag that only exists on origin: the tarball is built from it.
+  # Resumed from a tag that only exists on origin: the binaries are built from it.
   run git fetch --quiet origin "refs/tags/$TAG:refs/tags/$TAG"
 fi
 # Built from the tag, not the working tree, so the asset is what was tagged.
 # It only writes into $WORK, so a dry run builds it too (from HEAD, which is
-# what the tag points at, or would) to show the checksum. www/ and the tests
-# are left out by export-ignore in .gitattributes.
+# what the tag points at, or would) to show the checksum.
 ref="$TAG"
 [ -z "$DRY_RUN" ] || ref="HEAD"
-git archive --format=tar.gz --prefix="agent-vm-$VERSION/" -o "$WORK/$TARBALL" "$ref"
-SHA="$(sha256_of "$WORK/$TARBALL")"
-printf '%s  %s\n' "$SHA" "$TARBALL" > "$WORK/SHA256SUMS"
-run gh release create "$TAG" --verify-tag --title "agent-vm $VERSION" \
-  --notes-file "$WORK/notes.md" "$WORK/$TARBALL" "$WORK/SHA256SUMS"
+echo "Building the tarballs"
+# shellcheck disable=SC2086
+package "$ref" "$VERSION" "$WORK" $PLATFORMS
+assets=()
+: > "$WORK/SHA256SUMS"
+for p in $PLATFORMS; do
+  f="agent-vm-$VERSION-$p.tar.gz"
+  sha="$(sha256_of "$WORK/$f")"
+  printf '%s  %s\n' "$sha" "$f" >> "$WORK/SHA256SUMS"
+  assets+=("$WORK/$f")
+  ok "$f: $(du -h "$WORK/$f" | cut -f1), sha256 $sha"
+done
+latest=()
+[ -z "$NOT_LATEST" ] || latest=(--latest=false)
+run gh release create "$TAG" --verify-tag --title "agent-vm $VERSION" ${latest[@]+"${latest[@]}"} \
+  --notes-file "$WORK/notes.md" "${assets[@]}" "$WORK/SHA256SUMS"
 
 # --- 6. Homebrew -----------------------------------------------------------------
-if [ -n "$GH" ]; then
-  SLUG="$(gh repo view --json nameWithOwner --jq .nameWithOwner)"
-else
-  # owner/repo from the origin URL, https or ssh.
-  SLUG="$(git remote get-url origin | sed -E 's#^.*github\.com[:/]##; s#\.git$##')"
-fi
-URL="https://github.com/$SLUG/releases/download/$TAG/$TARBALL"
+SLUG=""
+[ -z "$GH" ] || SLUG="$(gh repo view --json nameWithOwner --jq .nameWithOwner 2>/dev/null)" || SLUG=""
+# Else owner/repo from the origin URL, https or ssh.
+[ -n "$SLUG" ] || SLUG="$(git remote get-url origin | sed -E 's#^.*github\.com[:/]##; s#\.git$##')"
+BASE="https://github.com/$SLUG/releases/download/$TAG"
 echo
-echo "Homebrew formula:"
-echo "  url \"$URL\""
-echo "  sha256 \"$SHA\""
+echo "Homebrew formula, per platform (each tarball's agent-vm is the binary):"
+while read -r sha f; do
+  echo "  url \"$BASE/$f\""
+  echo "  sha256 \"$sha\""
+done < "$WORK/SHA256SUMS"
 
 if [ -n "${AGENT_VM_TAP:-}" ]; then
-  if [ -n "$DRY_RUN" ]; then
+  if [ -n "$NOT_LATEST" ]; then
+    warn "$FORMULA is not updated (--not-latest): brew keeps the latest release"
+  elif [ -n "$DRY_RUN" ]; then
     echo "Dry run: $FORMULA would be updated."
   else
-    # The first url and sha256 only: those of the source. A `bottle do`
-    # block below has sha256 lines of its own.
-    awk -v url="$URL" -v sha="$SHA" '
-      !u && /^[[:space:]]*url / { sub(/url .*/, "url \"" url "\""); u = 1 }
-      !s && /^[[:space:]]*sha256 / { sub(/sha256 .*/, "sha256 \"" sha "\""); s = 1 }
+    # Each url naming a platform's tarball gets this release's, and the
+    # sha256 after it that tarball's. A `bottle do` block has sha256 lines
+    # of its own, after no url: left alone.
+    awk -v base="$BASE" -v version="$VERSION" -v sums="$WORK/SHA256SUMS" '
+      BEGIN { while ((getline l < sums) > 0) { split(l, a, "  "); p = a[2]; sub(/^agent-vm-[0-9.]+-/, "", p); sub(/\.tar\.gz$/, "", p); sha[p] = a[1] } }
+      /^[[:space:]]*url / {
+        for (p in sha) if (index($0, "-" p ".tar.gz")) {
+          sub(/url .*/, "url \"" base "/agent-vm-" version "-" p ".tar.gz\""); want = p
+        }
+      }
+      want != "" && /^[[:space:]]*sha256 / { sub(/sha256 .*/, "sha256 \"" sha[want] "\""); want = "" }
       { print }' "$FORMULA" > "$WORK/formula.rb"
     mv "$WORK/formula.rb" "$FORMULA"
     ok "updated $FORMULA"

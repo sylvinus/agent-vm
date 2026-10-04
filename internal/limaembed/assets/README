@@ -1,0 +1,3 @@
+Filled by `make`: Lima's guest agent for this architecture (gzipped) and
+Lima's templates, embedded in agent-vm (see ../share.go). Without them,
+agent-vm builds but cannot create or start a VM.

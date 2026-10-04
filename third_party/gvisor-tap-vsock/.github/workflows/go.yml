@@ -1,0 +1,83 @@
+name: Go
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+
+  build:
+    runs-on: ubuntu-22.04 # explicitly use older ubuntu, see commit 428c40018f
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        go-version: ["1.25.x", "1.26.x"]
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        fetch-depth: 0 # history/tags are needed for automatic version generation
+        fetch-tags: true
+
+    - name: Set up Go
+      uses: actions/setup-go@v6
+      with:
+        go-version: ${{ matrix.go-version }}
+
+    - name: Build
+      run: |
+        make cross qemu-wrapper vm win-gvproxy win-sshproxy image
+        mv bin/gvproxy.exe bin/gvproxy-windowsgui.exe
+
+    - uses: actions/upload-artifact@v7
+      if: matrix.go-version == '1.25.x'
+      with:
+        name: gvisor-tap-vsock-binaries
+        path: bin/*
+
+  tests:
+    runs-on: ubuntu-latest # The runner must support nested virt
+    needs: build # Don't bother testing if cross arch build fails
+    timeout-minutes: 30
+    steps:
+    - uses: actions/checkout@v6
+
+    - name: Install qemu
+      run: |
+        sudo apt update
+        sudo apt install qemu-kvm
+        sudo usermod -a -G kvm $USER
+
+    - name: Set up Go
+      uses: actions/setup-go@v6
+      with:
+        go-version: 'stable'
+
+    - name: Test
+      run: |
+        sudo -s -u ${USER} bash -c 'make test'
+
+    - uses: actions/upload-artifact@v7
+      if: always()
+      with:
+        name: qcon
+        path: test/qcon.log
+
+  win-sshproxy-tests:
+    runs-on: windows-latest # Only builds/runs on windows
+    timeout-minutes: 30
+    steps:
+    - uses: actions/checkout@v6
+
+    - name: Set up Go
+      uses: actions/setup-go@v6
+      with:
+        go-version: 'stable'
+
+    - name: Build
+      run: make win-sshproxy
+
+    - name: Test
+      run: go test -v .\test-win-sshproxy

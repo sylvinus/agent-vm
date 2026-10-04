@@ -1,0 +1,21 @@
+{
+	"TestEntriesBash": [
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_volume_entries \"$1\"",
+			"Env": [
+				"HOME={T0}/002",
+				"HOME={T0}/001/home",
+				"AGENT_VM_STATE_DIR={T0}/001/home/.agent-vm"
+			],
+			"Args": [
+				"{T0}/001/home/proj"
+			],
+			"Files": null,
+			"Stdout": "{T0}/001/data/a||ro|{T0}/001/data/a\n{T0}/001/data/a|/mnt/a|rw|{T0}/001/data/a:/mnt/a:rw\n{T0}/001/data/b|/mnt/b|ro|{T0}/001/data/b:/mnt/b:ro\n{T0}/001/data/a|/mnt/y|rw|{T0}/001/data/a:/mnt/x/../y/:rw\n{T0}/001/data/file.txt|/etc/f|ro|{T0}/001/data/file.txt:/etc/f\n{T0}/001/home/proj|/mnt/p|ro|~/proj:/mnt/p\n{T0}/001/bare.git|/mnt/bare2|ro|{T0}/001/bare.git:/mnt/bare2:ro\n{T0}/001/data/a|{T0}/001/home/proj/inside|ro|{T0}/001/data/a:{T0}/001/home/proj/inside:ro\n{T0}/001/data/a|rel/dir|ro|{T0}/001/data/a:rel/dir:ro\n{T0}/001/data/a|/mnt/f1|rw|{T0}/001/data/a:/mnt/f1:rw\n{T0}/001/data/b|/mnt/f3|rw|{T0}/001/data/b:/mnt/f3:rw\n{T0}/001/alink|/mnt/alink|rw|{T0}/001/alink:/mnt/alink:rw\n",
+			"Stderr": "Warning: Mount entry '{T0}/001/data/b:/mnt/a:rw' (from ~/.agent-vm/volumes) would be mounted at /mnt/a, as an entry before it, skipping.\nWarning: Mount path '{T0}/001/missing' (from ~/.agent-vm/volumes) does not exist, skipping.\nWarning: Mount path '{T0}/001/home' (from ~/.agent-vm/volumes) is, or contains, your home directory, skipping.\nWarning: Mount path '{T0}/001/home/.agent-vm' (from ~/.agent-vm/volumes) is, or contains, agent-vm's state, skipping.\nWarning: Mount path '{T0}/001/bare.git' (from ~/.agent-vm/volumes) is, or is inside, a git repository's own folder ({T0}/001/bare.git), skipping.\nWarning: Mount path '{T0}/001/repo/.git/hooks' (from ~/.agent-vm/volumes) is, or is inside, a folder git or Mercurial keeps its repository in (.git, .hg), skipping.\nWarning: Mount entry '{T0}/001/data/a:{T0}/001/home:ro' (from ~/.agent-vm/volumes) would be mounted at {T0}/001/home, which covers the project, skipping.\nWarning: Project filter 'relative/p' (from ~/.agent-vm/volumes) is not an absolute path, skipping the entry.\nWarning: Mount entry '{T0}/001/data/b:/mnt/f5:rw:' (from ~/.agent-vm/volumes) has an empty project filter; refusing to mount it in every project. Skipping.\nWarning: Mount entry '{T0}/001/data/b:/mnt/f6:/p' (from ~/.agent-vm/volumes) does not read as source:destination:mode:project (the mode goes before the project, and is needed with one). Skipping.\nWarning: Mount entry '{T0}/001/data/b:/mnt/f7:rw:/p:x' (from ~/.agent-vm/volumes) does not read as source:destination:mode:project (the mode goes before the project, and is needed with one). Skipping.\nWarning: Mount entry '{T0}/001/data/a:/mnt/q\"uote' (from ~/.agent-vm/volumes) contains invalid characters (quote/backslash/newline/pipe), skipping.\nWarning: Mount entry '{T0}/001/data/a:/mnt/tab\there' (from ~/.agent-vm/volumes) contains a control character, skipping.\nWarning: Mount entry 'crlf:{T0}/001/data/b:/mnt/crlf\r' (from ~/.agent-vm/volumes) does not read as source:destination:mode:project (the mode goes before the project, and is needed with one). Skipping.\n",
+			"Code": 0
+		}
+	]
+}

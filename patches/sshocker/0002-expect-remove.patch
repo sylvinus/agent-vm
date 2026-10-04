@@ -1,0 +1,333 @@
+From 3f1a12816251bee5b7cc5307a092220422c77be1 Mon Sep 17 00:00:00 2001
+From: Sylvain Zimmer <sylvain@sylvainzimmer.com>
+Date: Wed, 23 Sep 2026 22:54:09 +0200
+Subject: [PATCH 2/2] reversesshfs: add ExpectRemove
+
+ExpectRemove(hostPath) makes the next Remove or Rmdir of hostPath from
+the guest succeed without touching the host, if it arrives within 5
+seconds. It lets the caller relay a deletion done on the host: the guest
+removes the path in the mount, so the guest kernel emits IN_DELETE,
+while the host keeps the path if it was created again in the meantime.
+
+It returns false when unsupported, i.e. without the rooted server of the
+builtin driver.
+
+Assisted-by: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+Signed-off-by: Sylvain Zimmer <sylvain@sylvainzimmer.com>
+---
+ pkg/reversesshfs/reversesshfs.go    | 17 +++++++
+ pkg/reversesshfs/rooted.go          | 41 ++++++++++++++++
+ pkg/reversesshfs/rooted_e2e_test.go | 75 +++++++++++++++++++++++++++++
+ pkg/reversesshfs/rooted_others.go   |  2 +
+ pkg/reversesshfs/rooted_test.go     | 61 ++++++++++++++++++++++-
+ 5 files changed, 195 insertions(+), 1 deletion(-)
+
+diff --git a/pkg/reversesshfs/reversesshfs.go b/pkg/reversesshfs/reversesshfs.go
+index 4fce6e2..d59def7 100644
+--- a/pkg/reversesshfs/reversesshfs.go
++++ b/pkg/reversesshfs/reversesshfs.go
+@@ -13,6 +13,7 @@ import (
+ 	"runtime"
+ 	"strconv"
+ 	"strings"
++	"sync/atomic"
+ 
+ 	"github.com/lima-vm/sshocker/pkg/ssh"
+ 	"github.com/lima-vm/sshocker/pkg/util"
+@@ -43,6 +44,21 @@ type ReverseSSHFS struct {
+ 	// ReadonlyNames makes a path read-only when any of its components is one of these names
+ 	// (compared case-insensitively). Requires DriverBuiltin on Linux, macOS, or Windows.
+ 	ReadonlyNames []string
++
++	rooted atomic.Pointer[rootedHandlers]
++}
++
++// ExpectRemove makes the next removal of hostPath requested by the remote, within a few seconds,
++// succeed without touching hostPath. It is used to relay a local deletion to the remote,
++// by removing the path there, which emits an inotify event on the remote.
++// It returns false when unsupported, i.e., when not using DriverBuiltin on Linux, macOS, or Windows.
++func (rsf *ReverseSSHFS) ExpectRemove(hostPath string) bool {
++	h := rsf.rooted.Load()
++	if h == nil {
++		return false
++	}
++	h.expectRemove(hostPath)
++	return true
+ }
+ 
+ func (rsf *ReverseSSHFS) Prepare() error {
+@@ -196,6 +212,7 @@ func (rsf *ReverseSSHFS) Start() error {
+ 			WriteCloser: stdinPipe,
+ 		}
+ 		builtinSftpServer, rooted, err = newRootedServer(stdio, rsf.LocalPath, rsf.Readonly, rsf.ReadonlyNames)
++		rsf.rooted.Store(rooted)
+ 		if err != nil {
+ 			return err
+ 		}
+diff --git a/pkg/reversesshfs/rooted.go b/pkg/reversesshfs/rooted.go
+index e4517c9..fb39721 100644
+--- a/pkg/reversesshfs/rooted.go
++++ b/pkg/reversesshfs/rooted.go
+@@ -8,6 +8,8 @@ import (
+ 	"os"
+ 	"path"
+ 	"strings"
++	"sync"
++	"time"
+ 
+ 	"github.com/pkg/sftp"
+ )
+@@ -26,8 +28,14 @@ type rootedHandlers struct {
+ 	readonly      bool
+ 	readonlyNames []string
+ 	rootedSys
++
++	mu           sync.Mutex
++	noopRemovals map[string]time.Time // expiry, keyed by request path
+ }
+ 
++// noopRemovalTTL bounds how long an ExpectRemove token waits for the guest.
++const noopRemovalTTL = 5 * time.Second
++
+ func newRootedServer(rwc io.ReadWriteCloser, localPath string, readonly bool, readonlyNames []string) (*sftp.RequestServer, *rootedHandlers, error) {
+ 	root, err := os.OpenRoot(localPath)
+ 	if err != nil {
+@@ -44,6 +52,7 @@ func newRootedServer(rwc io.ReadWriteCloser, localPath string, readonly bool, re
+ 		readonly:      readonly,
+ 		readonlyNames: readonlyNames,
+ 		rootedSys:     sys,
++		noopRemovals:  make(map[string]time.Time),
+ 	}
+ 	handlers := sftp.Handlers{FileGet: h, FilePut: h, FileCmd: h, FileList: h}
+ 	srv := sftp.NewRequestServer(rwc, handlers, sftp.WithStartDirectory(startDirectory(h.rootPath)))
+@@ -54,6 +63,33 @@ func (h *rootedHandlers) Close() error {
+ 	return errors.Join(h.root.Close(), h.rootedSys.close())
+ }
+ 
++// expectRemove makes the next Remove or Rmdir request for p, within noopRemovalTTL,
++// succeed without touching the host. p is a host path under the root.
++func (h *rootedHandlers) expectRemove(p string) {
++	p = slashPath(p)
++	now := time.Now()
++	h.mu.Lock()
++	defer h.mu.Unlock()
++	for k, expiry := range h.noopRemovals {
++		if now.After(expiry) {
++			delete(h.noopRemovals, k)
++		}
++	}
++	h.noopRemovals[p] = now.Add(noopRemovalTTL)
++}
++
++func (h *rootedHandlers) consumeNoopRemoval(p string) bool {
++	p = path.Clean(p)
++	h.mu.Lock()
++	defer h.mu.Unlock()
++	expiry, ok := h.noopRemovals[p]
++	if !ok {
++		return false
++	}
++	delete(h.noopRemovals, p)
++	return time.Now().Before(expiry)
++}
++
+ // rel maps a request path to a path relative to the root.
+ // The result has no "." or ".." component, except "." for the root itself.
+ func (h *rootedHandlers) rel(p string) (string, error) {
+@@ -145,6 +181,11 @@ func (h *rootedHandlers) Filecmd(r *sftp.Request) error {
+ 	case "Link":
+ 		return h.link(r)
+ 	case "Remove", "Rmdir":
++		// The guest agent removes a path deleted on the host, so that the guest emits IN_DELETE.
++		// The path may have been created again on the host since, so it must not be removed.
++		if h.consumeNoopRemoval(r.Filepath) {
++			return nil
++		}
+ 		return h.remove(r)
+ 	case "Mkdir":
+ 		return h.mkdir(r)
+diff --git a/pkg/reversesshfs/rooted_e2e_test.go b/pkg/reversesshfs/rooted_e2e_test.go
+index d572646..5f6d8a6 100644
+--- a/pkg/reversesshfs/rooted_e2e_test.go
++++ b/pkg/reversesshfs/rooted_e2e_test.go
+@@ -146,6 +146,81 @@ func TestRootedSSHFS(t *testing.T) {
+ 			t.Errorf("%s: no IN_ATTRIB event in the mount", f)
+ 		}
+ 	}
++
++	// Relay a host deletion: the hostagent calls ExpectRemove, then the guest agent removes the path.
++	for _, tc := range []struct {
++		name        string
++		recreate    bool
++		guestSeen   bool
++		guestListed bool
++		delay       time.Duration
++	}{
++		{name: "src/gone.txt", guestSeen: true},
++		{name: "src/listed.txt", guestListed: true},
++		{name: ".git/index.lock", guestSeen: true},
++		{name: "src/later.txt", guestSeen: true, delay: 2 * time.Second},
++		{name: "src/again.txt", guestSeen: true, recreate: true},
++		{name: "src/unseen.txt"},
++	} {
++		hostPath := filepath.Join(root, tc.name)
++		if err := os.WriteFile(hostPath, []byte("old"), 0o644); err != nil {
++			t.Fatal(err)
++		}
++		if tc.guestSeen {
++			if _, err := os.Stat(filepath.Join(mnt, tc.name)); err != nil {
++				t.Fatal(err)
++			}
++		}
++		if tc.guestListed {
++			if _, err := os.ReadDir(filepath.Dir(filepath.Join(mnt, tc.name))); err != nil {
++				t.Fatal(err)
++			}
++		}
++		if err := os.Remove(hostPath); err != nil {
++			t.Fatal(err)
++		}
++		if tc.recreate {
++			if err := os.WriteFile(hostPath, []byte("new"), 0o644); err != nil {
++				t.Fatal(err)
++			}
++		}
++		time.Sleep(tc.delay)
++		h.expectRemove(hostPath)
++		got := gotDeleteEvent(t, filepath.Join(mnt, tc.name))
++		t.Logf("%s (seen: %v, listed: %v, delay: %v): IN_DELETE: %v", tc.name, tc.guestSeen, tc.guestListed, tc.delay, got)
++		if tc.guestSeen && !got {
++			t.Errorf("%s: no IN_DELETE event in the mount", tc.name)
++		}
++		if tc.recreate {
++			if b, err := os.ReadFile(hostPath); err != nil || string(b) != "new" {
++				t.Errorf("%s: the recreated file was modified: %q, %v", tc.name, b, err)
++			}
++		}
++	}
++}
++
++func gotDeleteEvent(t *testing.T, p string) bool {
++	t.Helper()
++	fd, err := unix.InotifyInit1(unix.IN_CLOEXEC | unix.IN_NONBLOCK)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer unix.Close(fd)
++	if _, err := unix.InotifyAddWatch(fd, filepath.Dir(p), unix.IN_DELETE); err != nil {
++		t.Fatal(err)
++	}
++	if err := os.Remove(p); err != nil {
++		t.Logf("remove %s: %v", p, err)
++		return false
++	}
++	buf := make([]byte, 4096)
++	for range 20 {
++		if n, err := unix.Read(fd, buf); err == nil && n > 0 {
++			return true
++		}
++		time.Sleep(50 * time.Millisecond)
++	}
++	return false
+ }
+ 
+ func gotAttribEvent(t *testing.T, p string, mtime time.Time) bool {
+diff --git a/pkg/reversesshfs/rooted_others.go b/pkg/reversesshfs/rooted_others.go
+index a2dc295..5669be5 100644
+--- a/pkg/reversesshfs/rooted_others.go
++++ b/pkg/reversesshfs/rooted_others.go
+@@ -16,3 +16,5 @@ func newRootedServer(io.ReadWriteCloser, string, bool, []string) (*sftp.RequestS
+ }
+ 
+ func (*rootedHandlers) Close() error { return nil }
++
++func (*rootedHandlers) expectRemove(string) {}
+diff --git a/pkg/reversesshfs/rooted_test.go b/pkg/reversesshfs/rooted_test.go
+index 124100a..bfd630e 100644
+--- a/pkg/reversesshfs/rooted_test.go
++++ b/pkg/reversesshfs/rooted_test.go
+@@ -25,6 +25,12 @@ var (
+ // that plays the role of a compromised guest sending arbitrary requests.
+ // It also creates the symlinks "gitlink" -> ".git" and "configlink" -> ".git/config".
+ func setupRooted(t *testing.T, readonly bool) (*sftp.Client, string) {
++	t.Helper()
++	c, root, _ := setupRootedHandlers(t, readonly)
++	return c, root
++}
++
++func setupRootedHandlers(t *testing.T, readonly bool) (*sftp.Client, string, *rootedHandlers) {
+ 	t.Helper()
+ 	tmp := t.TempDir()
+ 	root := filepath.Join(tmp, "root")
+@@ -65,7 +71,7 @@ func setupRooted(t *testing.T, readonly bool) (*sftp.Client, string) {
+ 		client.Close()
+ 		<-done
+ 	})
+-	return client, root
++	return client, root, h
+ }
+ 
+ func assertUnchanged(t *testing.T, root string) {
+@@ -301,6 +307,59 @@ func TestRootedNoopTimes(t *testing.T) {
+ 	assertUnchanged(t, root)
+ }
+ 
++// TestRootedNoopRemoval checks the removal used to relay host deletions.
++func TestRootedNoopRemoval(t *testing.T) {
++	c, root, h := setupRootedHandlers(t, false)
++	p := func(s string) string { return filepath.Join(root, s) }
++
++	// The path was created again on the host before the guest removed it.
++	h.expectRemove(p("src/main.go"))
++	if err := c.Remove(p("src/main.go")); err != nil {
++		t.Fatal(err)
++	}
++	if _, err := os.Stat(p("src/main.go")); err != nil {
++		t.Fatalf("the file was removed: %v", err)
++	}
++	// The token is consumed.
++	if err := c.Remove(p("src/main.go")); err != nil {
++		t.Fatal(err)
++	}
++	if _, err := os.Stat(p("src/main.go")); err == nil {
++		t.Fatal("the file was not removed")
++	}
++
++	h.expectRemove(p("src"))
++	if err := c.RemoveDirectory(p("src")); err != nil {
++		t.Fatal(err)
++	}
++	if _, err := os.Stat(p("src")); err != nil {
++		t.Fatalf("the directory was removed: %v", err)
++	}
++
++	// A git lock file deleted on the host.
++	h.expectRemove(p(".git/index.lock"))
++	if err := c.Remove(p(".git/index.lock")); err != nil {
++		t.Fatal(err)
++	}
++	if err := c.Remove(p(".git/index.lock")); err == nil {
++		t.Fatal("expected an error")
++	}
++	h.expectRemove(p(".git/config"))
++	if err := c.Remove(p(".git/config")); err != nil {
++		t.Fatal(err)
++	}
++
++	// An expired token.
++	h.expectRemove(p(".git/config"))
++	h.mu.Lock()
++	h.noopRemovals[slashPath(p(".git/config"))] = time.Now().Add(-time.Second)
++	h.mu.Unlock()
++	if err := c.Remove(p(".git/config")); err == nil {
++		t.Fatal("expected an error")
++	}
++	assertUnchanged(t, root)
++}
++
+ func TestRootedReadonly(t *testing.T) {
+ 	c, root := setupRooted(t, true)
+ 	if _, err := c.Create(filepath.Join(root, "src", "new.go")); err == nil {
+-- 
+2.47.3
+

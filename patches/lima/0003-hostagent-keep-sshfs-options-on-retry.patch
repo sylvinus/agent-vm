@@ -1,0 +1,13 @@
+diff -ruN a/pkg/hostagent/mount.go b/pkg/hostagent/mount.go
+--- a/pkg/hostagent/mount.go	2026-10-04 19:10:03.651369062 +0200
++++ b/pkg/hostagent/mount.go	2026-10-04 19:10:07.992258327 +0200
+@@ -116,7 +116,8 @@
+ 	if err := rsf.Start(); err != nil {
+ 		logrus.WithError(err).Warnf("failed to mount reverse sshfs for %#q on %#q, retrying with `-o nonempty`", resolvedLocation, *m.MountPoint)
+ 		// NOTE: nonempty is not supported for libfuse3: https://github.com/canonical/multipass/issues/1381
+-		rsf.SSHFSAdditionalArgs = []string{"-o", "nonempty"}
++		// Added to the options, not in their place: they include cache=no.
++		rsf.SSHFSAdditionalArgs = append(rsf.SSHFSAdditionalArgs, "-o", "nonempty")
+ 		if err := rsf.Start(); err != nil {
+ 			return nil, fmt.Errorf("failed to mount reverse sshfs for %#q on %#q: %w", resolvedLocation, *m.MountPoint, err)
+ 		}

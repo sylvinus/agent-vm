@@ -1,0 +1,80 @@
+{
+	"TestBuildBash": [
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_build_mounts_json t-00000000 \"$1\" \"$2\" '[\".git\", \".hg\"]'; echo; cat \"$AGENT_VM_STATE_DIR/.agent-vm-file-mounts-t-00000000\"",
+			"Env": [
+				"HOME={T0}/003",
+				"HOME={T0}/002/home",
+				"AGENT_VM_STATE_DIR={T0}/002/home/.agent-vm",
+				"AGENT_VM_SSHFS_CACHE="
+			],
+			"Args": [
+				"{T0}/002/home/proj",
+				"true"
+			],
+			"Files": null,
+			"Stdout": "[{\"location\": \"{T0}/002/home/proj\", \"mountPoint\": \"{T0}/002/home/proj\", \"writable\": true, \"sshfs\": {\"sftpDriver\": \"builtin\", \"cache\": false, \"readonlyNames\": [\".git\", \".hg\"]}}, {\"location\": \"{T0}/002/data/a\", \"mountPoint\": \"/mnt/a\", \"writable\": true, \"sshfs\": {\"sftpDriver\": \"builtin\", \"cache\": false, \"readonlyNames\": [\".git\", \".hg\"]}}, {\"location\": \"{T0}/002/data/b\", \"mountPoint\": \"{T0}/002/data/b\", \"writable\": false, \"sshfs\": {\"sftpDriver\": \"builtin\", \"readonlyNames\": [\".git\", \".hg\"]}}, {\"location\": \"{T0}/002/home/.agent-vm/file-mounts/t-00000000/0\", \"mountPoint\": \"/tmp/.agent-vm-file-mounts/0\", \"writable\": false, \"sshfs\": {\"sftpDriver\": \"builtin\", \"readonlyNames\": [\".git\", \".hg\"]}}, {\"location\": \"{T0}/002/data/a\", \"mountPoint\": \"{T0}/002/home/proj/sub/inside\", \"writable\": false, \"sshfs\": {\"sftpDriver\": \"builtin\", \"readonlyNames\": [\".git\", \".hg\"]}}]\n{T0}/002/data/file.txt|{T0}/002/home/.agent-vm/file-mounts/t-00000000/0/file.txt|/tmp/.agent-vm-file-mounts/0/file.txt|/etc/f.txt\n",
+			"Stderr": "Warning: Mount entry '{T0}/002/data/file.txt:/etc/g.txt:rw' (from ~/.agent-vm/volumes) requests rw on a file; only directories support rw. Mount the parent directory instead. Skipping.\n",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_build_mounts_json t-00000000 \"$1\" \"$2\" '[\".git\", \".hg\"]'; echo; cat \"$AGENT_VM_STATE_DIR/.agent-vm-file-mounts-t-00000000\"",
+			"Env": [
+				"HOME={T0}/006",
+				"HOME={T0}/005/home",
+				"AGENT_VM_STATE_DIR={T0}/005/home/.agent-vm",
+				"AGENT_VM_SSHFS_CACHE=1"
+			],
+			"Args": [
+				"{T0}/005/home/proj",
+				"true"
+			],
+			"Files": null,
+			"Stdout": "[{\"location\": \"{T0}/005/home/proj\", \"mountPoint\": \"{T0}/005/home/proj\", \"writable\": true, \"sshfs\": {\"sftpDriver\": \"builtin\", \"readonlyNames\": [\".git\", \".hg\"]}}, {\"location\": \"{T0}/005/data/a\", \"mountPoint\": \"/mnt/a\", \"writable\": true, \"sshfs\": {\"sftpDriver\": \"builtin\", \"readonlyNames\": [\".git\", \".hg\"]}}, {\"location\": \"{T0}/005/data/b\", \"mountPoint\": \"{T0}/005/data/b\", \"writable\": false, \"sshfs\": {\"sftpDriver\": \"builtin\", \"readonlyNames\": [\".git\", \".hg\"]}}, {\"location\": \"{T0}/005/home/.agent-vm/file-mounts/t-00000000/0\", \"mountPoint\": \"/tmp/.agent-vm-file-mounts/0\", \"writable\": false, \"sshfs\": {\"sftpDriver\": \"builtin\", \"readonlyNames\": [\".git\", \".hg\"]}}, {\"location\": \"{T0}/005/data/a\", \"mountPoint\": \"{T0}/005/home/proj/sub/inside\", \"writable\": false, \"sshfs\": {\"sftpDriver\": \"builtin\", \"readonlyNames\": [\".git\", \".hg\"]}}]\n{T0}/005/data/file.txt|{T0}/005/home/.agent-vm/file-mounts/t-00000000/0/file.txt|/tmp/.agent-vm-file-mounts/0/file.txt|/etc/f.txt\n",
+			"Stderr": "Warning: Mount entry '{T0}/005/data/file.txt:/etc/g.txt:rw' (from ~/.agent-vm/volumes) requests rw on a file; only directories support rw. Mount the parent directory instead. Skipping.\n",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_build_mounts_json t-00000000 \"$1\" \"$2\" '[\".git\", \".hg\"]'; echo; cat \"$AGENT_VM_STATE_DIR/.agent-vm-file-mounts-t-00000000\"",
+			"Env": [
+				"HOME={T0}/009",
+				"HOME={T0}/008/home",
+				"AGENT_VM_STATE_DIR={T0}/008/home/.agent-vm",
+				"AGENT_VM_SSHFS_CACHE="
+			],
+			"Args": [
+				"{T0}/008/home/proj",
+				"false"
+			],
+			"Files": null,
+			"Stdout": "[{\"location\": \"{T0}/008/home/proj\", \"mountPoint\": \"{T0}/008/home/proj\", \"writable\": false, \"sshfs\": {\"sftpDriver\": \"builtin\", \"readonlyNames\": [\".git\", \".hg\"]}}, {\"location\": \"{T0}/008/data/a\", \"mountPoint\": \"/mnt/a\", \"writable\": false, \"sshfs\": {\"sftpDriver\": \"builtin\", \"readonlyNames\": [\".git\", \".hg\"]}}, {\"location\": \"{T0}/008/data/b\", \"mountPoint\": \"{T0}/008/data/b\", \"writable\": false, \"sshfs\": {\"sftpDriver\": \"builtin\", \"readonlyNames\": [\".git\", \".hg\"]}}, {\"location\": \"{T0}/008/home/.agent-vm/file-mounts/t-00000000/0\", \"mountPoint\": \"/tmp/.agent-vm-file-mounts/0\", \"writable\": false, \"sshfs\": {\"sftpDriver\": \"builtin\", \"readonlyNames\": [\".git\", \".hg\"]}}, {\"location\": \"{T0}/008/data/a\", \"mountPoint\": \"{T0}/008/home/proj/sub/inside\", \"writable\": false, \"sshfs\": {\"sftpDriver\": \"builtin\", \"readonlyNames\": [\".git\", \".hg\"]}}]\n{T0}/008/data/file.txt|{T0}/008/home/.agent-vm/file-mounts/t-00000000/0/file.txt|/tmp/.agent-vm-file-mounts/0/file.txt|/etc/f.txt\n",
+			"Stderr": "Note: --readonly: '{T0}/008/data/a' (rw in ~/.agent-vm/volumes) is mounted read-only too.\nWarning: Mount entry '{T0}/008/data/file.txt:/etc/g.txt:rw' (from ~/.agent-vm/volumes) requests rw on a file; only directories support rw. Mount the parent directory instead. Skipping.\n",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_build_mounts_json t-00000000 \"$1\" \"$2\" '[\".git\", \".hg\"]'; echo; cat \"$AGENT_VM_STATE_DIR/.agent-vm-file-mounts-t-00000000\"",
+			"Env": [
+				"HOME={T0}/012",
+				"HOME={T0}/011/home",
+				"AGENT_VM_STATE_DIR={T0}/011/home/.agent-vm",
+				"AGENT_VM_SSHFS_CACHE=1"
+			],
+			"Args": [
+				"{T0}/011/home/proj",
+				"false"
+			],
+			"Files": null,
+			"Stdout": "[{\"location\": \"{T0}/011/home/proj\", \"mountPoint\": \"{T0}/011/home/proj\", \"writable\": false, \"sshfs\": {\"sftpDriver\": \"builtin\", \"readonlyNames\": [\".git\", \".hg\"]}}, {\"location\": \"{T0}/011/data/a\", \"mountPoint\": \"/mnt/a\", \"writable\": false, \"sshfs\": {\"sftpDriver\": \"builtin\", \"readonlyNames\": [\".git\", \".hg\"]}}, {\"location\": \"{T0}/011/data/b\", \"mountPoint\": \"{T0}/011/data/b\", \"writable\": false, \"sshfs\": {\"sftpDriver\": \"builtin\", \"readonlyNames\": [\".git\", \".hg\"]}}, {\"location\": \"{T0}/011/home/.agent-vm/file-mounts/t-00000000/0\", \"mountPoint\": \"/tmp/.agent-vm-file-mounts/0\", \"writable\": false, \"sshfs\": {\"sftpDriver\": \"builtin\", \"readonlyNames\": [\".git\", \".hg\"]}}, {\"location\": \"{T0}/011/data/a\", \"mountPoint\": \"{T0}/011/home/proj/sub/inside\", \"writable\": false, \"sshfs\": {\"sftpDriver\": \"builtin\", \"readonlyNames\": [\".git\", \".hg\"]}}]\n{T0}/011/data/file.txt|{T0}/011/home/.agent-vm/file-mounts/t-00000000/0/file.txt|/tmp/.agent-vm-file-mounts/0/file.txt|/etc/f.txt\n",
+			"Stderr": "Note: --readonly: '{T0}/011/data/a' (rw in ~/.agent-vm/volumes) is mounted read-only too.\nWarning: Mount entry '{T0}/011/data/file.txt:/etc/g.txt:rw' (from ~/.agent-vm/volumes) requests rw on a file; only directories support rw. Mount the parent directory instead. Skipping.\n",
+			"Code": 0
+		}
+	]
+}

@@ -1,0 +1,237 @@
+diff -ruN a/pkg/portfwd/control_others.go b/pkg/portfwd/control_others.go
+--- a/pkg/portfwd/control_others.go	2026-10-04 11:53:52.678873414 +0200
++++ b/pkg/portfwd/control_others.go	2026-10-04 20:11:58.343028662 +0200
+@@ -6,11 +6,14 @@
+ package portfwd
+ 
+ import (
++	"errors"
+ 	"syscall"
+ 
+ 	"golang.org/x/sys/unix"
+ )
+ 
++func addrInUse(err error) bool { return errors.Is(err, unix.EADDRINUSE) }
++
+ func Control(_, _ string, c syscall.RawConn) (err error) {
+ 	controlErr := c.Control(func(fd uintptr) {
+ 		err = unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_REUSEADDR, 1)
+diff -ruN a/pkg/portfwd/control_windows.go b/pkg/portfwd/control_windows.go
+--- a/pkg/portfwd/control_windows.go	2026-10-04 11:53:52.678873414 +0200
++++ b/pkg/portfwd/control_windows.go	2026-10-04 20:12:02.031233813 +0200
+@@ -4,20 +4,28 @@
+ package portfwd
+ 
+ import (
++	"errors"
+ 	"syscall"
+ 
+ 	"golang.org/x/sys/windows"
+ )
+ 
++// soExclusiveAddrUse is SO_EXCLUSIVEADDRUSE, ~SO_REUSEADDR in winsock2.h. On
++// Windows, SO_REUSEADDR lets a socket bind an address another program is
++// listening on, and take its connections: exclusive use is what other systems
++// do by default.
++const soExclusiveAddrUse = ^windows.SO_REUSEADDR
++
+ func Control(_, _ string, c syscall.RawConn) (err error) {
+ 	controlErr := c.Control(func(fd uintptr) {
+-		err = windows.SetsockoptInt(windows.Handle(int(fd)), windows.SOL_SOCKET, windows.SO_REUSEADDR, 1)
+-		if err != nil {
+-			return
+-		}
++		err = windows.SetsockoptInt(windows.Handle(int(fd)), windows.SOL_SOCKET, soExclusiveAddrUse, 1)
+ 	})
+ 	if controlErr != nil {
+ 		err = controlErr
+ 	}
+ 	return err
+ }
++
++func addrInUse(err error) bool {
++	return errors.Is(err, windows.WSAEADDRINUSE) || errors.Is(err, windows.WSAEACCES)
++}
+diff -ruN a/pkg/portfwd/forward.go b/pkg/portfwd/forward.go
+--- a/pkg/portfwd/forward.go	2026-10-04 11:53:52.678873414 +0200
++++ b/pkg/portfwd/forward.go	2026-10-04 20:12:48.903749557 +0200
+@@ -72,6 +72,20 @@
+ 			}
+ 			continue
+ 		}
++		// Never next to a program of the host on the same port (see inUse).
++		if !fw.closableListeners.has(f.Protocol, local, remote) {
++			if err := inUse(ctx, f.Protocol, local); err != nil {
++				logrus.Warnf("Not forwarding %s from %s to %s: %v", strings.ToUpper(f.Protocol), remote, local, err)
++				fw.emitEvent(&events.PortForwardEvent{
++					Type:      events.PortForwardEventFailed,
++					Protocol:  f.Protocol,
++					GuestAddr: remote,
++					HostAddr:  local,
++					Error:     err.Error(),
++				})
++				continue
++			}
++		}
+ 		logrus.Infof("Forwarding %s from %s to %s", strings.ToUpper(f.Protocol), remote, local)
+ 		fw.emitEvent(&events.PortForwardEvent{
+ 			Type:      events.PortForwardEventForwarding,
+diff -ruN a/pkg/portfwd/listener.go b/pkg/portfwd/listener.go
+--- a/pkg/portfwd/listener.go	2026-10-04 11:53:52.678873414 +0200
++++ b/pkg/portfwd/listener.go	2026-10-04 20:12:11.947011774 +0200
+@@ -70,6 +70,21 @@
+ 	}
+ }
+ 
++// has reports whether the forward of hostAddress to guestAddress is open.
++func (p *ClosableListeners) has(protocol, hostAddress, guestAddress string) bool {
++	k := key(protocol, hostAddress, guestAddress)
++	if protocol == "udp" {
++		p.udpListenersRW.Lock()
++		defer p.udpListenersRW.Unlock()
++		_, ok := p.udpListeners[k]
++		return ok
++	}
++	p.listenersRW.Lock()
++	defer p.listenersRW.Unlock()
++	_, ok := p.listeners[k]
++	return ok
++}
++
+ func (p *ClosableListeners) Remove(_ context.Context, protocol, hostAddress, guestAddress string) {
+ 	logrus.Debugf("removing listener for hostAddress: %s, guestAddress: %s", hostAddress, guestAddress)
+ 	key := key(protocol, hostAddress, guestAddress)
+diff -ruN a/pkg/portfwd/probe.go b/pkg/portfwd/probe.go
+--- a/pkg/portfwd/probe.go	1970-01-01 01:00:00.000000000 +0100
++++ b/pkg/portfwd/probe.go	2026-10-04 20:11:56.766982422 +0200
+@@ -0,0 +1,60 @@
++// SPDX-FileCopyrightText: Copyright The Lima Authors
++// SPDX-License-Identifier: Apache-2.0
++
++package portfwd
++
++import (
++	"context"
++	"fmt"
++	"net"
++	"path/filepath"
++	"strconv"
++)
++
++// probeAddrs are the addresses a host program can serve a port on, such that a
++// client of the host's loopback reaches it.
++var probeAddrs = []string{"127.0.0.1", "::1", "0.0.0.0", "::"}
++
++// inUse reports whether a program of the host already serves the port of
++// hostAddress, on any of probeAddrs. The listener of a forward binds with
++// SO_REUSEADDR, which BSD (macOS) lets bind 127.0.0.1:port next to a program
++// listening on 0.0.0.0:port: the guest would take the host's loopback clients
++// of that program. Each address is bound and closed at once, with the same
++// options as the forward (Control), so that only a socket bound to that exact
++// address, not one in TIME_WAIT, counts.
++func inUse(ctx context.Context, protocol, hostAddress string) error {
++	if filepath.IsAbs(hostAddress) {
++		return nil
++	}
++	_, portStr, err := net.SplitHostPort(hostAddress)
++	if err != nil {
++		return nil
++	}
++	if port, err := strconv.Atoi(portStr); err != nil || port == 0 {
++		return nil
++	}
++	lc := net.ListenConfig{Control: Control}
++	for _, ip := range probeAddrs {
++		addr := net.JoinHostPort(ip, portStr)
++		var err error
++		switch protocol {
++		case "tcp":
++			var l net.Listener
++			if l, err = lc.Listen(ctx, "tcp", addr); err == nil {
++				l.Close()
++			}
++		case "udp":
++			var c net.PacketConn
++			if c, err = lc.ListenPacket(ctx, "udp", addr); err == nil {
++				c.Close()
++			}
++		default:
++			return nil
++		}
++		// Other errors (no IPv6, a privileged port) say nothing of the port.
++		if err != nil && addrInUse(err) {
++			return fmt.Errorf("%s port %s is in use on the host (%s)", protocol, portStr, addr)
++		}
++	}
++	return nil
++}
+diff -ruN a/pkg/portfwd/probe_test.go b/pkg/portfwd/probe_test.go
+--- a/pkg/portfwd/probe_test.go	1970-01-01 01:00:00.000000000 +0100
++++ b/pkg/portfwd/probe_test.go	2026-10-04 20:12:34.014987620 +0200
+@@ -0,0 +1,66 @@
++// SPDX-FileCopyrightText: Copyright The Lima Authors
++// SPDX-License-Identifier: Apache-2.0
++
++package portfwd
++
++import (
++	"context"
++	"net"
++	"strconv"
++	"testing"
++
++	"gotest.tools/v3/assert"
++
++	"github.com/lima-vm/lima/v2/pkg/guestagent/api"
++	"github.com/lima-vm/lima/v2/pkg/hostagent/events"
++	"github.com/lima-vm/lima/v2/pkg/limatype"
++	"github.com/lima-vm/lima/v2/pkg/limayaml"
++)
++
++// A port a program of the host serves, on any address its loopback clients
++// reach, is not forwarded: the guest would take those clients.
++func TestForwardNotNextToHostProgram(t *testing.T) {
++	for _, hostIP := range []string{"0.0.0.0", "127.0.0.1", "::1"} {
++		t.Run(hostIP, func(t *testing.T) {
++			host, err := net.Listen("tcp", net.JoinHostPort(hostIP, "0"))
++			if err != nil {
++				t.Skipf("cannot listen on %s: %v", hostIP, err)
++			}
++			defer host.Close()
++			port := host.Addr().(*net.TCPAddr).Port
++
++			rule := limatype.PortForward{}
++			limayaml.FillPortForwardDefaults(&rule, "", limatype.User{}, nil)
++			var got []*events.PortForwardEvent
++			fw := NewPortForwarder([]limatype.PortForward{rule}, false, false, func(ev *events.PortForwardEvent) { got = append(got, ev) })
++			defer fw.Close()
++			fw.OnEvent(context.Background(), nil, &api.Event{AddedLocalPorts: []*api.IPPort{{Ip: "127.0.0.1", Port: int32(port), Protocol: "tcp"}}})
++
++			assert.Equal(t, len(got), 1)
++			assert.Equal(t, got[0].Type, events.PortForwardEventFailed)
++			assert.Assert(t, !fw.closableListeners.has("tcp", got[0].HostAddr, got[0].GuestAddr))
++			// The host's program still has its port.
++			c, err := net.Dial("tcp", host.Addr().String())
++			assert.NilError(t, err)
++			c.Close()
++		})
++	}
++}
++
++// A free port is forwarded as before.
++func TestForwardFreePort(t *testing.T) {
++	l, err := net.Listen("tcp", "127.0.0.1:0")
++	assert.NilError(t, err)
++	port := l.Addr().(*net.TCPAddr).Port
++	l.Close()
++
++	rule := limatype.PortForward{}
++	limayaml.FillPortForwardDefaults(&rule, "", limatype.User{}, nil)
++	var got []*events.PortForwardEvent
++	fw := NewPortForwarder([]limatype.PortForward{rule}, false, false, func(ev *events.PortForwardEvent) { got = append(got, ev) })
++	defer fw.Close()
++	fw.OnEvent(context.Background(), nil, &api.Event{AddedLocalPorts: []*api.IPPort{{Ip: "127.0.0.1", Port: int32(port), Protocol: "tcp"}}})
++	assert.Equal(t, len(got), 1)
++	assert.Equal(t, got[0].Type, events.PortForwardEventForwarding)
++	assert.Equal(t, got[0].HostAddr, net.JoinHostPort("127.0.0.1", strconv.Itoa(port)))
++}

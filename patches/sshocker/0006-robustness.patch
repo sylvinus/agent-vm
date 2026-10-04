@@ -1,0 +1,538 @@
+diff -ruN a/pkg/reversesshfs/reversesshfs.go b/pkg/reversesshfs/reversesshfs.go
+--- a/pkg/reversesshfs/reversesshfs.go	2026-10-02 22:17:21.654894025 +0200
++++ b/pkg/reversesshfs/reversesshfs.go	2026-10-02 22:24:14.300702230 +0200
+@@ -250,6 +250,9 @@
+ 	}
+ 	logrus.Debugf("executing ssh for remote sshfs: %s %v", rsf.sshCmd.Path, rsf.sshCmd.Args)
+ 	if err := rsf.sshCmd.Start(); err != nil {
++		if rooted != nil {
++			rooted.Close()
++		}
+ 		return err
+ 	}
+ 	logrus.Debugf("starting sftp server for %v", rsf.LocalPath)
+@@ -339,7 +342,9 @@
+ }
+ 
+ func (rsf *ReverseSSHFS) Close() error {
+-	logrus.Debugf("killing processes for remote sshfs: %s %v", rsf.sshCmd.Path, rsf.sshCmd.Args)
++	if rsf.sshCmd != nil {
++		logrus.Debugf("killing processes for remote sshfs: %s %v", rsf.sshCmd.Path, rsf.sshCmd.Args)
++	}
+ 	var errors []error
+ 	if rsf.sshCmd != nil && rsf.sshCmd.Process != nil {
+ 		if err := rsf.sshCmd.Process.Kill(); err != nil {
+diff -ruN a/pkg/reversesshfs/rooted.go b/pkg/reversesshfs/rooted.go
+--- a/pkg/reversesshfs/rooted.go	2026-10-02 22:17:21.654894025 +0200
++++ b/pkg/reversesshfs/rooted.go	2026-10-02 22:24:14.300702230 +0200
+@@ -34,6 +34,9 @@
+ 	noopRemovals map[string]time.Time // expiry, keyed by request path
+ }
+ 
++// maxHandles bounds the files and directories a client keeps open.
++const maxHandles = 4096
++
+ // noopRemovalTTL bounds how long an ExpectRemove token waits for the guest.
+ const noopRemovalTTL = 5 * time.Second
+ 
+@@ -58,7 +61,11 @@
+ 	handlers := sftp.Handlers{FileGet: h, FilePut: h, FileCmd: h, FileList: h}
+ 	// Sequential, as OpenSSH's sftp-server: otherwise two writes to the same range, or a write
+ 	// and the FSTAT or FSETSTAT sent after it, can run in either order.
+-	srv := sftp.NewRequestServer(rwc, handlers, sftp.WithStartDirectory(startDirectory(h.rootPath)), sftp.WithRSSequential())
++	srv := sftp.NewRequestServer(rwc, handlers, sftp.WithStartDirectory(startDirectory(h.rootPath)), sftp.WithRSSequential(),
++		// Each handle holds a file descriptor of this process, which may be the one running the VM.
++		sftp.WithRSMaxHandles(maxHandles),
++		// sshfs reads up to 64 KiB (max_read), and takes a shorter answer for the end of the file.
++		sftp.WithRSMaxTxPacket(64*1024))
+ 	return srv, h, nil
+ }
+ 
+@@ -158,7 +165,30 @@
+ 	if err != nil {
+ 		return nil, err
+ 	}
+-	return h.root.Open(rel)
++	f, err := h.openRead(rel)
++	if err != nil {
++		return nil, err
++	}
++	return f, nil
++}
++
++// openRead opens rel for reading, if it is a regular file or a directory.
++// Opening a FIFO, or a device, could block the server, which handles one request at a time.
++func (h *rootedHandlers) openRead(rel string) (*os.File, error) {
++	f, err := h.root.OpenFile(rel, os.O_RDONLY|openNonblock, 0)
++	if err != nil {
++		return nil, err
++	}
++	fi, err := f.Stat()
++	if err != nil {
++		f.Close()
++		return nil, err
++	}
++	if !fi.Mode().IsRegular() && !fi.IsDir() {
++		f.Close()
++		return nil, &os.PathError{Op: "open", Path: rel, Err: errDenied}
++	}
++	return f, nil
+ }
+ 
+ // writableFile is a file opened by openFile: checked against readonlyNames, without following symlinks.
+@@ -224,6 +254,10 @@
+ 		if f, ok := r.HandleFile().(writableFile); ok {
+ 			return h.fsetstat(f.File, r)
+ 		}
++		// A read handle keeps the path checks, but only for the file it is open on.
++		if f, ok := r.HandleFile().(*os.File); ok && !h.isOpenAt(f, r.Filepath) {
++			return &os.PathError{Op: "setstat", Path: r.Filepath, Err: os.ErrNotExist}
++		}
+ 		if h.isNoopTimes(r) {
+ 			return nil
+ 		}
+@@ -252,6 +286,20 @@
+ 	return h.rename(r, false)
+ }
+ 
++// isOpenAt reports whether f is the file at p, a request path, without following a symlink at p.
++func (h *rootedHandlers) isOpenAt(f *os.File, p string) bool {
++	rel, err := h.rel(p)
++	if err != nil {
++		return false
++	}
++	fi, err := f.Stat()
++	if err != nil {
++		return false
++	}
++	at, err := h.root.Lstat(rel)
++	return err == nil && os.SameFile(fi, at)
++}
++
+ // isNoopTimes reports whether r only sets the access and modification times of a
+ // read-only name to its current modification time. Such a request is answered
+ // without touching the file, so that the guest kernel still emits IN_ATTRIB:
+@@ -283,16 +331,11 @@
+ 	}
+ 	switch r.Method {
+ 	case "List":
+-		f, err := h.root.Open(rel)
++		f, err := h.openRead(rel)
+ 		if err != nil {
+ 			return nil, err
+ 		}
+-		defer f.Close()
+-		fis, err := f.Readdir(-1)
+-		if err != nil {
+-			return nil, err
+-		}
+-		return listerAt(fis), nil
++		return &dirLister{f: f}, nil
+ 	case "Stat":
+ 		// FSTAT: r.Filepath is where the file was opened, which may now be another file.
+ 		var f *os.File
+@@ -346,6 +389,45 @@
+ 	return realPath(h.rootPath, p), nil
+ }
+ 
++// dirLister reads a directory as the client lists it, instead of all of it when it is opened:
++// a huge directory takes neither the memory nor the time of a full read up front.
++// pkg/sftp lists sequentially from offset 0, and closes it with the handle.
++type dirLister struct {
++	mu   sync.Mutex
++	f    *os.File
++	buf  []os.FileInfo // read, not listed yet
++	next int64         // offset of buf[0]
++	eof  bool
++}
++
++func (d *dirLister) ListAt(ls []os.FileInfo, offset int64) (int, error) {
++	d.mu.Lock()
++	defer d.mu.Unlock()
++	if offset != d.next {
++		return 0, &os.PathError{Op: "readdir", Path: d.f.Name(), Err: errors.ErrUnsupported}
++	}
++	for len(d.buf) < len(ls) && !d.eof {
++		fis, err := d.f.Readdir(len(ls) - len(d.buf))
++		d.buf = append(d.buf, fis...)
++		if errors.Is(err, io.EOF) {
++			d.eof = true
++		} else if err != nil {
++			return 0, err
++		}
++	}
++	n := copy(ls, d.buf)
++	d.buf = d.buf[n:]
++	d.next += int64(n)
++	if n < len(ls) && d.eof {
++		return n, io.EOF
++	}
++	return n, nil
++}
++
++func (d *dirLister) Close() error {
++	return d.f.Close()
++}
++
+ type listerAt []os.FileInfo
+ 
+ func (l listerAt) ListAt(ls []os.FileInfo, offset int64) (int, error) {
+diff -ruN a/pkg/reversesshfs/rooted_darwin.go b/pkg/reversesshfs/rooted_darwin.go
+--- a/pkg/reversesshfs/rooted_darwin.go	2026-10-02 22:17:21.654894025 +0200
++++ b/pkg/reversesshfs/rooted_darwin.go	2026-10-02 22:24:14.300702230 +0200
+@@ -16,10 +16,15 @@
+ 		Ffree:   st.Ffree,
+ 		Favail:  st.Ffree,
+ 		Flag:    uint64(st.Flags),
+-		Namemax: 1024,
++		Namemax: 255, // APFS and HFS+ names are at most 255 UTF-16 code units
+ 	}
+ }
+ 
++// renameNoReplace renames, failing with EEXIST when the new path exists, atomically.
++func renameNoReplace(oldfd int, oldBase string, newfd int, newBase string) error {
++	return unix.RenameatxNp(oldfd, oldBase, newfd, newBase, unix.RENAME_EXCL)
++}
++
+ // fchmodatNoFollow never follows a symlink at base, and fails on one, as on Linux.
+ // If base is replaced by a symlink after the check, fchmodat changes the mode of the symlink itself.
+ func fchmodatNoFollow(dirfd int, base string, mode uint32) error {
+diff -ruN a/pkg/reversesshfs/rooted_linux.go b/pkg/reversesshfs/rooted_linux.go
+--- a/pkg/reversesshfs/rooted_linux.go	2026-10-02 22:17:21.654894025 +0200
++++ b/pkg/reversesshfs/rooted_linux.go	2026-10-02 22:24:14.300702230 +0200
+@@ -23,6 +23,11 @@
+ 	}
+ }
+ 
++// renameNoReplace renames, failing with EEXIST when the new path exists, atomically.
++func renameNoReplace(oldfd int, oldBase string, newfd int, newBase string) error {
++	return unix.Renameat2(oldfd, oldBase, newfd, newBase, unix.RENAME_NOREPLACE)
++}
++
+ // fchmodatNoFollow never follows a symlink at base, and fails on one.
+ // Only fchmodat2 (kernel 6.6+) supports AT_SYMLINK_NOFOLLOW, and it fails with EOPNOTSUPP on a symlink.
+ func fchmodatNoFollow(dirfd int, base string, mode uint32) error {
+diff -ruN a/pkg/reversesshfs/rooted_test.go b/pkg/reversesshfs/rooted_test.go
+--- a/pkg/reversesshfs/rooted_test.go	2026-10-02 22:17:21.654894025 +0200
++++ b/pkg/reversesshfs/rooted_test.go	2026-10-02 22:24:14.300702230 +0200
+@@ -3,6 +3,7 @@
+ package reversesshfs
+ 
+ import (
++	"fmt"
+ 	"io"
+ 	"os"
+ 	"path/filepath"
+@@ -339,6 +340,105 @@
+ 	assertUnchanged(t, root)
+ }
+ 
++// FSETSTAT on a read handle applies only while the handle's file is still at its path.
++func TestRootedReadHandleSetstatAfterRename(t *testing.T) {
++	c, root := setupRooted(t, false)
++	p := func(s string) string { return filepath.Join(root, s) }
++	f, err := c.Open(p("src/main.go"))
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer f.Close()
++	if err := c.PosixRename(p("src/main.go"), p("src/moved.go")); err != nil {
++		t.Fatal(err)
++	}
++	if err := os.WriteFile(p("src/main.go"), []byte("other file"), 0o644); err != nil {
++		t.Fatal(err)
++	}
++	if err := f.Chmod(0o400); err == nil {
++		t.Fatal("Chmod through the handle changed the file now at its path")
++	}
++	if fi, err := os.Stat(p("src/main.go")); err != nil || fi.Mode().Perm()&0o200 == 0 {
++		t.Fatalf("src/main.go: %v, %v", fi, err)
++	}
++}
++
++// Directories are listed as the client asks, and the handle's descriptor is released on close.
++func TestRootedListLarge(t *testing.T) {
++	c, root := setupRooted(t, false)
++	dir := filepath.Join(root, "src", "many")
++	if err := os.Mkdir(dir, 0o755); err != nil {
++		t.Fatal(err)
++	}
++	const n = 1234
++	for i := 0; i < n; i++ {
++		if err := os.WriteFile(filepath.Join(dir, fmt.Sprintf("f%04d", i)), nil, 0o644); err != nil {
++			t.Fatal(err)
++		}
++	}
++	before := openFDs()
++	for i := 0; i < 3; i++ {
++		fis, err := c.ReadDir(dir)
++		if err != nil || len(fis) != n {
++			t.Fatalf("ReadDir: %d entries, %v", len(fis), err)
++		}
++		seen := make(map[string]bool, n)
++		for _, fi := range fis {
++			seen[fi.Name()] = true
++		}
++		if len(seen) != n {
++			t.Fatalf("%d distinct entries", len(seen))
++		}
++	}
++	if after := openFDs(); after > before {
++		t.Fatalf("descriptors: %d before, %d after", before, after)
++	}
++}
++
++// openFDs counts the descriptors of this process, or returns 0 where it cannot.
++func openFDs() int {
++	fis, err := os.ReadDir("/proc/self/fd")
++	if err != nil {
++		return 0
++	}
++	return len(fis)
++}
++
++func TestRootedMaxHandles(t *testing.T) {
++	c, root := setupRooted(t, false)
++	p := filepath.Join(root, "src", "main.go")
++	files := make([]*sftp.File, 0, maxHandles)
++	defer func() {
++		for _, f := range files {
++			f.Close()
++		}
++	}()
++	for i := 0; i < maxHandles; i++ {
++		f, err := c.Open(p)
++		if err != nil {
++			t.Fatalf("handle %d: %v", i, err)
++		}
++		files = append(files, f)
++	}
++	if f, err := c.Open(p); err == nil {
++		f.Close()
++		t.Fatal("one handle over the limit")
++	}
++	files[0].Close()
++	files = files[1:]
++	f, err := c.Open(p)
++	if err != nil {
++		t.Fatal(err)
++	}
++	files = append(files, f)
++}
++
++func TestReverseSSHFSCloseNotStarted(t *testing.T) {
++	if err := (&ReverseSSHFS{}).Close(); err != nil {
++		t.Fatal(err)
++	}
++}
++
+ // sshfs sends its open flags with the permissions alone as attributes.
+ func TestRootedOpenMode(t *testing.T) {
+ 	if runtime.GOOS == "windows" {
+diff -ruN a/pkg/reversesshfs/rooted_unix.go b/pkg/reversesshfs/rooted_unix.go
+--- a/pkg/reversesshfs/rooted_unix.go	2026-10-02 22:17:21.654894025 +0200
++++ b/pkg/reversesshfs/rooted_unix.go	2026-10-02 22:24:14.300702230 +0200
+@@ -3,6 +3,7 @@
+ package reversesshfs
+ 
+ import (
++	"errors"
+ 	"os"
+ 	"path"
+ 	"path/filepath"
+@@ -14,6 +15,9 @@
+ 
+ var errDenied error = unix.EACCES
+ 
++// openNonblock: see openRead.
++const openNonblock = unix.O_NONBLOCK
++
+ // appendWrite writes b at the end of f, which openFile opened with O_APPEND.
+ // pwrite(2) would honor its offset on macOS.
+ func appendWrite(f *os.File, b []byte) (int, error) {
+@@ -121,10 +125,20 @@
+ 		return nil, err
+ 	}
+ 	defer unix.Close(dirfd)
+-	fd, err := unix.Openat(dirfd, base, flags, mode)
++	// O_NONBLOCK: a FIFO would block the server, which handles one request at a time.
++	// It has no effect on regular files, the only ones served.
++	fd, err := unix.Openat(dirfd, base, flags|unix.O_NONBLOCK, mode)
+ 	if err != nil {
+ 		return nil, &os.PathError{Op: "open", Path: r.Filepath, Err: err}
+ 	}
++	var st unix.Stat_t
++	if err := unix.Fstat(fd, &st); err != nil || st.Mode&unix.S_IFMT != unix.S_IFREG {
++		unix.Close(fd)
++		if err == nil {
++			err = errDenied
++		}
++		return nil, &os.PathError{Op: "open", Path: r.Filepath, Err: err}
++	}
+ 	return os.NewFile(uintptr(fd), r.Filepath), nil
+ }
+ 
+@@ -181,6 +195,11 @@
+ func (h *rootedHandlers) rename(r *sftp.Request, noReplace bool) error {
+ 	return h.twoPaths(r.Filepath, r.Target, func(oldfd int, oldBase string, newfd int, newBase string) error {
+ 		if noReplace {
++			err := renameNoReplace(oldfd, oldBase, newfd, newBase)
++			if !errors.Is(err, unix.EINVAL) && !errors.Is(err, unix.ENOSYS) && !errors.Is(err, unix.ENOTSUP) && !errors.Is(err, unix.EOPNOTSUPP) {
++				return err
++			}
++			// The file system cannot do it atomically.
+ 			var st unix.Stat_t
+ 			if err := unix.Fstatat(newfd, newBase, &st, unix.AT_SYMLINK_NOFOLLOW); err == nil {
+ 				return os.ErrExist
+diff -ruN a/pkg/reversesshfs/rooted_unix_test.go b/pkg/reversesshfs/rooted_unix_test.go
+--- a/pkg/reversesshfs/rooted_unix_test.go	1970-01-01 01:00:00.000000000 +0100
++++ b/pkg/reversesshfs/rooted_unix_test.go	2026-10-02 22:24:14.300702230 +0200
+@@ -0,0 +1,72 @@
++//go:build linux || darwin
++
++package reversesshfs
++
++import (
++	"errors"
++	"os"
++	"path/filepath"
++	"testing"
++	"time"
++
++	"golang.org/x/sys/unix"
++)
++
++// Opening a FIFO must fail, not block the server: it handles one request at a time.
++func TestRootedFifo(t *testing.T) {
++	c, root := setupRooted(t, false)
++	fifo := filepath.Join(root, "src", "fifo")
++	if err := unix.Mkfifo(fifo, 0o644); err != nil {
++		t.Fatal(err)
++	}
++	done := make(chan error, 1)
++	go func() {
++		if f, err := c.Open(fifo); err == nil {
++			f.Close()
++			done <- errors.New("Open (read) succeeded")
++			return
++		}
++		if f, err := c.OpenFile(fifo, os.O_WRONLY); err == nil {
++			f.Close()
++			done <- errors.New("OpenFile (write) succeeded")
++			return
++		}
++		if _, err := c.ReadDir(fifo); err == nil {
++			done <- errors.New("ReadDir succeeded")
++			return
++		}
++		_, err := c.Stat(filepath.Join(root, "src", "main.go"))
++		done <- err
++	}()
++	select {
++	case err := <-done:
++		if err != nil {
++			t.Fatal(err)
++		}
++	case <-time.After(5 * time.Second):
++		t.Fatal("the server blocked on a FIFO")
++	}
++}
++
++func TestRenameNoReplace(t *testing.T) {
++	dir := t.TempDir()
++	for _, n := range []string{"a", "b"} {
++		if err := os.WriteFile(filepath.Join(dir, n), []byte(n), 0o644); err != nil {
++			t.Fatal(err)
++		}
++	}
++	fd, err := unix.Open(dir, unix.O_RDONLY|unix.O_DIRECTORY, 0)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer unix.Close(fd)
++	if err := renameNoReplace(fd, "a", fd, "b"); !errors.Is(err, unix.EEXIST) {
++		t.Fatalf("over an existing file: %v", err)
++	}
++	if err := renameNoReplace(fd, "a", fd, "c"); err != nil {
++		t.Fatal(err)
++	}
++	if b, err := os.ReadFile(filepath.Join(dir, "b")); err != nil || string(b) != "b" {
++		t.Fatalf("b: %q, %v", b, err)
++	}
++}
+diff -ruN a/pkg/reversesshfs/rooted_windows.go b/pkg/reversesshfs/rooted_windows.go
+--- a/pkg/reversesshfs/rooted_windows.go	2026-10-02 22:17:21.654894025 +0200
++++ b/pkg/reversesshfs/rooted_windows.go	2026-10-02 22:24:14.300702230 +0200
+@@ -15,6 +15,9 @@
+ 
+ var errDenied error = windows.ERROR_ACCESS_DENIED
+ 
++// openNonblock: opening a file never blocks on Windows.
++const openNonblock = 0
++
+ // appendWrite writes b at the end of f, as it is when the write happens.
+ func appendWrite(f *os.File, b []byte) (int, error) {
+ 	var n uint32
+@@ -93,8 +96,37 @@
+ 
+ // writableName rejects backslashes, which are separators on Windows,
+ // and colons, which name NTFS streams (e.g. .git::$INDEX_ALLOCATION, see CVE-2019-1352).
++// It also rejects names NtCreateFile creates but Win32 tools cannot open or delete:
++// trailing dots or spaces, and device names (NUL, nul.txt, COM1...).
+ func writableName(rel string) bool {
+-	return !strings.ContainsAny(rel, `\:`)
++	if strings.ContainsAny(rel, `\:`) {
++		return false
++	}
++	for _, c := range strings.Split(rel, "/") {
++		if c == "." {
++			continue
++		}
++		if strings.HasSuffix(c, ".") || strings.HasSuffix(c, " ") || isDeviceName(c) {
++			return false
++		}
++	}
++	return true
++}
++
++func isDeviceName(c string) bool {
++	stem, _, _ := strings.Cut(c, ".")
++	stem = strings.ToUpper(strings.TrimRight(stem, " "))
++	switch stem {
++	case "CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$":
++		return true
++	}
++	if len(stem) >= 4 && (strings.HasPrefix(stem, "COM") || strings.HasPrefix(stem, "LPT")) {
++		switch stem[3:] {
++		case "1", "2", "3", "4", "5", "6", "7", "8", "9", "¹", "²", "³":
++			return true
++		}
++	}
++	return false
+ }
+ 
+ func normalizedName(h windows.Handle) (string, error) {
+diff -ruN a/pkg/reversesshfs/rooted_windows_test.go b/pkg/reversesshfs/rooted_windows_test.go
+--- a/pkg/reversesshfs/rooted_windows_test.go	2026-10-02 22:17:21.654894025 +0200
++++ b/pkg/reversesshfs/rooted_windows_test.go	2026-10-02 22:24:14.300702230 +0200
+@@ -159,6 +159,20 @@
+ 	}
+ }
+ 
++// Names NtCreateFile creates but Win32 tools cannot open or delete.
++func TestWritableNameWin32(t *testing.T) {
++	for _, rel := range []string{"src/a.", "src/a ", "a./b", "NUL", "src/nul.txt", "aux", "Con .txt", "COM1", "lpt9.log", "COM¹", "CONIN$"} {
++		if writableName(rel) {
++			t.Errorf("%q: writable", rel)
++		}
++	}
++	for _, rel := range []string{".", "src/main.go", "src/.a", "console", "COM10", "COMx", "nulx", "src/a.b"} {
++		if !writableName(rel) {
++			t.Errorf("%q: not writable", rel)
++		}
++	}
++}
++
+ func TestRootedSymlinkUnsupported(t *testing.T) {
+ 	c, root := setupRooted(t, false)
+ 	if err := c.Symlink("main.go", filepath.Join(root, "src", "link")); err == nil {

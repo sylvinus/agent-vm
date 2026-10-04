@@ -1,0 +1,276 @@
+{
+	"TestAtLeastBash": [
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/001"
+			],
+			"Args": [
+				"_agent_vm_ver_ge",
+				"0.2.1",
+				"0.2.0"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/002"
+			],
+			"Args": [
+				"_agent_vm_ver_ge",
+				"0.2.0",
+				"0.2.0"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/003"
+			],
+			"Args": [
+				"_agent_vm_ver_ge",
+				"0.2.0",
+				"0.2.1"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "",
+			"Code": 1
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/004"
+			],
+			"Args": [
+				"_agent_vm_ver_ge",
+				"0.10.0",
+				"0.2.0"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/005"
+			],
+			"Args": [
+				"_agent_vm_ver_ge",
+				"0.2.0",
+				"0.10.0"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "",
+			"Code": 1
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/006"
+			],
+			"Args": [
+				"_agent_vm_ver_ge",
+				"1.2",
+				"1.2.0"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/007"
+			],
+			"Args": [
+				"_agent_vm_ver_ge",
+				"1.2.0",
+				"1.2"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/008"
+			],
+			"Args": [
+				"_agent_vm_ver_ge",
+				"1.2",
+				"1.2.1"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "",
+			"Code": 1
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/009"
+			],
+			"Args": [
+				"_agent_vm_ver_ge",
+				"0.3.0-dev",
+				"0.3.0"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/010"
+			],
+			"Args": [
+				"_agent_vm_ver_ge",
+				"0.3.0",
+				"0.3.0-rc.1"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/011"
+			],
+			"Args": [
+				"_agent_vm_ver_ge",
+				"0.2.0",
+				"18446744073709551616"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "",
+			"Code": 1
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/012"
+			],
+			"Args": [
+				"_agent_vm_ver_ge",
+				"18446744073709551617",
+				"18446744073709551616"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/013"
+			],
+			"Args": [
+				"_agent_vm_ver_ge",
+				"01.002",
+				"1.2"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/014"
+			],
+			"Args": [
+				"_agent_vm_ver_ge",
+				"1.x2",
+				"1.2"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/015"
+			],
+			"Args": [
+				"_agent_vm_ver_ge",
+				"",
+				"0"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/016"
+			],
+			"Args": [
+				"_agent_vm_ver_ge",
+				"",
+				"1"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "",
+			"Code": 1
+		}
+	]
+}

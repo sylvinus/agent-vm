@@ -1,0 +1,259 @@
+{
+	"TestUnsafeProjectBash": [
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_unsafe_project \"$1\"",
+			"Env": [
+				"HOME={T0}/002",
+				"HOME={T0}/001/home",
+				"AGENT_VM_STATE_DIR={T0}/001/home/.agent-vm"
+			],
+			"Args": [
+				"{T0}/001/home/proj"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "",
+			"Code": 1
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_unsafe_project \"$1\"",
+			"Env": [
+				"HOME={T0}/003",
+				"HOME={T0}/001/home",
+				"AGENT_VM_STATE_DIR={T0}/001/home/.agent-vm"
+			],
+			"Args": [
+				"{T0}/001/home"
+			],
+			"Files": null,
+			"Stdout": "is, or contains, your home directory\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_unsafe_project \"$1\"",
+			"Env": [
+				"HOME={T0}/004",
+				"HOME={T0}/001/home",
+				"AGENT_VM_STATE_DIR={T0}/001/home/.agent-vm"
+			],
+			"Args": [
+				"{T0}/001"
+			],
+			"Files": null,
+			"Stdout": "is, or contains, your home directory\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_unsafe_project \"$1\"",
+			"Env": [
+				"HOME={T0}/005",
+				"HOME={T0}/001/home",
+				"AGENT_VM_STATE_DIR={T0}/001/home/.agent-vm"
+			],
+			"Args": [
+				"{T0}/001/home/.agent-vm"
+			],
+			"Files": null,
+			"Stdout": "is, or contains, agent-vm's state\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_unsafe_project \"$1\"",
+			"Env": [
+				"HOME={T0}/006",
+				"HOME={T0}/001/home",
+				"AGENT_VM_STATE_DIR={T0}/001/home/.agent-vm"
+			],
+			"Args": [
+				"{T0}/001/home/.agent-vm/x"
+			],
+			"Files": null,
+			"Stdout": "is inside agent-vm's state\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_unsafe_project \"$1\"",
+			"Env": [
+				"HOME={T0}/007",
+				"HOME={T0}/001/home",
+				"AGENT_VM_STATE_DIR={T0}/001/home/.agent-vm"
+			],
+			"Args": [
+				"{ROOT}"
+			],
+			"Files": null,
+			"Stdout": "is, or contains, agent-vm itself\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_unsafe_project \"$1\"",
+			"Env": [
+				"HOME={T0}/008",
+				"HOME={T0}/001/home",
+				"AGENT_VM_STATE_DIR={T0}/001/home/.agent-vm"
+			],
+			"Args": [
+				"{ROOT}/lib"
+			],
+			"Files": null,
+			"Stdout": "is inside agent-vm itself\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_unsafe_project \"$1\"",
+			"Env": [
+				"HOME={T0}/009",
+				"HOME={T0}/001/home",
+				"AGENT_VM_STATE_DIR={T0}/001/home/.agent-vm"
+			],
+			"Args": [
+				"{T0}/001/home/.lima"
+			],
+			"Files": null,
+			"Stdout": "is, or contains, Lima's state\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_unsafe_project \"$1\"",
+			"Env": [
+				"HOME={T0}/010",
+				"HOME={T0}/001/home",
+				"AGENT_VM_STATE_DIR={T0}/001/home/.agent-vm"
+			],
+			"Args": [
+				"{T0}/001/bare.git"
+			],
+			"Files": null,
+			"Stdout": "is, or is inside, a git repository's own folder ({T0}/001/bare.git)\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_unsafe_project \"$1\"",
+			"Env": [
+				"HOME={T0}/011",
+				"HOME={T0}/001/home",
+				"AGENT_VM_STATE_DIR={T0}/001/home/.agent-vm"
+			],
+			"Args": [
+				"{T0}/001/bare.git/objects"
+			],
+			"Files": null,
+			"Stdout": "is, or is inside, a git repository's own folder ({T0}/001/bare.git)\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_unsafe_project \"$1\"",
+			"Env": [
+				"HOME={T0}/012",
+				"HOME={T0}/001/home",
+				"AGENT_VM_STATE_DIR={T0}/001/home/.agent-vm"
+			],
+			"Args": [
+				"{T0}/001/repo/.git"
+			],
+			"Files": null,
+			"Stdout": "is, or is inside, a folder git or Mercurial keeps its repository in (.git, .hg)\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_unsafe_project \"$1\"",
+			"Env": [
+				"HOME={T0}/013",
+				"HOME={T0}/001/home",
+				"AGENT_VM_STATE_DIR={T0}/001/home/.agent-vm"
+			],
+			"Args": [
+				"{T0}/001/repo/.GIT"
+			],
+			"Files": null,
+			"Stdout": "is, or is inside, a folder git or Mercurial keeps its repository in (.git, .hg)\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_unsafe_project \"$1\"",
+			"Env": [
+				"HOME={T0}/014",
+				"HOME={T0}/001/home",
+				"AGENT_VM_STATE_DIR={T0}/001/home/.agent-vm"
+			],
+			"Args": [
+				"{T0}/001/repo/.git/hooks"
+			],
+			"Files": null,
+			"Stdout": "is, or is inside, a folder git or Mercurial keeps its repository in (.git, .hg)\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_unsafe_project \"$1\"",
+			"Env": [
+				"HOME={T0}/015",
+				"HOME={T0}/001/home",
+				"AGENT_VM_STATE_DIR={T0}/001/home/.agent-vm"
+			],
+			"Args": [
+				"{T0}/001/repo"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "",
+			"Code": 1
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_unsafe_project \"$1\"",
+			"Env": [
+				"HOME={T0}/016",
+				"HOME={T0}/001/home",
+				"AGENT_VM_STATE_DIR={T0}/001/home/.agent-vm"
+			],
+			"Args": [
+				"{T0}/001/alink"
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "",
+			"Code": 1
+		}
+	]
+}

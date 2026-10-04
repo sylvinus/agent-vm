@@ -1,0 +1,65 @@
+diff -ruN a/packet.go b/packet.go
+--- a/packet.go	2026-10-02 20:36:18.943611090 +0200
++++ b/packet.go	2026-10-02 20:37:01.282738445 +0200
+@@ -976,8 +976,9 @@
+ 
+ type sshFxpMkdirPacket struct {
+ 	ID    uint32
+-	Flags uint32 // ignored
++	Flags uint32
+ 	Path  string
++	attrs []byte // received after Flags, for the RequestServer
+ }
+ 
+ func (p *sshFxpMkdirPacket) id() uint32 { return p.ID }
+@@ -1002,9 +1003,10 @@
+ 		return err
+ 	} else if p.Path, b, err = unmarshalStringSafe(b); err != nil {
+ 		return err
+-	} else if p.Flags, _, err = unmarshalUint32Safe(b); err != nil {
++	} else if p.Flags, b, err = unmarshalUint32Safe(b); err != nil {
+ 		return err
+ 	}
++	p.attrs = b
+ 	return nil
+ }
+ 
+diff -ruN a/request-server_test.go b/request-server_test.go
+--- a/request-server_test.go	2026-10-02 20:36:18.943611090 +0200
++++ b/request-server_test.go	2026-10-02 20:37:01.282738445 +0200
+@@ -1046,6 +1046,22 @@
+ 	assert.Equal(t, "/C:/a", cleanPath("C:"+bslash+"a"))
+ }
+ 
++// sshfs sends the mode of mkdir(2) as MKDIR attributes.
++func TestRequestMkdirAttributes(t *testing.T) {
++	var b []byte
++	b = marshalUint32(b, 1)
++	b = marshalString(b, "/d")
++	b = marshalUint32(b, sshFileXferAttrPermissions)
++	b = marshalUint32(b, 0o700)
++	p := &sshFxpMkdirPacket{}
++	require.NoError(t, p.UnmarshalBinary(b))
++	r := requestFromPacket(context.Background(), p, "/")
++	assert.Equal(t, "Mkdir", r.Method)
++	assert.True(t, r.AttrFlags().Permissions)
++	require.NotNil(t, r.Attributes())
++	assert.Equal(t, uint32(0o700), r.Attributes().Mode)
++}
++
+ type handleFileRecorder struct {
+ 	FileLister
+ 	FileCmder
+diff -ruN a/request.go b/request.go
+--- a/request.go	2026-10-02 20:36:18.943611090 +0200
++++ b/request.go	2026-10-02 20:37:01.282738445 +0200
+@@ -231,6 +231,9 @@
+ 	case *sshFxpSetstatPacket:
+ 		request.Flags = p.Flags
+ 		request.Attrs = p.Attrs.([]byte)
++	case *sshFxpMkdirPacket:
++		request.Flags = p.Flags
++		request.Attrs = p.attrs
+ 	case *sshFxpRenamePacket:
+ 		request.Target = cleanPathWithBase(baseDir, p.Newpath)
+ 	case *sshFxpSymlinkPacket:

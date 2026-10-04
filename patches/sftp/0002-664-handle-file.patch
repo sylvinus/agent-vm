@@ -1,0 +1,135 @@
+diff -ruN a/request-server.go b/request-server.go
+--- a/request-server.go	2026-10-02 20:30:47.822648126 +0200
++++ b/request-server.go	2026-10-02 20:30:47.818642830 +0200
+@@ -287,8 +287,9 @@
+ 				rpkt = statusFromError(pkt.ID, EBADF)
+ 			} else {
+ 				request = &Request{
+-					Method:   "Stat",
+-					Filepath: cleanPathWithBase(rs.startDirectory, request.Filepath),
++					Method:     "Stat",
++					Filepath:   cleanPathWithBase(rs.startDirectory, request.Filepath),
++					handleFile: request.opened(),
+ 				}
+ 				rpkt = request.call(rs.Handlers, pkt, rs.pktMgr.alloc, orderID, rs.maxTxPacket)
+ 			}
+@@ -299,8 +300,9 @@
+ 				rpkt = statusFromError(pkt.ID, EBADF)
+ 			} else {
+ 				request = &Request{
+-					Method:   "Setstat",
+-					Filepath: cleanPathWithBase(rs.startDirectory, request.Filepath),
++					Method:     "Setstat",
++					Filepath:   cleanPathWithBase(rs.startDirectory, request.Filepath),
++					handleFile: request.opened(),
+ 				}
+ 				rpkt = request.call(rs.Handlers, pkt, rs.pktMgr.alloc, orderID, rs.maxTxPacket)
+ 			}
+diff -ruN a/request-server_test.go b/request-server_test.go
+--- a/request-server_test.go	2026-10-02 20:30:47.822648126 +0200
++++ b/request-server_test.go	2026-10-02 20:30:47.818642830 +0200
+@@ -1045,3 +1045,47 @@
+ 		cleanPath(bslash+"a"+bslash+bslash+"b"+bslash+bslash+"c"+bslash))
+ 	assert.Equal(t, "/C:/a", cleanPath("C:"+bslash+"a"))
+ }
++
++type handleFileRecorder struct {
++	FileLister
++	FileCmder
++	got []any
++}
++
++func (h *handleFileRecorder) Filelist(r *Request) (ListerAt, error) {
++	if r.Method == "Stat" {
++		h.got = append(h.got, r.HandleFile())
++	}
++	return h.FileLister.Filelist(r)
++}
++
++func (h *handleFileRecorder) Filecmd(r *Request) error {
++	if r.Method == "Setstat" {
++		h.got = append(h.got, r.HandleFile())
++	}
++	return h.FileCmder.Filecmd(r)
++}
++
++func TestRequestHandleFile(t *testing.T) {
++	mem := InMemHandler()
++	rec := &handleFileRecorder{FileLister: mem.FileList, FileCmder: mem.FileCmd}
++	p := clientRequestServerPairWithHandlers(t, Handlers{FileGet: mem.FileGet, FilePut: mem.FilePut, FileCmd: rec, FileList: rec})
++	defer p.Close()
++
++	f, err := p.cli.Create("/a")
++	require.NoError(t, err)
++	defer f.Close()
++	_, err = f.Stat()
++	require.NoError(t, err)
++	require.NoError(t, f.Truncate(0))
++	_, err = p.cli.Stat("/a")
++	require.NoError(t, err)
++	require.NoError(t, p.cli.Truncate("/a", 0))
++
++	require.Len(t, rec.got, 4)
++	assert.NotNil(t, rec.got[0], "FSTAT")
++	assert.NotNil(t, rec.got[1], "FSETSTAT")
++	assert.Same(t, rec.got[0], rec.got[1])
++	assert.Nil(t, rec.got[2], "STAT")
++	assert.Nil(t, rec.got[3], "SETSTAT")
++}
+diff -ruN a/request.go b/request.go
+--- a/request.go	2026-10-02 20:30:47.822648126 +0200
++++ b/request.go	2026-10-02 20:30:47.822648126 +0200
+@@ -148,6 +148,9 @@
+ 	Target   string // for renames and sym-links
+ 	handle   string
+ 
++	// what the handlers returned for the handle of a FSTAT or FSETSTAT
++	handleFile any
++
+ 	// reader/writer/readdir from handlers
+ 	state
+ 
+@@ -176,6 +179,8 @@
+ 		Target:   r.Target,
+ 		handle:   r.handle,
+ 
++		handleFile: r.handleFile,
++
+ 		state: r.state.copy(),
+ 
+ 		ctx:       r.ctx,
+@@ -183,6 +188,34 @@
+ 	}
+ }
+ 
++// HandleFile returns, for the Stat request of a FSTAT and the Setstat request of a FSETSTAT,
++// what the handlers returned when the handle was opened: the io.ReaderAt, io.WriterAt,
++// WriterAtReaderAt or ListerAt. It returns nil for other requests.
++//
++// Filepath is the path the handle was opened with, which may now be another file,
++// or none, if the file was renamed or removed since. Handlers that can should act
++// on the returned value instead.
++func (r *Request) HandleFile() any {
++	return r.handleFile
++}
++
++// opened returns what the handlers returned when r was opened, or nil.
++func (s *state) opened() any {
++	rd, wr, rw := s.getAllReaderWriters()
++	switch {
++	case rw != nil:
++		return rw
++	case wr != nil:
++		return wr
++	case rd != nil:
++		return rd
++	}
++	if la := s.getListerAt(); la != nil {
++		return la
++	}
++	return nil
++}
++
+ // New Request initialized based on packet data
+ func requestFromPacket(ctx context.Context, pkt hasPath, baseDir string) *Request {
+ 	request := &Request{

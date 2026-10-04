@@ -1,0 +1,1822 @@
+{
+	"TestCapBash": [
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/001"
+			],
+			"Args": [
+				"cpus",
+				"1"
+			],
+			"Files": null,
+			"Stdout": "1\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/002"
+			],
+			"Args": [
+				"cpus",
+				"2"
+			],
+			"Files": null,
+			"Stdout": "2\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/003"
+			],
+			"Args": [
+				"cpus",
+				"3"
+			],
+			"Files": null,
+			"Stdout": "3\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/004"
+			],
+			"Args": [
+				"cpus",
+				"4"
+			],
+			"Files": null,
+			"Stdout": "4\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/005"
+			],
+			"Args": [
+				"cpus",
+				"5"
+			],
+			"Files": null,
+			"Stdout": "4\n",
+			"Stderr": "Note: --cpus 5 exceeds this host's share (8 detected); using 4.\n",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/006"
+			],
+			"Args": [
+				"cpus",
+				"8"
+			],
+			"Files": null,
+			"Stdout": "4\n",
+			"Stderr": "Note: --cpus 8 exceeds this host's share (8 detected); using 4.\n",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/007"
+			],
+			"Args": [
+				"cpus",
+				"9"
+			],
+			"Files": null,
+			"Stdout": "4\n",
+			"Stderr": "Note: --cpus 9 exceeds this host's share (8 detected); using 4.\n",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/008"
+			],
+			"Args": [
+				"cpus",
+				"16"
+			],
+			"Files": null,
+			"Stdout": "4\n",
+			"Stderr": "Note: --cpus 16 exceeds this host's share (8 detected); using 4.\n",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/009"
+			],
+			"Args": [
+				"cpus",
+				"64"
+			],
+			"Files": null,
+			"Stdout": "4\n",
+			"Stderr": "Note: --cpus 64 exceeds this host's share (8 detected); using 4.\n",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/010"
+			],
+			"Args": [
+				"memory",
+				"1"
+			],
+			"Files": null,
+			"Stdout": "1\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/011"
+			],
+			"Args": [
+				"memory",
+				"2"
+			],
+			"Files": null,
+			"Stdout": "2\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/012"
+			],
+			"Args": [
+				"memory",
+				"3"
+			],
+			"Files": null,
+			"Stdout": "3\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/013"
+			],
+			"Args": [
+				"memory",
+				"4"
+			],
+			"Files": null,
+			"Stdout": "4\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/014"
+			],
+			"Args": [
+				"memory",
+				"5"
+			],
+			"Files": null,
+			"Stdout": "5\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/015"
+			],
+			"Args": [
+				"memory",
+				"8"
+			],
+			"Files": null,
+			"Stdout": "8\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/016"
+			],
+			"Args": [
+				"memory",
+				"9"
+			],
+			"Files": null,
+			"Stdout": "8\n",
+			"Stderr": "Note: --memory 9 exceeds this host's share (16 detected); using 8.\n",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/017"
+			],
+			"Args": [
+				"memory",
+				"16"
+			],
+			"Files": null,
+			"Stdout": "8\n",
+			"Stderr": "Note: --memory 16 exceeds this host's share (16 detected); using 8.\n",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/018"
+			],
+			"Args": [
+				"memory",
+				"64"
+			],
+			"Files": null,
+			"Stdout": "8\n",
+			"Stderr": "Note: --memory 64 exceeds this host's share (16 detected); using 8.\n",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/019",
+				"AGENT_VM_HOST_SHARE=1"
+			],
+			"Args": [
+				"cpus",
+				"1"
+			],
+			"Files": null,
+			"Stdout": "1\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/020",
+				"AGENT_VM_HOST_SHARE=1"
+			],
+			"Args": [
+				"cpus",
+				"2"
+			],
+			"Files": null,
+			"Stdout": "2\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/021",
+				"AGENT_VM_HOST_SHARE=1"
+			],
+			"Args": [
+				"cpus",
+				"3"
+			],
+			"Files": null,
+			"Stdout": "3\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/022",
+				"AGENT_VM_HOST_SHARE=1"
+			],
+			"Args": [
+				"cpus",
+				"4"
+			],
+			"Files": null,
+			"Stdout": "4\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/023",
+				"AGENT_VM_HOST_SHARE=1"
+			],
+			"Args": [
+				"cpus",
+				"5"
+			],
+			"Files": null,
+			"Stdout": "5\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/024",
+				"AGENT_VM_HOST_SHARE=1"
+			],
+			"Args": [
+				"cpus",
+				"8"
+			],
+			"Files": null,
+			"Stdout": "8\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/025",
+				"AGENT_VM_HOST_SHARE=1"
+			],
+			"Args": [
+				"cpus",
+				"9"
+			],
+			"Files": null,
+			"Stdout": "8\n",
+			"Stderr": "Note: --cpus 9 exceeds this host's share (8 detected); using 8.\n",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/026",
+				"AGENT_VM_HOST_SHARE=1"
+			],
+			"Args": [
+				"cpus",
+				"16"
+			],
+			"Files": null,
+			"Stdout": "8\n",
+			"Stderr": "Note: --cpus 16 exceeds this host's share (8 detected); using 8.\n",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/027",
+				"AGENT_VM_HOST_SHARE=1"
+			],
+			"Args": [
+				"cpus",
+				"64"
+			],
+			"Files": null,
+			"Stdout": "8\n",
+			"Stderr": "Note: --cpus 64 exceeds this host's share (8 detected); using 8.\n",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/028",
+				"AGENT_VM_HOST_SHARE=1"
+			],
+			"Args": [
+				"memory",
+				"1"
+			],
+			"Files": null,
+			"Stdout": "1\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/029",
+				"AGENT_VM_HOST_SHARE=1"
+			],
+			"Args": [
+				"memory",
+				"2"
+			],
+			"Files": null,
+			"Stdout": "2\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/030",
+				"AGENT_VM_HOST_SHARE=1"
+			],
+			"Args": [
+				"memory",
+				"3"
+			],
+			"Files": null,
+			"Stdout": "3\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/031",
+				"AGENT_VM_HOST_SHARE=1"
+			],
+			"Args": [
+				"memory",
+				"4"
+			],
+			"Files": null,
+			"Stdout": "4\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/032",
+				"AGENT_VM_HOST_SHARE=1"
+			],
+			"Args": [
+				"memory",
+				"5"
+			],
+			"Files": null,
+			"Stdout": "5\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/033",
+				"AGENT_VM_HOST_SHARE=1"
+			],
+			"Args": [
+				"memory",
+				"8"
+			],
+			"Files": null,
+			"Stdout": "8\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/034",
+				"AGENT_VM_HOST_SHARE=1"
+			],
+			"Args": [
+				"memory",
+				"9"
+			],
+			"Files": null,
+			"Stdout": "9\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/035",
+				"AGENT_VM_HOST_SHARE=1"
+			],
+			"Args": [
+				"memory",
+				"16"
+			],
+			"Files": null,
+			"Stdout": "16\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/036",
+				"AGENT_VM_HOST_SHARE=1"
+			],
+			"Args": [
+				"memory",
+				"64"
+			],
+			"Files": null,
+			"Stdout": "16\n",
+			"Stderr": "Note: --memory 64 exceeds this host's share (16 detected); using 16.\n",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/037",
+				"AGENT_VM_HOST_SHARE=4"
+			],
+			"Args": [
+				"cpus",
+				"1"
+			],
+			"Files": null,
+			"Stdout": "1\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/038",
+				"AGENT_VM_HOST_SHARE=4"
+			],
+			"Args": [
+				"cpus",
+				"2"
+			],
+			"Files": null,
+			"Stdout": "2\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/039",
+				"AGENT_VM_HOST_SHARE=4"
+			],
+			"Args": [
+				"cpus",
+				"3"
+			],
+			"Files": null,
+			"Stdout": "2\n",
+			"Stderr": "Note: --cpus 3 exceeds this host's share (8 detected); using 2.\n",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/040",
+				"AGENT_VM_HOST_SHARE=4"
+			],
+			"Args": [
+				"cpus",
+				"4"
+			],
+			"Files": null,
+			"Stdout": "2\n",
+			"Stderr": "Note: --cpus 4 exceeds this host's share (8 detected); using 2.\n",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/041",
+				"AGENT_VM_HOST_SHARE=4"
+			],
+			"Args": [
+				"cpus",
+				"5"
+			],
+			"Files": null,
+			"Stdout": "2\n",
+			"Stderr": "Note: --cpus 5 exceeds this host's share (8 detected); using 2.\n",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/042",
+				"AGENT_VM_HOST_SHARE=4"
+			],
+			"Args": [
+				"cpus",
+				"8"
+			],
+			"Files": null,
+			"Stdout": "2\n",
+			"Stderr": "Note: --cpus 8 exceeds this host's share (8 detected); using 2.\n",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/043",
+				"AGENT_VM_HOST_SHARE=4"
+			],
+			"Args": [
+				"cpus",
+				"9"
+			],
+			"Files": null,
+			"Stdout": "2\n",
+			"Stderr": "Note: --cpus 9 exceeds this host's share (8 detected); using 2.\n",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/044",
+				"AGENT_VM_HOST_SHARE=4"
+			],
+			"Args": [
+				"cpus",
+				"16"
+			],
+			"Files": null,
+			"Stdout": "2\n",
+			"Stderr": "Note: --cpus 16 exceeds this host's share (8 detected); using 2.\n",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/045",
+				"AGENT_VM_HOST_SHARE=4"
+			],
+			"Args": [
+				"cpus",
+				"64"
+			],
+			"Files": null,
+			"Stdout": "2\n",
+			"Stderr": "Note: --cpus 64 exceeds this host's share (8 detected); using 2.\n",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/046",
+				"AGENT_VM_HOST_SHARE=4"
+			],
+			"Args": [
+				"memory",
+				"1"
+			],
+			"Files": null,
+			"Stdout": "1\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/047",
+				"AGENT_VM_HOST_SHARE=4"
+			],
+			"Args": [
+				"memory",
+				"2"
+			],
+			"Files": null,
+			"Stdout": "2\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/048",
+				"AGENT_VM_HOST_SHARE=4"
+			],
+			"Args": [
+				"memory",
+				"3"
+			],
+			"Files": null,
+			"Stdout": "3\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/049",
+				"AGENT_VM_HOST_SHARE=4"
+			],
+			"Args": [
+				"memory",
+				"4"
+			],
+			"Files": null,
+			"Stdout": "4\n",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/050",
+				"AGENT_VM_HOST_SHARE=4"
+			],
+			"Args": [
+				"memory",
+				"5"
+			],
+			"Files": null,
+			"Stdout": "4\n",
+			"Stderr": "Note: --memory 5 exceeds this host's share (16 detected); using 4.\n",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/051",
+				"AGENT_VM_HOST_SHARE=4"
+			],
+			"Args": [
+				"memory",
+				"8"
+			],
+			"Files": null,
+			"Stdout": "4\n",
+			"Stderr": "Note: --memory 8 exceeds this host's share (16 detected); using 4.\n",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/052",
+				"AGENT_VM_HOST_SHARE=4"
+			],
+			"Args": [
+				"memory",
+				"9"
+			],
+			"Files": null,
+			"Stdout": "4\n",
+			"Stderr": "Note: --memory 9 exceeds this host's share (16 detected); using 4.\n",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/053",
+				"AGENT_VM_HOST_SHARE=4"
+			],
+			"Args": [
+				"memory",
+				"16"
+			],
+			"Files": null,
+			"Stdout": "4\n",
+			"Stderr": "Note: --memory 16 exceeds this host's share (16 detected); using 4.\n",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/054",
+				"AGENT_VM_HOST_SHARE=4"
+			],
+			"Args": [
+				"memory",
+				"64"
+			],
+			"Files": null,
+			"Stdout": "4\n",
+			"Stderr": "Note: --memory 64 exceeds this host's share (16 detected); using 4.\n",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/055",
+				"AGENT_VM_HOST_SHARE=0"
+			],
+			"Args": [
+				"cpus",
+				"1"
+			],
+			"Files": null,
+			"Stdout": "1\n",
+			"Stderr": "Warning: AGENT_VM_HOST_SHARE='0' is not a positive integer; using 2.\n",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/056",
+				"AGENT_VM_HOST_SHARE=0"
+			],
+			"Args": [
+				"cpus",
+				"2"
+			],
+			"Files": null,
+			"Stdout": "2\n",
+			"Stderr": "Warning: AGENT_VM_HOST_SHARE='0' is not a positive integer; using 2.\n",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/057",
+				"AGENT_VM_HOST_SHARE=0"
+			],
+			"Args": [
+				"cpus",
+				"3"
+			],
+			"Files": null,
+			"Stdout": "3\n",
+			"Stderr": "Warning: AGENT_VM_HOST_SHARE='0' is not a positive integer; using 2.\n",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/058",
+				"AGENT_VM_HOST_SHARE=0"
+			],
+			"Args": [
+				"cpus",
+				"4"
+			],
+			"Files": null,
+			"Stdout": "4\n",
+			"Stderr": "Warning: AGENT_VM_HOST_SHARE='0' is not a positive integer; using 2.\n",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/059",
+				"AGENT_VM_HOST_SHARE=0"
+			],
+			"Args": [
+				"cpus",
+				"5"
+			],
+			"Files": null,
+			"Stdout": "4\n",
+			"Stderr": "Warning: AGENT_VM_HOST_SHARE='0' is not a positive integer; using 2.\nNote: --cpus 5 exceeds this host's share (8 detected); using 4.\n",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/060",
+				"AGENT_VM_HOST_SHARE=0"
+			],
+			"Args": [
+				"cpus",
+				"8"
+			],
+			"Files": null,
+			"Stdout": "4\n",
+			"Stderr": "Warning: AGENT_VM_HOST_SHARE='0' is not a positive integer; using 2.\nNote: --cpus 8 exceeds this host's share (8 detected); using 4.\n",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/061",
+				"AGENT_VM_HOST_SHARE=0"
+			],
+			"Args": [
+				"cpus",
+				"9"
+			],
+			"Files": null,
+			"Stdout": "4\n",
+			"Stderr": "Warning: AGENT_VM_HOST_SHARE='0' is not a positive integer; using 2.\nNote: --cpus 9 exceeds this host's share (8 detected); using 4.\n",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/062",
+				"AGENT_VM_HOST_SHARE=0"
+			],
+			"Args": [
+				"cpus",
+				"16"
+			],
+			"Files": null,
+			"Stdout": "4\n",
+			"Stderr": "Warning: AGENT_VM_HOST_SHARE='0' is not a positive integer; using 2.\nNote: --cpus 16 exceeds this host's share (8 detected); using 4.\n",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/063",
+				"AGENT_VM_HOST_SHARE=0"
+			],
+			"Args": [
+				"cpus",
+				"64"
+			],
+			"Files": null,
+			"Stdout": "4\n",
+			"Stderr": "Warning: AGENT_VM_HOST_SHARE='0' is not a positive integer; using 2.\nNote: --cpus 64 exceeds this host's share (8 detected); using 4.\n",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/064",
+				"AGENT_VM_HOST_SHARE=0"
+			],
+			"Args": [
+				"memory",
+				"1"
+			],
+			"Files": null,
+			"Stdout": "1\n",
+			"Stderr": "Warning: AGENT_VM_HOST_SHARE='0' is not a positive integer; using 2.\n",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/065",
+				"AGENT_VM_HOST_SHARE=0"
+			],
+			"Args": [
+				"memory",
+				"2"
+			],
+			"Files": null,
+			"Stdout": "2\n",
+			"Stderr": "Warning: AGENT_VM_HOST_SHARE='0' is not a positive integer; using 2.\n",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/066",
+				"AGENT_VM_HOST_SHARE=0"
+			],
+			"Args": [
+				"memory",
+				"3"
+			],
+			"Files": null,
+			"Stdout": "3\n",
+			"Stderr": "Warning: AGENT_VM_HOST_SHARE='0' is not a positive integer; using 2.\n",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/067",
+				"AGENT_VM_HOST_SHARE=0"
+			],
+			"Args": [
+				"memory",
+				"4"
+			],
+			"Files": null,
+			"Stdout": "4\n",
+			"Stderr": "Warning: AGENT_VM_HOST_SHARE='0' is not a positive integer; using 2.\n",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/068",
+				"AGENT_VM_HOST_SHARE=0"
+			],
+			"Args": [
+				"memory",
+				"5"
+			],
+			"Files": null,
+			"Stdout": "5\n",
+			"Stderr": "Warning: AGENT_VM_HOST_SHARE='0' is not a positive integer; using 2.\n",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/069",
+				"AGENT_VM_HOST_SHARE=0"
+			],
+			"Args": [
+				"memory",
+				"8"
+			],
+			"Files": null,
+			"Stdout": "8\n",
+			"Stderr": "Warning: AGENT_VM_HOST_SHARE='0' is not a positive integer; using 2.\n",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/070",
+				"AGENT_VM_HOST_SHARE=0"
+			],
+			"Args": [
+				"memory",
+				"9"
+			],
+			"Files": null,
+			"Stdout": "8\n",
+			"Stderr": "Warning: AGENT_VM_HOST_SHARE='0' is not a positive integer; using 2.\nNote: --memory 9 exceeds this host's share (16 detected); using 8.\n",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/071",
+				"AGENT_VM_HOST_SHARE=0"
+			],
+			"Args": [
+				"memory",
+				"16"
+			],
+			"Files": null,
+			"Stdout": "8\n",
+			"Stderr": "Warning: AGENT_VM_HOST_SHARE='0' is not a positive integer; using 2.\nNote: --memory 16 exceeds this host's share (16 detected); using 8.\n",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/072",
+				"AGENT_VM_HOST_SHARE=0"
+			],
+			"Args": [
+				"memory",
+				"64"
+			],
+			"Files": null,
+			"Stdout": "8\n",
+			"Stderr": "Warning: AGENT_VM_HOST_SHARE='0' is not a positive integer; using 2.\nNote: --memory 64 exceeds this host's share (16 detected); using 8.\n",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/073",
+				"AGENT_VM_HOST_SHARE=x"
+			],
+			"Args": [
+				"cpus",
+				"1"
+			],
+			"Files": null,
+			"Stdout": "1\n",
+			"Stderr": "Warning: AGENT_VM_HOST_SHARE='x' is not a positive integer; using 2.\n",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/074",
+				"AGENT_VM_HOST_SHARE=x"
+			],
+			"Args": [
+				"cpus",
+				"2"
+			],
+			"Files": null,
+			"Stdout": "2\n",
+			"Stderr": "Warning: AGENT_VM_HOST_SHARE='x' is not a positive integer; using 2.\n",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/075",
+				"AGENT_VM_HOST_SHARE=x"
+			],
+			"Args": [
+				"cpus",
+				"3"
+			],
+			"Files": null,
+			"Stdout": "3\n",
+			"Stderr": "Warning: AGENT_VM_HOST_SHARE='x' is not a positive integer; using 2.\n",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/076",
+				"AGENT_VM_HOST_SHARE=x"
+			],
+			"Args": [
+				"cpus",
+				"4"
+			],
+			"Files": null,
+			"Stdout": "4\n",
+			"Stderr": "Warning: AGENT_VM_HOST_SHARE='x' is not a positive integer; using 2.\n",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/077",
+				"AGENT_VM_HOST_SHARE=x"
+			],
+			"Args": [
+				"cpus",
+				"5"
+			],
+			"Files": null,
+			"Stdout": "4\n",
+			"Stderr": "Warning: AGENT_VM_HOST_SHARE='x' is not a positive integer; using 2.\nNote: --cpus 5 exceeds this host's share (8 detected); using 4.\n",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/078",
+				"AGENT_VM_HOST_SHARE=x"
+			],
+			"Args": [
+				"cpus",
+				"8"
+			],
+			"Files": null,
+			"Stdout": "4\n",
+			"Stderr": "Warning: AGENT_VM_HOST_SHARE='x' is not a positive integer; using 2.\nNote: --cpus 8 exceeds this host's share (8 detected); using 4.\n",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/079",
+				"AGENT_VM_HOST_SHARE=x"
+			],
+			"Args": [
+				"cpus",
+				"9"
+			],
+			"Files": null,
+			"Stdout": "4\n",
+			"Stderr": "Warning: AGENT_VM_HOST_SHARE='x' is not a positive integer; using 2.\nNote: --cpus 9 exceeds this host's share (8 detected); using 4.\n",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/080",
+				"AGENT_VM_HOST_SHARE=x"
+			],
+			"Args": [
+				"cpus",
+				"16"
+			],
+			"Files": null,
+			"Stdout": "4\n",
+			"Stderr": "Warning: AGENT_VM_HOST_SHARE='x' is not a positive integer; using 2.\nNote: --cpus 16 exceeds this host's share (8 detected); using 4.\n",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/081",
+				"AGENT_VM_HOST_SHARE=x"
+			],
+			"Args": [
+				"cpus",
+				"64"
+			],
+			"Files": null,
+			"Stdout": "4\n",
+			"Stderr": "Warning: AGENT_VM_HOST_SHARE='x' is not a positive integer; using 2.\nNote: --cpus 64 exceeds this host's share (8 detected); using 4.\n",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/082",
+				"AGENT_VM_HOST_SHARE=x"
+			],
+			"Args": [
+				"memory",
+				"1"
+			],
+			"Files": null,
+			"Stdout": "1\n",
+			"Stderr": "Warning: AGENT_VM_HOST_SHARE='x' is not a positive integer; using 2.\n",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/083",
+				"AGENT_VM_HOST_SHARE=x"
+			],
+			"Args": [
+				"memory",
+				"2"
+			],
+			"Files": null,
+			"Stdout": "2\n",
+			"Stderr": "Warning: AGENT_VM_HOST_SHARE='x' is not a positive integer; using 2.\n",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/084",
+				"AGENT_VM_HOST_SHARE=x"
+			],
+			"Args": [
+				"memory",
+				"3"
+			],
+			"Files": null,
+			"Stdout": "3\n",
+			"Stderr": "Warning: AGENT_VM_HOST_SHARE='x' is not a positive integer; using 2.\n",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/085",
+				"AGENT_VM_HOST_SHARE=x"
+			],
+			"Args": [
+				"memory",
+				"4"
+			],
+			"Files": null,
+			"Stdout": "4\n",
+			"Stderr": "Warning: AGENT_VM_HOST_SHARE='x' is not a positive integer; using 2.\n",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/086",
+				"AGENT_VM_HOST_SHARE=x"
+			],
+			"Args": [
+				"memory",
+				"5"
+			],
+			"Files": null,
+			"Stdout": "5\n",
+			"Stderr": "Warning: AGENT_VM_HOST_SHARE='x' is not a positive integer; using 2.\n",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/087",
+				"AGENT_VM_HOST_SHARE=x"
+			],
+			"Args": [
+				"memory",
+				"8"
+			],
+			"Files": null,
+			"Stdout": "8\n",
+			"Stderr": "Warning: AGENT_VM_HOST_SHARE='x' is not a positive integer; using 2.\n",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/088",
+				"AGENT_VM_HOST_SHARE=x"
+			],
+			"Args": [
+				"memory",
+				"9"
+			],
+			"Files": null,
+			"Stdout": "8\n",
+			"Stderr": "Warning: AGENT_VM_HOST_SHARE='x' is not a positive integer; using 2.\nNote: --memory 9 exceeds this host's share (16 detected); using 8.\n",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/089",
+				"AGENT_VM_HOST_SHARE=x"
+			],
+			"Args": [
+				"memory",
+				"16"
+			],
+			"Files": null,
+			"Stdout": "8\n",
+			"Stderr": "Warning: AGENT_VM_HOST_SHARE='x' is not a positive integer; using 2.\nNote: --memory 16 exceeds this host's share (16 detected); using 8.\n",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/090",
+				"AGENT_VM_HOST_SHARE=x"
+			],
+			"Args": [
+				"memory",
+				"64"
+			],
+			"Files": null,
+			"Stdout": "8\n",
+			"Stderr": "Warning: AGENT_VM_HOST_SHARE='x' is not a positive integer; using 2.\nNote: --memory 64 exceeds this host's share (16 detected); using 8.\n",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/091",
+				"AGENT_VM_HOST_SHARE=08"
+			],
+			"Args": [
+				"cpus",
+				"1"
+			],
+			"Files": null,
+			"Stdout": "1\n",
+			"Stderr": "Warning: AGENT_VM_HOST_SHARE='08' is not a positive integer; using 2.\n",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/092",
+				"AGENT_VM_HOST_SHARE=08"
+			],
+			"Args": [
+				"cpus",
+				"2"
+			],
+			"Files": null,
+			"Stdout": "2\n",
+			"Stderr": "Warning: AGENT_VM_HOST_SHARE='08' is not a positive integer; using 2.\n",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/093",
+				"AGENT_VM_HOST_SHARE=08"
+			],
+			"Args": [
+				"cpus",
+				"3"
+			],
+			"Files": null,
+			"Stdout": "3\n",
+			"Stderr": "Warning: AGENT_VM_HOST_SHARE='08' is not a positive integer; using 2.\n",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/094",
+				"AGENT_VM_HOST_SHARE=08"
+			],
+			"Args": [
+				"cpus",
+				"4"
+			],
+			"Files": null,
+			"Stdout": "4\n",
+			"Stderr": "Warning: AGENT_VM_HOST_SHARE='08' is not a positive integer; using 2.\n",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/095",
+				"AGENT_VM_HOST_SHARE=08"
+			],
+			"Args": [
+				"cpus",
+				"5"
+			],
+			"Files": null,
+			"Stdout": "4\n",
+			"Stderr": "Warning: AGENT_VM_HOST_SHARE='08' is not a positive integer; using 2.\nNote: --cpus 5 exceeds this host's share (8 detected); using 4.\n",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/096",
+				"AGENT_VM_HOST_SHARE=08"
+			],
+			"Args": [
+				"cpus",
+				"8"
+			],
+			"Files": null,
+			"Stdout": "4\n",
+			"Stderr": "Warning: AGENT_VM_HOST_SHARE='08' is not a positive integer; using 2.\nNote: --cpus 8 exceeds this host's share (8 detected); using 4.\n",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/097",
+				"AGENT_VM_HOST_SHARE=08"
+			],
+			"Args": [
+				"cpus",
+				"9"
+			],
+			"Files": null,
+			"Stdout": "4\n",
+			"Stderr": "Warning: AGENT_VM_HOST_SHARE='08' is not a positive integer; using 2.\nNote: --cpus 9 exceeds this host's share (8 detected); using 4.\n",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/098",
+				"AGENT_VM_HOST_SHARE=08"
+			],
+			"Args": [
+				"cpus",
+				"16"
+			],
+			"Files": null,
+			"Stdout": "4\n",
+			"Stderr": "Warning: AGENT_VM_HOST_SHARE='08' is not a positive integer; using 2.\nNote: --cpus 16 exceeds this host's share (8 detected); using 4.\n",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/099",
+				"AGENT_VM_HOST_SHARE=08"
+			],
+			"Args": [
+				"cpus",
+				"64"
+			],
+			"Files": null,
+			"Stdout": "4\n",
+			"Stderr": "Warning: AGENT_VM_HOST_SHARE='08' is not a positive integer; using 2.\nNote: --cpus 64 exceeds this host's share (8 detected); using 4.\n",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/100",
+				"AGENT_VM_HOST_SHARE=08"
+			],
+			"Args": [
+				"memory",
+				"1"
+			],
+			"Files": null,
+			"Stdout": "1\n",
+			"Stderr": "Warning: AGENT_VM_HOST_SHARE='08' is not a positive integer; using 2.\n",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/101",
+				"AGENT_VM_HOST_SHARE=08"
+			],
+			"Args": [
+				"memory",
+				"2"
+			],
+			"Files": null,
+			"Stdout": "2\n",
+			"Stderr": "Warning: AGENT_VM_HOST_SHARE='08' is not a positive integer; using 2.\n",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/102",
+				"AGENT_VM_HOST_SHARE=08"
+			],
+			"Args": [
+				"memory",
+				"3"
+			],
+			"Files": null,
+			"Stdout": "3\n",
+			"Stderr": "Warning: AGENT_VM_HOST_SHARE='08' is not a positive integer; using 2.\n",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/103",
+				"AGENT_VM_HOST_SHARE=08"
+			],
+			"Args": [
+				"memory",
+				"4"
+			],
+			"Files": null,
+			"Stdout": "4\n",
+			"Stderr": "Warning: AGENT_VM_HOST_SHARE='08' is not a positive integer; using 2.\n",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/104",
+				"AGENT_VM_HOST_SHARE=08"
+			],
+			"Args": [
+				"memory",
+				"5"
+			],
+			"Files": null,
+			"Stdout": "5\n",
+			"Stderr": "Warning: AGENT_VM_HOST_SHARE='08' is not a positive integer; using 2.\n",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/105",
+				"AGENT_VM_HOST_SHARE=08"
+			],
+			"Args": [
+				"memory",
+				"8"
+			],
+			"Files": null,
+			"Stdout": "8\n",
+			"Stderr": "Warning: AGENT_VM_HOST_SHARE='08' is not a positive integer; using 2.\n",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/106",
+				"AGENT_VM_HOST_SHARE=08"
+			],
+			"Args": [
+				"memory",
+				"9"
+			],
+			"Files": null,
+			"Stdout": "8\n",
+			"Stderr": "Warning: AGENT_VM_HOST_SHARE='08' is not a positive integer; using 2.\nNote: --memory 9 exceeds this host's share (16 detected); using 8.\n",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/107",
+				"AGENT_VM_HOST_SHARE=08"
+			],
+			"Args": [
+				"memory",
+				"16"
+			],
+			"Files": null,
+			"Stdout": "8\n",
+			"Stderr": "Warning: AGENT_VM_HOST_SHARE='08' is not a positive integer; using 2.\nNote: --memory 16 exceeds this host's share (16 detected); using 8.\n",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "_agent_vm_host_cpus() { echo 8; }; _agent_vm_host_mem_gib() { echo 16; }; _agent_vm_cap_resource \"$@\"",
+			"Env": [
+				"HOME={T0}/108",
+				"AGENT_VM_HOST_SHARE=08"
+			],
+			"Args": [
+				"memory",
+				"64"
+			],
+			"Files": null,
+			"Stdout": "8\n",
+			"Stderr": "Warning: AGENT_VM_HOST_SHARE='08' is not a positive integer; using 2.\nNote: --memory 64 exceeds this host's share (16 detected); using 8.\n",
+			"Code": 0
+		}
+	]
+}

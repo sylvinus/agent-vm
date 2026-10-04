@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+#
+# fs_suite.py against the rooted SFTP server of third_party/sshocker, through
+# real sshfs, as the Lima hostagent serves agent-vm's shares.
+#
+#   tests/sftp/run [case-substring...]            the server agent-vm ships
+#   tests/sftp/run --openssh [case-substring...]  OpenSSH's sftp-server, the control
+#
+# Needs Go, sshfs, fusermount (user_allow_other in /etc/fuse.conf), python3,
+# git, tar and patch. WORK (default /tmp/sftp-work) must be on this machine's
+# own disk, never on a share served by the code under test.
+
+set -euo pipefail
+
+HERE="$(CDPATH= cd -P -- "$(dirname "${BASH_SOURCE[0]}")" >/dev/null && pwd)"
+ROOT="$(CDPATH= cd -P -- "$HERE/../.." >/dev/null && pwd)"
+WORK="${WORK:-/tmp/sftp-work}"
+
+if [ "${1:-}" = --openssh ]; then
+  shift
+  harness="$HERE/openssh_harness.sh"
+  run="$WORK/run-openssh"
+else
+  # A copy of third_party/sshocker with the harness added, built against
+  # third_party/sftp as agent-vm's module builds it.
+  src="$WORK/src"
+  rm -rf "$src"
+  mkdir -p "$WORK"
+  cp -R "$ROOT/third_party/sshocker" "$src"
+  cp "$HERE/testdata/harness/harness_export.go" "$src/pkg/reversesshfs/"
+  mkdir -p "$src/cmd/harness"
+  cp "$HERE/testdata/harness/main.go" "$src/cmd/harness/"
+  ( cd "$src" \
+    && go mod edit -replace "github.com/pkg/sftp=$ROOT/third_party/sftp" \
+    && GOFLAGS=-mod=mod go build -o "$WORK/harness" ./cmd/harness )
+  harness="$WORK/harness"
+  run="$WORK/run"
+fi
+exec python3 "$HERE/fs_suite.py" "$harness" "$run" "$@"

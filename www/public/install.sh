@@ -11,9 +11,11 @@
 #   --dir DIR         where agent-vm goes (default: ~/.local/share/agent-vm,
 #                     or $XDG_DATA_HOME/agent-vm)
 #
-# A release is the tarball published on GitHub, checked against its SHA256SUMS.
-# Running this again replaces it with the latest release. A clone is updated
-# with `git pull`, or by running this again with --git.
+# A release is the tarball of this machine's OS and architecture published on
+# GitHub, checked against its SHA256SUMS. Running this again replaces it with
+# the latest release. A clone is updated with `git pull`, or by running this
+# again with --git; agent-vm.sh builds it (Go needed, and on macOS the Xcode
+# command line tools).
 #
 # Then `agent-vm.sh install` links agent-vm into ~/.local/bin (AGENT_VM_BIN_DIR
 # overrides). Nothing needs root.
@@ -49,6 +51,21 @@ sha256_of() {
   fi
 }
 
+# The release's name for this machine: darwin-arm64, linux-amd64...
+platform() {
+  os="$(uname -s)"; arch="$(uname -m)"
+  case "$os" in
+    Darwin) os=darwin ;;
+    Linux) os=linux ;;
+    MINGW*|MSYS*|CYGWIN*) os=windows ;;
+  esac
+  case "$arch" in
+    x86_64|amd64) arch=amd64 ;;
+    aarch64|arm64) arch=arm64 ;;
+  esac
+  echo "$os-$arch"
+}
+
 cleanup() {
   [ -z "$TMP" ] || rm -rf "$TMP"
   [ -z "$LEFTOVER" ] || rm -rf "$LEFTOVER"
@@ -75,12 +92,18 @@ install_release() {
   fi
   fetch "$base/SHA256SUMS" "$TMP/SHA256SUMS" || die "could not download $base/SHA256SUMS"
 
-  # One line per asset: "<sha256>  agent-vm-X.Y.Z.tar.gz".
-  tarball="$(awk '$2 ~ /^agent-vm-[0-9]+\.[0-9]+\.[0-9]+\.tar\.gz$/ { print $2; exit }' "$TMP/SHA256SUMS")"
-  [ -n "$tarball" ] || die "SHA256SUMS lists no agent-vm tarball"
+  # One line per asset: "<sha256>  agent-vm-X.Y.Z-<os>-<arch>.tar.gz", this
+  # machine's taken. Releases before 0.3 have one, agent-vm-X.Y.Z.tar.gz.
+  platform="$(platform)"
+  tarball="$(awk -v p="$platform" '$2 ~ "^agent-vm-[0-9]+\\.[0-9]+\\.[0-9]+-" p "\\.tar\\.gz$" { print $2; exit }' "$TMP/SHA256SUMS")"
+  if [ -z "$tarball" ]; then
+    tarball="$(awk '$2 ~ /^agent-vm-[0-9]+\.[0-9]+\.[0-9]+\.tar\.gz$/ { print $2; exit }' "$TMP/SHA256SUMS")"
+  fi
+  [ -n "$tarball" ] || die "this release has no build for $platform"
   expected="$(awk -v f="$tarball" '$2 == f { print $1; exit }' "$TMP/SHA256SUMS")"
   version="${tarball#agent-vm-}"
   version="${version%.tar.gz}"
+  version="${version%-"$platform"}"
   if [ -n "$WANT_VERSION" ] && [ "$version" != "$WANT_VERSION" ]; then
     die "asked for $WANT_VERSION, the release has $tarball"
   fi

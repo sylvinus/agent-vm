@@ -1,0 +1,87 @@
+#!/usr/bin/env bash
+#
+# Rebuild third_party/<name> from its upstream commit (third_party/SOURCES)
+# and patches/<name>/*.patch, applied in name order.
+#
+#   scripts/third-party-sync <name>|all               rewrite third_party/<name>
+#   scripts/third-party-sync <name>|all --check       fail when third_party/<name> differs
+#   scripts/third-party-sync <name> --ref <commit>    rebuild from <commit>, and record it
+#
+# A patch that does not apply stops it, with nothing changed: rebase that
+# patch on the new upstream first. Edits made by hand in third_party/ are
+# lost here and caught by --check: make them a patch instead.
+
+set -euo pipefail
+
+ROOT="$(CDPATH= cd -P -- "$(dirname "${BASH_SOURCE[0]}")/.." >/dev/null && pwd)"
+SOURCES="$ROOT/third_party/SOURCES"
+
+die() { printf 'third-party-sync: %s\n' "$*" >&2; exit 1; }
+usage() { sed -n '5,7p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
+
+[ $# -ge 1 ] || usage
+target="$1"; shift
+mode=write ref=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --check) mode=check ;;
+    --ref)   [ $# -ge 2 ] || usage; ref="$2"; shift ;;
+    *)       usage ;;
+  esac
+  shift
+done
+[ -z "$ref" ] || [ "$target" != all ] || die "--ref needs one name, not all"
+[ -z "$ref" ] || [ "$mode" == write ] || die "--ref and --check do not go together"
+
+names="$(awk '!/^#/ && NF { print $1 }' "$SOURCES")"
+if [ "$target" != all ]; then
+  printf '%s\n' "$names" | grep -qx -- "$target" || die "no '$target' in $SOURCES"
+  names="$target"
+fi
+
+TMP="$(mktemp -d)"
+trap 'rm -rf "$TMP"' EXIT
+
+# <name>: the upstream tree with the patches applied, in $TMP/<name>.
+build() {
+  local name="$1" url commit version omit p dir="$TMP/$1"
+  read -r url commit version omit <<< "$(awk -v n="$name" '$1 == n { print $2, $3, $4, $5 }' "$SOURCES")"
+  [ -z "$ref" ] || commit="$ref"
+  git clone --quiet --filter=blob:none --no-checkout "$url" "$dir"
+  git -C "$dir" -c advice.detachedHead=false checkout --quiet "$commit"
+  commit="$(git -C "$dir" rev-parse HEAD)"
+  version="$(git -C "$dir" describe --tags --match 'v[0-9]*' --always)"
+  for p in "$ROOT/patches/$name"/*.patch; do
+    [ -e "$p" ] || continue
+    git -C "$dir" apply --whitespace=nowarn "$p" \
+      || die "$name: ${p#"$ROOT"/} does not apply on $commit"
+  done
+  rm -rf "$dir/.git"
+  if [ "$omit" != - ]; then
+    local o
+    for o in ${omit//,/ }; do rm -rf "${dir:?}/$o"; done
+  fi
+  printf '%s %s\n' "$commit" "$version" > "$TMP/$name.commit"
+}
+
+st=0
+for name in $names; do
+  build "$name"
+  if [ "$mode" == check ]; then
+    if diff -r -q "$TMP/$name" "$ROOT/third_party/$name" >&2; then
+      printf 'third_party/%s: upstream and patches, unchanged\n' "$name"
+    else
+      printf 'third_party/%s: differs from upstream and patches (above)\n' "$name" >&2
+      st=1
+    fi
+    continue
+  fi
+  rsync -a --delete "$TMP/$name/" "$ROOT/third_party/$name/"
+  read -r commit version < "$TMP/$name.commit"
+  awk -v n="$name" -v c="$commit" -v v="$version" '
+    $1 == n && !/^#/ { $0 = sprintf("%-10s %-41s %-41s %-27s %s", $1, $2, c, v, $5) }
+    { print }' \
+    "$SOURCES" > "$TMP/SOURCES" && cat "$TMP/SOURCES" > "$SOURCES"
+  printf 'third_party/%s: rebuilt (%s)\n' "$name" "$version"
+done
+exit "$st"

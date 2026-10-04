@@ -1,0 +1,100 @@
+{
+	"TestSQEscapeBash": [
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/001"
+			],
+			"Args": [
+				"_agent_vm_sq_escape",
+				""
+			],
+			"Files": null,
+			"Stdout": "",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/002"
+			],
+			"Args": [
+				"_agent_vm_sq_escape",
+				"plain"
+			],
+			"Files": null,
+			"Stdout": "plain",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/003"
+			],
+			"Args": [
+				"_agent_vm_sq_escape",
+				"O'Brien"
+			],
+			"Files": null,
+			"Stdout": "O'\"'\"'Brien",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/004"
+			],
+			"Args": [
+				"_agent_vm_sq_escape",
+				"''"
+			],
+			"Files": null,
+			"Stdout": "'\"'\"''\"'\"'",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/005"
+			],
+			"Args": [
+				"_agent_vm_sq_escape",
+				"a'b'c"
+			],
+			"Files": null,
+			"Stdout": "a'\"'\"'b'\"'\"'c",
+			"Stderr": "",
+			"Code": 0
+		},
+		{
+			"Dir": "{ROOT}",
+			"Stdin": "",
+			"Snippet": "\"$@\"",
+			"Env": [
+				"HOME={T0}/006"
+			],
+			"Args": [
+				"_agent_vm_sq_escape",
+				"new\nline"
+			],
+			"Files": null,
+			"Stdout": "new\nline",
+			"Stderr": "",
+			"Code": 0
+		}
+	]
+}

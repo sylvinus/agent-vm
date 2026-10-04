@@ -1,0 +1,380 @@
+From 104bf40ebb11426fe22cb5f6d1c430fbc2e1e8f9 Mon Sep 17 00:00:00 2001
+From: Sylvain Zimmer <sylvain@sylvainzimmer.com>
+Date: Wed, 23 Sep 2026 22:57:49 +0200
+Subject: [PATCH 2/2] hostagent: relay host deletions to reverse-sshfs mounts
+
+mountInotify did not relay host deletions, so the guest never got an
+event when a file was removed on the host.
+
+The host watcher now also listens for removals and renames. When the
+path is gone, the host agent asks the reverse-sshfs mount to expect its
+removal (sshocker ExpectRemove), then sends an Inotify event with the
+new `removed` field. The guest agent removes the path in the guest,
+which emits IN_DELETE, and the host SFTP server does nothing for that
+removal, so the host keeps the path if it was created again since.
+
+This only applies to reverse-sshfs mounts with the builtin driver on
+Linux and macOS hosts. For other mounts, and for paths under a mount
+nested in the guest, nothing is sent. The guest only gets an event for
+files it had looked up or listed before.
+
+Assisted-by: Claude Opus 5.5 (1M context) <noreply@anthropic.com>
+Signed-off-by: Sylvain Zimmer <sylvain@sylvainzimmer.com>
+---
+ pkg/guestagent/api/guestservice.pb.desc |  7 +--
+ pkg/guestagent/api/guestservice.pb.go   | 20 ++++++---
+ pkg/guestagent/api/guestservice.proto   |  2 +
+ pkg/guestagent/guestagent_linux.go      |  7 +++
+ pkg/hostagent/hostagent.go              |  4 ++
+ pkg/hostagent/inotify.go                | 59 +++++++++++++++++++++++++
+ pkg/hostagent/inotify_darwin.go         |  2 +-
+ pkg/hostagent/inotify_linux.go          |  2 +-
+ pkg/hostagent/inotify_test.go           | 51 +++++++++++++++++++++
+ pkg/hostagent/mount.go                  | 10 ++++-
+ website/content/en/docs/config/mount.md |  5 ++-
+ 11 files changed, 157 insertions(+), 12 deletions(-)
+
+diff --git a/pkg/guestagent/api/guestservice.pb.desc b/pkg/guestagent/api/guestservice.pb.desc
+index fc2857a9..8d0ccb76 100644
+--- a/pkg/guestagent/api/guestservice.pb.desc
++++ b/pkg/guestagent/api/guestservice.pb.desc
+@@ -1,5 +1,5 @@
+ 
+-ã
++ý
+ guestservice.protogoogle/protobuf/empty.protogoogle/protobuf/timestamp.proto"0
+ Info(
+ local_ports (2.IPPortR
+@@ -12,11 +12,12 @@ localPorts"
+ IPPort
+ protocol (	Rprotocol
+ ip (	Rip
+-port (Rport"X
++port (Rport"r
+ Inotify
+ 
+ mount_path (	R	mountPath.
+-time (2.google.protobuf.TimestampRtime"–
++time (2.google.protobuf.TimestampRtime
++removed (Rremoved"–
+ TunnelMessage
+ id (	Rid
+ protocol (	Rprotocol
+diff --git a/pkg/guestagent/api/guestservice.pb.go b/pkg/guestagent/api/guestservice.pb.go
+index 90afe879..97bb9564 100644
+--- a/pkg/guestagent/api/guestservice.pb.go
++++ b/pkg/guestagent/api/guestservice.pb.go
+@@ -196,9 +196,11 @@ func (x *IPPort) GetPort() int32 {
+ }
+ 
+ type Inotify struct {
+-	state         protoimpl.MessageState `protogen:"open.v1"`
+-	MountPath     string                 `protobuf:"bytes,1,opt,name=mount_path,json=mountPath,proto3" json:"mount_path,omitempty"`
+-	Time          *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=time,proto3" json:"time,omitempty"`
++	state     protoimpl.MessageState `protogen:"open.v1"`
++	MountPath string                 `protobuf:"bytes,1,opt,name=mount_path,json=mountPath,proto3" json:"mount_path,omitempty"`
++	Time      *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=time,proto3" json:"time,omitempty"`
++	// removed is set when mount_path was removed on the host.
++	Removed       bool `protobuf:"varint,3,opt,name=removed,proto3" json:"removed,omitempty"`
+ 	unknownFields protoimpl.UnknownFields
+ 	sizeCache     protoimpl.SizeCache
+ }
+@@ -247,6 +249,13 @@ func (x *Inotify) GetTime() *timestamppb.Timestamp {
+ 	return nil
+ }
+ 
++func (x *Inotify) GetRemoved() bool {
++	if x != nil {
++		return x.Removed
++	}
++	return false
++}
++
+ type TunnelMessage struct {
+ 	state         protoimpl.MessageState `protogen:"open.v1"`
+ 	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+@@ -443,11 +452,12 @@ const file_guestservice_proto_rawDesc = "" +
+ 	"\x06IPPort\x12\x1a\n" +
+ 	"\bprotocol\x18\x01 \x01(\tR\bprotocol\x12\x0e\n" +
+ 	"\x02ip\x18\x02 \x01(\tR\x02ip\x12\x12\n" +
+-	"\x04port\x18\x03 \x01(\x05R\x04port\"X\n" +
++	"\x04port\x18\x03 \x01(\x05R\x04port\"r\n" +
+ 	"\aInotify\x12\x1d\n" +
+ 	"\n" +
+ 	"mount_path\x18\x01 \x01(\tR\tmountPath\x12.\n" +
+-	"\x04time\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\x04time\"\x96\x01\n" +
++	"\x04time\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\x04time\x12\x18\n" +
++	"\aremoved\x18\x03 \x01(\bR\aremoved\"\x96\x01\n" +
+ 	"\rTunnelMessage\x12\x0e\n" +
+ 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1a\n" +
+ 	"\bprotocol\x18\x02 \x01(\tR\bprotocol\x12\x12\n" +
+diff --git a/pkg/guestagent/api/guestservice.proto b/pkg/guestagent/api/guestservice.proto
+index f2321832..2f23b109 100644
+--- a/pkg/guestagent/api/guestservice.proto
++++ b/pkg/guestagent/api/guestservice.proto
+@@ -34,6 +34,8 @@ message IPPort {
+ message Inotify {
+   string mount_path = 1;
+   google.protobuf.Timestamp time = 2;
++  // removed is set when mount_path was removed on the host.
++  bool removed = 3;
+ }
+ 
+ message TunnelMessage {
+diff --git a/pkg/guestagent/guestagent_linux.go b/pkg/guestagent/guestagent_linux.go
+index d377fd0b..36c372dc 100644
+--- a/pkg/guestagent/guestagent_linux.go
++++ b/pkg/guestagent/guestagent_linux.go
+@@ -211,6 +211,13 @@ func (a *agent) Info(ctx context.Context) (*api.Info, error) {
+ 
+ func (a *agent) HandleInotify(event *api.Inotify) {
+ 	location := event.MountPath
++	if event.Removed {
++		// The host agent only sends this for mounts where the removal is a no-op on the host.
++		if err := os.Remove(location); err != nil && !errors.Is(err, os.ErrNotExist) {
++			logrus.Errorf("error in inotify handle. Event: %s, Error: %s", event, err)
++		}
++		return
++	}
+ 	if _, err := os.Stat(location); err == nil {
+ 		local := event.Time.AsTime().Local()
+ 		err := os.Chtimes(location, local, local)
+diff --git a/pkg/hostagent/hostagent.go b/pkg/hostagent/hostagent.go
+index 87b6394e..36421eeb 100644
+--- a/pkg/hostagent/hostagent.go
++++ b/pkg/hostagent/hostagent.go
+@@ -87,6 +87,9 @@ type HostAgent struct {
+ 	// this lock they can race on os.RemoveAll/bind and leave ga.sock missing.
+ 	gaSockForwardMu sync.Mutex
+ 
++	// reverse-sshfs mounts, set before the guest agent routines start.
++	mounts []*mount
++
+ 	guestAgentAliveCh     chan struct{} // closed on establishing the connection
+ 	guestAgentAliveChOnce sync.Once
+ 
+@@ -629,6 +632,7 @@ ln -sf "${SSH_AUTH_SOCK}" /run/host-services/ssh-auth.sock`
+ 		if err != nil {
+ 			errs = append(errs, err)
+ 		}
++		a.mounts = mounts
+ 		a.cleanUp(func() error {
+ 			var unmountErrs []error
+ 			for _, m := range mounts {
+diff --git a/pkg/hostagent/inotify.go b/pkg/hostagent/inotify.go
+index be906f78..a80acb9a 100644
+--- a/pkg/hostagent/inotify.go
++++ b/pkg/hostagent/inotify.go
+@@ -5,6 +5,7 @@ package hostagent
+ 
+ import (
+ 	"context"
++	"errors"
+ 	"fmt"
+ 	"os"
+ 	"path"
+@@ -63,6 +64,19 @@ func (a *HostAgent) startInotify(ctx context.Context) error {
+ 			watchPath := watchEvent.Path()
+ 			stat, err := os.Stat(watchPath)
+ 			if err != nil {
++				if !errors.Is(err, os.ErrNotExist) {
++					continue
++				}
++				if guestPath, ok := a.expectRemove(watchPath); ok {
++					event := &guestagentapi.Inotify{
++						MountPath: guestPath,
++						Time:      timestamppb.Now(),
++						Removed:   true,
++					}
++					if err := inotifyClient.Send(event); err != nil {
++						return fmt.Errorf("inotify stream closed: %w", err)
++					}
++				}
+ 				continue
+ 			}
+ 
+@@ -109,6 +123,51 @@ func (a *HostAgent) setupWatchers(events chan notify.EventInfo) error {
+ 	return nil
+ }
+ 
++// expectRemove prepares the relay of the removal of hostPath: the guest agent removes the path in the guest,
++// so that the guest emits an inotify event, and the mount must make that removal a no-op on the host,
++// as the path may have been created again on the host since.
++// It returns the path to remove in the guest, or false when the mount serving hostPath cannot
++// make the removal a no-op, e.g., for 9p and virtiofs.
++func (a *HostAgent) expectRemove(hostPath string) (string, bool) {
++	for symlink, original := range mountSymlinks {
++		if isUnder(hostPath, symlink, filepath.Separator) {
++			hostPath = original + strings.TrimPrefix(hostPath, symlink)
++			break
++		}
++	}
++	// The innermost mount serves the path.
++	var served *mount
++	for _, m := range a.mounts {
++		if isUnder(hostPath, filepath.Clean(m.location), filepath.Separator) &&
++			(served == nil || len(filepath.Clean(m.location)) > len(filepath.Clean(served.location))) {
++			served = m
++		}
++	}
++	if served == nil || served.expectRemove == nil {
++		return "", false
++	}
++	rel, err := filepath.Rel(filepath.Clean(served.location), hostPath)
++	if err != nil {
++		return "", false
++	}
++	guestPath := path.Join(served.mountPoint, filepath.ToSlash(rel))
++	// A mount nested in the guest at guestPath would receive the removal, without making it a no-op.
++	for _, m := range a.mounts {
++		if m != served && isUnder(m.mountPoint, served.mountPoint, '/') && (guestPath == m.mountPoint || isUnder(guestPath, m.mountPoint, '/')) {
++			return "", false
++		}
++	}
++	if !served.expectRemove(hostPath) {
++		return "", false
++	}
++	return guestPath, true
++}
++
++// isUnder reports whether p is strictly under dir.
++func isUnder(p, dir string, sep byte) bool {
++	return len(p) > len(dir) && strings.HasPrefix(p, dir) && (p[len(dir)] == sep || strings.HasSuffix(dir, string(sep)))
++}
++
+ func translateToGuestPath(hostPath string, symlinks, locations map[string]string) string {
+ 	result := hostPath
+ 
+diff --git a/pkg/hostagent/inotify_darwin.go b/pkg/hostagent/inotify_darwin.go
+index 821cb805..7270fff6 100644
+--- a/pkg/hostagent/inotify_darwin.go
++++ b/pkg/hostagent/inotify_darwin.go
+@@ -6,5 +6,5 @@ package hostagent
+ import "github.com/rjeczalik/notify"
+ 
+ func GetNotifyEvent() notify.Event {
+-	return notify.Create | notify.Write | notify.FSEventsInodeMetaMod
++	return notify.Create | notify.Write | notify.FSEventsInodeMetaMod | notify.Remove | notify.Rename
+ }
+diff --git a/pkg/hostagent/inotify_linux.go b/pkg/hostagent/inotify_linux.go
+index ff22e4d1..fd8f6fcd 100644
+--- a/pkg/hostagent/inotify_linux.go
++++ b/pkg/hostagent/inotify_linux.go
+@@ -6,5 +6,5 @@ package hostagent
+ import "github.com/rjeczalik/notify"
+ 
+ func GetNotifyEvent() notify.Event {
+-	return notify.Create | notify.Write | notify.InAttrib
++	return notify.Create | notify.Write | notify.InAttrib | notify.Remove | notify.Rename
+ }
+diff --git a/pkg/hostagent/inotify_test.go b/pkg/hostagent/inotify_test.go
+index 6adf0353..d07eeb97 100644
+--- a/pkg/hostagent/inotify_test.go
++++ b/pkg/hostagent/inotify_test.go
+@@ -4,11 +4,62 @@
+ package hostagent
+ 
+ import (
++	"path/filepath"
+ 	"testing"
+ 
+ 	"gotest.tools/v3/assert"
+ )
+ 
++func TestExpectRemove(t *testing.T) {
++	// Host paths use the host separator, guest paths always use "/".
++	host := filepath.FromSlash
++	var got []string
++	record := func(name string, supported bool) func(string) bool {
++		return func(hostPath string) bool {
++			got = append(got, name+":"+hostPath)
++			return supported
++		}
++	}
++	a := &HostAgent{mounts: []*mount{
++		{location: host("/Users/user/project"), mountPoint: "/mnt/project", expectRemove: record("project", true)},
++		{location: host("/Users/user/project/vendor"), mountPoint: "/mnt/project/vendor", expectRemove: record("vendor", true)},
++		{location: host("/Users/user/other"), mountPoint: "/mnt/project/sub", expectRemove: record("other", true)},
++		{location: host("/Users/user/9p"), mountPoint: "/Users/user/9p", expectRemove: record("9p", false)},
++	}}
++	mountSymlinks = map[string]string{host("/private/Users/user/project"): host("/Users/user/project")}
++	t.Cleanup(func() { mountSymlinks = make(map[string]string) })
++
++	tests := []struct {
++		hostPath  string
++		wantGuest string
++		wantCall  string
++	}{
++		{hostPath: "/Users/user/project/a.txt", wantGuest: "/mnt/project/a.txt", wantCall: "project:/Users/user/project/a.txt"},
++		{hostPath: "/Users/user/project/vendor/b.txt", wantGuest: "/mnt/project/vendor/b.txt", wantCall: "vendor:/Users/user/project/vendor/b.txt"},
++		{hostPath: "/private/Users/user/project/c.txt", wantGuest: "/mnt/project/c.txt", wantCall: "project:/Users/user/project/c.txt"},
++		{hostPath: "/Users/user/9p/d.txt", wantCall: "9p:/Users/user/9p/d.txt"},
++		{hostPath: "/Users/user/project"},
++		{hostPath: "/Users/user/project2/e.txt"},
++		// Hidden in the guest by the mount of /Users/user/other.
++		{hostPath: "/Users/user/project/sub/f.txt"},
++		{hostPath: "/Users/user/project/sub"},
++		{hostPath: "/Users/user/project/subdir/g.txt", wantGuest: "/mnt/project/subdir/g.txt", wantCall: "project:/Users/user/project/subdir/g.txt"},
++	}
++	for _, tc := range tests {
++		t.Run(tc.hostPath, func(t *testing.T) {
++			got = nil
++			guestPath, ok := a.expectRemove(host(tc.hostPath))
++			assert.Equal(t, guestPath, tc.wantGuest)
++			assert.Equal(t, ok, tc.wantGuest != "")
++			if tc.wantCall == "" {
++				assert.Equal(t, len(got), 0)
++			} else {
++				assert.DeepEqual(t, got, []string{host(tc.wantCall)})
++			}
++		})
++	}
++}
++
+ func TestTranslateToGuestPath(t *testing.T) {
+ 	tests := []struct {
+ 		name      string
+diff --git a/pkg/hostagent/mount.go b/pkg/hostagent/mount.go
+index ebc4b77c..0398268c 100644
+--- a/pkg/hostagent/mount.go
++++ b/pkg/hostagent/mount.go
+@@ -19,7 +19,12 @@ import (
+ )
+ 
+ type mount struct {
+-	close func() error
++	location   string
++	mountPoint string
++	// expectRemove makes the next removal of a host path by the guest a no-op on the host.
++	// It returns false when unsupported.
++	expectRemove func(hostPath string) bool
++	close        func() error
+ }
+ 
+ // mountPathAndSftpServer returns location in the native path form, and the
+@@ -118,6 +123,9 @@ func (a *HostAgent) setupMount(ctx context.Context, m limatype.Mount) (*mount, e
+ 	}
+ 
+ 	res := &mount{
++		location:     m.Location,
++		mountPoint:   *m.MountPoint,
++		expectRemove: rsf.ExpectRemove,
+ 		close: func() error {
+ 			logrus.Infof("Unmounting %#q", resolvedLocation)
+ 			if err := rsf.Close(); err != nil {
+diff --git a/website/content/en/docs/config/mount.md b/website/content/en/docs/config/mount.md
+index 88d16af9..339e9d1f 100644
+--- a/website/content/en/docs/config/mount.md
++++ b/website/content/en/docs/config/mount.md
+@@ -237,4 +237,7 @@ mounts:
+ 
+ #### Caveats
+ - For `mountType: 9p`, Inotify events are not triggered for nested files from the listening directory.
+-- Inotify events are not triggered when files are removed from host
++- Inotify events are not triggered when files are removed from host, except for `mountType: reverse-sshfs`
++  with `sftpDriver: builtin` on Linux and macOS hosts.
++  There, the guest agent removes the file in the guest, and the host ignores that removal.
++  The guest only gets an event for files it had looked up or listed before.
+-- 
+2.47.3
+

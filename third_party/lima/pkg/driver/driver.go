@@ -1,0 +1,161 @@
+// SPDX-FileCopyrightText: Copyright The Lima Authors
+// SPDX-License-Identifier: Apache-2.0
+
+package driver
+
+import (
+	"context"
+	"errors"
+	"net"
+
+	"github.com/lima-vm/lima/v2/pkg/hostagent/events"
+	"github.com/lima-vm/lima/v2/pkg/limatype"
+)
+
+// ErrDriverNotScreenshotter is returned when the active driver does not implement Screenshotter.
+var ErrDriverNotScreenshotter = errors.New("driver does not support screenshots")
+
+// ErrNoDisplay is returned when the VM has no display configured.
+var ErrNoDisplay = errors.New("no display configured")
+
+// VsockEventEmitter is an optional interface for drivers to emit vsock events.
+type VsockEventEmitter interface {
+	SetVsockEventCallback(callback func(*events.VsockEvent))
+}
+
+// Screenshotter is an optional interface for drivers that can capture the VM display.
+// format is "png" or "bmp"; an empty string defaults to "png".
+type Screenshotter interface {
+	CaptureScreenshot(format string) ([]byte, error)
+}
+
+// Lifecycle defines basic lifecycle operations.
+type Lifecycle interface {
+	// Validate returns error if the current driver isn't support for given config
+	Validate(_ context.Context) error
+
+	// Create is called on creating the instance for the first time.
+	// (e.g., creating "vz-identifier" file)
+	//
+	// Create MUST return nil when it is called against an existing instance.
+	//
+	// Create does not create the disks.
+	Create(_ context.Context) error
+
+	// CreateDisk returns error if the current driver fails in creating disk
+	CreateDisk(_ context.Context) error
+
+	// Start is used for booting the vm using driver instance
+	// It returns a chan error on successful boot
+	// The second argument may contain error occurred while starting driver
+	Start(_ context.Context) (chan error, error)
+
+	// Stop will terminate the running vm instance.
+	// It returns error if there are any errors during Stop
+	Stop(_ context.Context) error
+
+	Delete(_ context.Context) error
+
+	InspectStatus(_ context.Context, inst *limatype.Instance) string
+
+	// BootScripts returns the content of boot scripts to be injected into the vm.
+	// The key must be "boot.<OS>/<SCRIPT>" or "<SCRIPT>" (deprecated alias for "boot.Linux/<SCRIPT>").
+	BootScripts(ctx context.Context) (map[string][]byte, error)
+}
+
+// GUI defines GUI-related operations.
+type GUI interface {
+	// RunGUI is for starting GUI synchronously by hostagent. This method should be wait and return only after vm terminates
+	// It returns error if there are any failures
+	RunGUI(context.Context) error
+
+	ChangeDisplayPassword(ctx context.Context, password string) error
+	DisplayConnection(ctx context.Context) (string, error)
+}
+
+// SnapshotManager defines operations for managing snapshots.
+type SnapshotManager interface {
+	CreateSnapshot(ctx context.Context, tag string) error
+	ApplySnapshot(ctx context.Context, tag string) error
+	DeleteSnapshot(ctx context.Context, tag string) error
+	ListSnapshots(ctx context.Context) (string, error)
+}
+
+// GuestAgent defines operations for the guest agent.
+type GuestAgent interface {
+	// ForwardGuestAgent returns if the guest agent sock needs forwarding by host agent.
+	ForwardGuestAgent(context.Context) bool
+
+	// GuestAgentConn returns the guest agent connection, or nil (if forwarded by ssh).
+	GuestAgentConn(_ context.Context) (net.Conn, string, error)
+}
+
+// Driver interface is used by hostagent for managing vm.
+type Driver interface {
+	Lifecycle
+	GUI
+	SnapshotManager
+	GuestAgent
+
+	Info(context.Context) Info
+
+	// Configure fills driver-specific configuration defaults, validates
+	// the configuration, and sets up the driver for the given instance.
+	Configure(ctx context.Context, inst *limatype.Instance) (*ConfiguredDriver, error)
+
+	SSHAddress(ctx context.Context) (string, error)
+
+	// AdditionalSetupForSSH provides additional setup required for SSH connection.
+	// It is called after VM is started, before first SSH connection.
+	// It returns an error if the setup fails.
+	AdditionalSetupForSSH(ctx context.Context) error
+}
+
+type ConfiguredDriver struct {
+	Driver
+}
+
+// Info describes a driver instance: its identity, the guest-agent transport,
+// the instance directory and the driver's capability flags. It is returned by
+// Driver.Info and, for external drivers, carried as JSON in InfoResponse.
+type Info struct {
+	// Name is the driver name, e.g. "qemu", "vz", "wsl2", "hcs" or "krunkit".
+	Name string `json:"name"`
+	// VsockPort is the vsock port used by the guest agent, or 0 when vsock is
+	// not used.
+	VsockPort int `json:"vsockPort"`
+	// VirtioPort is the virtio-serial port name used by the guest agent, or
+	// empty when virtio-serial is not used.
+	VirtioPort string `json:"virtioPort"`
+	// InstanceDir is the absolute path of the instance directory.
+	InstanceDir string `json:"instanceDir,omitempty"`
+	// Features declares the driver's optional capabilities and behaviors.
+	Features DriverFeatures `json:"features"`
+}
+
+// DriverFeatures declares optional capabilities and behaviors of a driver. The
+// host agent reads them (via Info) to adapt provisioning, SSH and forwarding.
+type DriverFeatures struct {
+	// CanRunGUI reports that the driver can display a GUI via RunGUI.
+	CanRunGUI bool `json:"canRunGui,omitempty"`
+	// DynamicSSHAddress reports that the SSH address is not known until after
+	// Start, so the host agent re-queries SSHAddress once the VM is running.
+	DynamicSSHAddress bool `json:"dynamicSSHAddress"`
+	// StaticSSHPort reports that the driver uses a fixed SSH port; when false the
+	// host agent allocates a free local port.
+	StaticSSHPort bool `json:"staticSSHPort"`
+	// SkipSocketForwarding reports that the host agent should skip unix-socket
+	// forwarding for this driver.
+	SkipSocketForwarding bool `json:"skipSocketForwarding"`
+	// NoCloudInit reports that the driver does not use cloud-init, so the host
+	// agent skips building the cloud-init seed.
+	NoCloudInit bool `json:"noCloudInit"`
+	// RosettaEnabled reports that Rosetta is enabled for the guest.
+	RosettaEnabled bool `json:"rosettaEnabled"`
+	// RosettaBinFmt reports that Rosetta is registered as a binfmt_misc handler
+	// in the guest.
+	RosettaBinFmt bool `json:"rosettaBinFmt"`
+	// SupportedImageFormats lists the disk image formats the driver can boot
+	// (e.g. "raw", "qcow2"), used to select or convert the instance image.
+	SupportedImageFormats []string `json:"supportedImageFormats,omitempty"`
+}
