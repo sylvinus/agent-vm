@@ -86,11 +86,13 @@ check-windows:
 	GOOS=windows GOARCH=arm64 $(GO) vet -tags $(TAGS) . ./cmd/... ./internal/...
 
 # From this module, so that each library is built with the others patched.
-# Lima's MCP packages and sshocker's command are not part of agent-vm.
+# Lima's MCP packages and sshocker's command are not part of agent-vm (-e:
+# listing them needs sums nothing built here uses; grep keeps them out of
+# the tests).
 test-third-party:
 	$(GO) test -vet=off -race github.com/pkg/sftp/...
 	$(GO) test -race github.com/lima-vm/sshocker/pkg/...
-	$(GO) test $$($(GO) list github.com/lima-vm/lima/v2/pkg/... | grep -v /mcp)
+	$(GO) test $$($(GO) list -e github.com/lima-vm/lima/v2/pkg/... | grep -v /mcp)
 	$(GO) test github.com/containers/gvisor-tap-vsock/pkg/...
 
 check-third-party:
