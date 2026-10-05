@@ -49,7 +49,7 @@ if _agent_vm_host_port_open "$first"; then
   printf '  skip code launch tests (port %s is taken on this machine)\n' "$first"
 else
   out="$(rec code)"
-  rec_has "agent-vm VSCODE_PROXY_URI=http://localhost:{{port}}/ code-server --config /home/u/.config/code-server/agent-vm-lima-x.yaml --bind-addr 127.0.0.1:$first --cookie-suffix $PV" \
+  rec_has "agent-vm VSCODE_PROXY_URI= code-server --config /home/u/.config/code-server/agent-vm-lima-x.yaml --bind-addr 127.0.0.1:$first --cookie-suffix $PV" \
     && pass "code-server on the VM's loopback, the VM's own config and cookie" \
     || fail "code: $(grep 'code-server --config' "$REC")"
   rec_has "--disable-getting-started-override --link-protection-trusted-domains https://claude.com/cai/oauth --link-protection-trusted-domains https://platform.claude.com/oauth --vscode-option" \
