@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -57,8 +58,14 @@ func TestDoctor(t *testing.T) {
 	os.WriteFile(se.state.Marker(state.ScratchOf, "x-scratch-0000aaaa"), []byte("999999999\n"), 0o644)
 	exec.Command("git", "-C", se.proj, "config", "core.fsmonitor", "./mon.sh").Run()
 	o = out()
+	// Permission bits mean little on Windows (see doctor.go): only the
+	// count is said there.
+	envReadable, envPrivate := "  warn  env is readable by other users on this machine (mode 644)", "  ok    env: 2 key(s), private to you (mode 600)"
+	if runtime.GOOS == "windows" {
+		envReadable, envPrivate = "  -     env: 2 key(s)", "  -     env: 2 key(s)"
+	}
 	for _, want := range []string{
-		"  warn  env is readable by other users on this machine (mode 644)",
+		envReadable,
 		"  warn  scratch VM x-scratch-0000aaaa was left by a run that did not finish",
 		"        core.fsmonitor = ./mon.sh",
 	} {
@@ -67,7 +74,7 @@ func TestDoctor(t *testing.T) {
 		}
 	}
 	os.Chmod(se.state.Path("env"), 0o600)
-	if o = out(); !strings.Contains(o, "  ok    env: 2 key(s), private to you (mode 600)") {
+	if o = out(); !strings.Contains(o, envPrivate) {
 		t.Errorf("env:\n%s", o)
 	}
 	// A mount type the host does not enforce; doctor changes nothing.

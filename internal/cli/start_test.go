@@ -119,7 +119,7 @@ func TestStartNewVM(t *testing.T) {
 		t.Errorf("payload: %q", se.g.payloads)
 	}
 	last := se.g.ran[len(se.g.ran)-1]
-	if last[0] != se.proj || last[1] != "zsh" || last[len(last)-2] != "echo" || last[len(last)-1] != "hi" {
+	if last[0] != paths.Guest(se.proj) || last[1] != "zsh" || last[len(last)-2] != "echo" || last[len(last)-1] != "hi" {
 		t.Errorf("command: %q", last)
 	}
 	for _, m := range []string{state.VersionOf, state.BuiltByOf} {

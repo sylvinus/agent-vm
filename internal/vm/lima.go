@@ -136,13 +136,13 @@ func Confined(inst *Instance) error {
 }
 
 // LimaOverrides are the default.yaml and override.yaml found in the Lima
-// home home, which agent-vm refuses.
+// home's _config: shown Host-spelled, as user-facing host paths are.
 func LimaOverrides(home string) []string {
 	var out []string
 	for _, f := range []string{filenames.Default, filenames.Override} {
 		p := filepath.Join(home, filenames.ConfigDir, f)
 		if _, err := os.Lstat(p); err == nil {
-			out = append(out, p)
+			out = append(out, paths.Host(p))
 		}
 	}
 	return out

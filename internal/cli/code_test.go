@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/sylvinus/agent-vm/internal/bashref"
+	"github.com/sylvinus/agent-vm/internal/paths"
 	"github.com/sylvinus/agent-vm/internal/vm"
 	"github.com/sylvinus/agent-vm/internal/vmname"
 )
@@ -62,7 +63,7 @@ func TestCode(t *testing.T) {
 		"--config /home/u/.config/code-server/agent-vm-h.yaml", "--disable-telemetry", "--disable-update-check", "--disable-workspace-trust",
 		"--disable-getting-started-override", "--link-protection-trusted-domains https://claude.com/cai/oauth",
 		"--link-protection-trusted-domains https://platform.claude.com/oauth", "--vscode-option disable-experiments",
-		"--vscode-option disable-extension=GitHub.copilot-chat", "VSCODE_PROXY_URI=", se.proj} {
+		"--vscode-option disable-extension=GitHub.copilot-chat", "VSCODE_PROXY_URI=", paths.Guest(se.proj)} {
 		if !strings.Contains(args, w) {
 			t.Errorf("missing %q in %s", w, args)
 		}

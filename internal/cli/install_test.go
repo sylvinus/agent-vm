@@ -13,6 +13,8 @@ import (
 func TestInstall(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	// Go reads the home from USERPROFILE on Windows, not HOME.
+	t.Setenv("USERPROFILE", home)
 	bin := filepath.Join(t.TempDir(), "bin")
 	t.Setenv("AGENT_VM_BIN_DIR", bin)
 	te := newTestEnv(t, vmtest.New())
