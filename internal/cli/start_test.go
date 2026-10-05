@@ -77,7 +77,7 @@ func newStartEnv(t *testing.T, answers ...string) *startEnv {
 	g := &guest{fake: fake}
 	fake.ShellFunc = g.shell
 	te := newTestEnv(t, fake, answers...)
-	te.state = state.Dir(filepath.Join(home, ".agent-vm"))
+	te.state = state.Dir(home + "/.agent-vm")
 	os.MkdirAll(string(te.state), 0o755)
 	return &startEnv{testEnv: te, g: g, home: home, proj: proj}
 }
@@ -730,9 +730,18 @@ func TestStartScratchAsk(t *testing.T) {
 		t.Fatalf("scratch: %d %s", code, se.out())
 	}
 	log := se.fake.CallLog()
-	shell, del := strings.LastIndex(log, " zsh -l\n"), strings.Index(log, "delete "+vmname.Name(se.proj)[:5])
+	// The scratch VM's own name, which socket room may cut short: read
+	// it, rather than the folder's.
+	name := ""
+	if i := strings.Index(se.out(), "Deleting scratch VM '"); i >= 0 {
+		rest := se.out()[i+len("Deleting scratch VM '"):]
+		if j := strings.IndexByte(rest, '\''); j >= 0 {
+			name = rest[:j]
+		}
+	}
+	shell, del := strings.LastIndex(log, " zsh -l\n"), strings.Index(log, "delete "+name)
 	if strings.Count(se.out(), "Delete scratch VM '") != 2 || !strings.Contains(se.out(), "Type 'exit' to be asked again.") ||
-		shell < 0 || del < shell {
+		name == "" || shell < 0 || del < shell {
 		t.Errorf("asked: %s\n%s", se.out(), log)
 	}
 	if len(se.fake.VMs) != 1 {
