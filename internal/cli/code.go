@@ -202,7 +202,11 @@ func (s *start) codeSession() int {
 	// Bound to the VM's loopback, which Lima forwards to this machine's
 	// only. The cookie suffix keeps sessions apart at 127.0.0.1.
 	// --disable-proxy: no route from the browser to the VM's other ports;
-	// VSCODE_PROXY_URI sends a link to localhost:<port> to that port here.
+	// empty VSCODE_PROXY_URI leaves a link to localhost:<port> at that port
+	// here instead of rewriting it through the editor's /proxy/. An absolute
+	// template such as http://localhost:{{port}}/ breaks the workbench:
+	// code-server runs new URL() on it before substituting {{port}}, which
+	// throws Invalid URL (coder/code-server#6504).
 	// No experiments, and the built-in Copilot Chat never loads. Claude
 	// Code's login pages open without the link prompt, those paths only.
 	//
@@ -210,7 +214,7 @@ func (s *start) codeSession() int {
 	// (netguard), but any VM can listen on a port Lima forwards to this
 	// machine, and a page it serves can send the browser, with this editor's
 	// cookie, to a host name it chose.
-	return s.lima(tty, "VSCODE_PROXY_URI=http://localhost:{{port}}/", "code-server",
+	return s.lima(tty, "VSCODE_PROXY_URI=", "code-server",
 		"--config", cfg,
 		"--bind-addr", "127.0.0.1:"+strconv.Itoa(port),
 		"--cookie-suffix", s.name,
