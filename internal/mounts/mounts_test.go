@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/sylvinus/agent-vm/internal/bashref"
+	"github.com/sylvinus/agent-vm/internal/paths"
 )
 
 // sandbox: a home with a project in it, and folders around.
@@ -19,8 +20,11 @@ type sandbox struct {
 func newSandbox(t *testing.T) sandbox {
 	t.Helper()
 	root, _ := filepath.EvalSymlinks(t.TempDir())
-	s := sandbox{root: root, home: filepath.Join(root, "home"), proj: filepath.Join(root, "home", "proj")}
-	s.state = filepath.Join(s.home, ".agent-vm")
+	// Host-spelled, as the callers pass their folders: mixed separators
+	// never compare on Windows.
+	root = paths.Host(root)
+	s := sandbox{root: root, home: root + "/home", proj: root + "/home/proj"}
+	s.state = s.home + "/.agent-vm"
 	for _, d := range []string{s.proj + "/sub", s.state, root + "/data/a", root + "/data/b", root + "/bare.git/objects", root + "/bare.git/refs", root + "/repo/.git/hooks", s.home + "/.lima"} {
 		os.MkdirAll(d, 0o755)
 	}

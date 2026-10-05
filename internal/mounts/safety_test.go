@@ -61,8 +61,12 @@ func TestUnsafeLocationNoCase(t *testing.T) {
 	s := newSandbox(t)
 	refs := Refs(s.home, filepath.Join(s.root, "self"), s.state, filepath.Join(s.state, "lima"))
 	upper := strings.ToUpper(s.home)
-	if _, bad := UnsafeLocation(upper, refs); bad {
-		t.Error("refused where case matters")
+	// On a file system that ignores case the uppercased home is the
+	// home folder, and refused below; here case matters.
+	if !paths.NoCase() {
+		if _, bad := UnsafeLocation(upper, refs); bad {
+			t.Error("refused where case matters")
+		}
 	}
 	old := paths.NoCase
 	paths.NoCase = func() bool { return true }

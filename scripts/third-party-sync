@@ -56,6 +56,12 @@ build() {
     git -C "$dir" apply --whitespace=nowarn "$p" \
       || die "$name: ${p#"$ROOT"/} does not apply on $commit"
   done
+  # Submodules (Lima's harnesses under hack/bats/lib) are never vendored:
+  # the clone above leaves their folders empty, and empty folders cannot be
+  # committed, so without this the check always differs.
+  git -C "$dir" ls-files -s | awk '$1 == "160000" { sub(/^[^\t]*\t/, ""); print }' \
+    | while IFS= read -r g; do rm -rf "$dir/$g"; done
+  find "$dir" -type d -empty -delete
   rm -rf "$dir/.git"
   if [ "$omit" != - ]; then
     local o

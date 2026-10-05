@@ -120,7 +120,7 @@ func WindowsPrereqs(out, w io.Writer) bool {
 		os.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 		return true
 	}
-	fmt.Fprintf(w, "Error: Lima needs '%s' on PATH (not found).\n  Install QEMU with: winget install SoftwareFreedom.QEMU\n  QEMU also needs the 'Windows Hypervisor Platform' Windows feature (see 'agent-vm doctor').\n", bin)
+	fmt.Fprintf(w, "Error: Lima needs '%s' on PATH (not found).\n  Install QEMU with: winget install -e --id SoftwareFreedomConservancy.QEMU\n  QEMU also needs the 'Windows Hypervisor Platform' Windows feature (see 'agent-vm doctor').\n", bin)
 	return false
 }
 

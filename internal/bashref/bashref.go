@@ -66,7 +66,10 @@ func Exec(t testing.TB, c Cmd) Result {
 	if c.Dir == "" {
 		c.Dir = Root()
 	}
-	c.Env = append([]string{"HOME=" + t.TempDir()}, c.Env...)
+	// Resolved, as the tests' own folders are: on macOS /var is a link to
+	// /private/var, and a second spelling of the same folder gets its
+	// recorded paths read back under the wrong one (see paths).
+	c.Env = append([]string{"HOME=" + evalOr(t.TempDir())}, c.Env...)
 	return replay(t, c)
 }
 

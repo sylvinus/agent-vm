@@ -28,6 +28,9 @@ func newBox(t *testing.T) *box {
 		t.Skip("no git")
 	}
 	root, _ := filepath.EvalSymlinks(t.TempDir())
+	// Host-spelled, as the callers pass their folders: mixed separators
+	// never compare on Windows.
+	root = paths.Host(root)
 	b := &box{t: t, root: root, home: root + "/home", proj: root + "/home/proj", sb: root + "/sb"}
 	b.state = b.home + "/.agent-vm"
 	b.volumes = b.state + "/volumes"
@@ -89,6 +92,12 @@ func (b *box) compare(name string) []string {
 	g := append([]string(nil), got...)
 	sort.Strings(g)
 	sort.Strings(want)
+	if name == "other capitals" && paths.NoCase() {
+		// Where case is ignored the uppercased path names the hooks
+		// folder, which the Linux oracle cannot see. The table below
+		// checks Go's lines.
+		return got
+	}
 	if strings.Join(g, "\n") != strings.Join(want, "\n") {
 		b.t.Errorf("%s:\n go:\n  %s\n bash:\n  %s", name, strings.Join(g, "\n  "), strings.Join(want, "\n  "))
 	}

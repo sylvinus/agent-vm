@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/sylvinus/agent-vm/internal/bashref"
+	"github.com/sylvinus/agent-vm/internal/paths"
 )
 
 var dirs = []string{
@@ -138,7 +139,9 @@ func TestIsScratch(t *testing.T) {
 
 func TestAbsDir(t *testing.T) {
 	tmp := t.TempDir()
-	sub := filepath.Join(tmp, "sub")
+	// Host-spelled, as AbsDir spells its answers.
+	tmp = paths.Host(tmp)
+	sub := tmp + "/sub"
 	if err := os.Mkdir(sub, 0o755); err != nil {
 		t.Fatal(err)
 	}

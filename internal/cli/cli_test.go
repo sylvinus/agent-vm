@@ -37,7 +37,7 @@ func TestMainBash(t *testing.T) {
 	t.Cleanup(func() { version.Version = saved })
 	version.Version = strings.TrimSpace(bashref.Script(t, "", nil, `echo "$AGENT_VM_VERSION"`).Stdout)
 
-	proj := t.TempDir()
+	proj, _ := filepath.EvalSymlinks(t.TempDir())
 	t.Chdir(proj)
 	t.Setenv("PWD", proj)
 	cases := [][]string{

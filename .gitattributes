@@ -4,6 +4,10 @@
 /scripts/* text eol=lf
 /tests/sftp/run text eol=lf
 
+# Go files too: a CRLF checkout on Windows breaks the tests that compare
+# them byte for byte (limaembed's copy of limactl's hostagent command).
+*.go text eol=lf
+
 # Byte for byte as upstream and the patches have them: no line ending
 # conversion, or the patches stop applying and the sync check fails.
 /third_party/** -text

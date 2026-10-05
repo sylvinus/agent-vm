@@ -206,7 +206,8 @@ out="$( cd "$RR" && env ${sign_env[@]+"${sign_env[@]}"} AGENT_VM_TAP="$SB/tap" A
 case "$rc:$out" in 0:*"agent-vm $V is released"*) pass "real run: released" ;; *) fail "real run: $out" ;; esac
 check "real run: the tag is on origin" "$(git -C "$RO" tag)" "v$V"
 check "real run: the latest release (no --latest=false)" "$(grep -c -- '--latest=false' "$SB/gh-create.log")" "0"
-check "real run: one tarball per platform, and their sums" "$(ls "$SB/assets" | tr '\n' ' ')" \
+# Byte order (LC_ALL=C): macOS sorts these differently in its locale.
+check "real run: one tarball per platform, and their sums" "$(LC_ALL=C ls "$SB/assets" | tr '\n' ' ')" \
   "SHA256SUMS agent-vm-$V-linux-amd64.tar.gz agent-vm-$V-linux-arm64.tar.gz agent-vm-$V-windows-amd64.tar.gz agent-vm-$V-windows-arm64.tar.gz "
 check "real run: Windows's is agent-vm.exe" \
   "$(tar -tzf "$SB/assets/agent-vm-$V-windows-arm64.tar.gz" | grep -c "^agent-vm-$V/agent-vm.exe$")" "1"
@@ -226,7 +227,7 @@ while read -r sum f; do
 done < "$SB/assets/SHA256SUMS"
 check "real run: SHA256SUMS matches the tarballs" "$sums_ok" "1"
 check "real run: each tarball has its platform's binary, agent-vm.sh and the docs" \
-  "$(tar -tzf "$SB/assets/agent-vm-$V-linux-arm64.tar.gz" | sort | tr '\n' ' ')$(tar -xzOf "$SB/assets/agent-vm-$V-linux-arm64.tar.gz" "agent-vm-$V/agent-vm")" \
+  "$(tar -tzf "$SB/assets/agent-vm-$V-linux-arm64.tar.gz" | LC_ALL=C sort | tr '\n' ' ')$(tar -xzOf "$SB/assets/agent-vm-$V-linux-arm64.tar.gz" "agent-vm-$V/agent-vm")" \
   "agent-vm-$V/ agent-vm-$V/CHANGELOG.md agent-vm-$V/LICENSE agent-vm-$V/README.md agent-vm-$V/agent-vm agent-vm-$V/agent-vm.sh agent-vm-$V/runtime.example.sh linux-arm64"
 arm="$(awk '$2 ~ /linux-arm64/ { print $1 }' "$SB/assets/SHA256SUMS")"
 intel="$(awk '$2 ~ /linux-amd64/ { print $1 }' "$SB/assets/SHA256SUMS")"

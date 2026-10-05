@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/sylvinus/agent-vm/internal/paths"
 	"github.com/sylvinus/agent-vm/internal/state"
 	"github.com/sylvinus/agent-vm/internal/vm"
 	"github.com/sylvinus/agent-vm/internal/vm/vmtest"
@@ -56,6 +57,9 @@ func newStartEnv(t *testing.T, answers ...string) *startEnv {
 		t.Skip("no git")
 	}
 	home, _ := filepath.EvalSymlinks(t.TempDir())
+	// Host-spelled, as AbsDir spells the callers' folders: mixed
+	// separators never compare on Windows.
+	home = paths.Host(home)
 	t.Setenv("HOME", home)
 	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
 	os.Unsetenv("GIT_CONFIG_GLOBAL")
@@ -65,7 +69,7 @@ func newStartEnv(t *testing.T, answers ...string) *startEnv {
 	t.Setenv("AGENT_VM_SSHFS_CACHE", "")
 	t.Setenv("TERM", "")
 	os.WriteFile(filepath.Join(home, ".gitconfig"), []byte("[safe]\n\tbareRepository = explicit\n"), 0o644)
-	proj := filepath.Join(home, "proj")
+	proj := home + "/proj"
 	os.MkdirAll(proj, 0o755)
 	t.Chdir(proj)
 	t.Setenv("PWD", proj)
@@ -250,6 +254,8 @@ func TestStartFrom01(t *testing.T) {
 func TestStartRefusesHome(t *testing.T) {
 	se := newStartEnv(t)
 	se.base()
+	// Go reads the home from USERPROFILE on Windows, not HOME.
+	t.Setenv("USERPROFILE", se.home)
 	t.Chdir(se.home)
 	t.Setenv("PWD", se.home)
 	if se.run("shell") != 1 || !strings.Contains(se.out(), "refusing to share "+se.home+" with a VM: it is, or contains, your home directory") {
@@ -278,8 +284,9 @@ func TestStartReadonly(t *testing.T) {
 	if v := se.fake.VMs[name]; v.Mounts[0].Writable {
 		t.Error("writable under --readonly")
 	}
-	// An rw volume too: read-only, said so.
-	vol := filepath.Join(t.TempDir(), "vol")
+	// An rw volume too: read-only, said so. Host-spelled: entries spell
+	// their sources so.
+	vol := paths.Host(filepath.Join(t.TempDir(), "vol"))
 	os.MkdirAll(vol, 0o755)
 	os.WriteFile(se.state.Path("volumes"), []byte(vol+":/mnt/vol:rw\n"), 0o644)
 	se.fake.VMs[name].Status = vm.Stopped
@@ -364,14 +371,14 @@ func TestStartLimaConfig(t *testing.T) {
 	if se.run("run", "true") != 0 {
 		t.Fatalf("first run: %s", se.out())
 	}
-	cfg := filepath.Join(se.home, ".agent-vm", "lima", "_config")
+	cfg := paths.Host(filepath.Join(se.home, ".agent-vm", "lima", "_config"))
 	os.MkdirAll(cfg, 0o755)
-	os.WriteFile(filepath.Join(cfg, "default.yaml"), []byte("cpus: 8\n"), 0o644)
+	os.WriteFile(cfg+"/default.yaml", []byte("cpus: 8\n"), 0o644)
 	se.fake.Calls = nil
-	if se.run("run", "true") != 1 || !strings.Contains(se.out(), filepath.Join(cfg, "default.yaml")+" adds to every VM's config") || se.fake.CallLog() != "" {
+	if se.run("run", "true") != 1 || !strings.Contains(se.out(), cfg+"/default.yaml adds to every VM's config") || se.fake.CallLog() != "" {
 		t.Errorf("default.yaml: %s\n%s", se.out(), se.fake.CallLog())
 	}
-	os.Remove(filepath.Join(cfg, "default.yaml"))
+	os.Remove(cfg + "/default.yaml")
 	se.fake.VMs[name].Status, se.fake.VMs[name].ConfigErr = vm.Broken, errors.New("field `mounts[1].sshfs.sftpDriver` must be `builtin`")
 	if se.run("run", "true") != 1 || !strings.Contains(se.out(), "Lima cannot read the config of VM '"+name+"':\n  field `mounts[1]") {
 		t.Errorf("unreadable: %s", se.out())

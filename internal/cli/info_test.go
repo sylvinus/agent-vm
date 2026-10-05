@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/sylvinus/agent-vm/internal/paths"
 	"github.com/sylvinus/agent-vm/internal/state"
 	"github.com/sylvinus/agent-vm/internal/vm"
 	"github.com/sylvinus/agent-vm/internal/vm/vmtest"
@@ -40,7 +41,8 @@ func TestInfo(t *testing.T) {
 	os.Unsetenv("GIT_CONFIG_GLOBAL")
 	os.Unsetenv("XDG_CONFIG_HOME")
 	os.WriteFile(filepath.Join(home, ".gitconfig"), []byte("[safe]\n\tbareRepository = explicit\n"), 0o644)
-	proj := filepath.Join(home, "proj")
+	// Host-spelled, as AbsDir spells info's folders.
+	proj := paths.Host(filepath.Join(home, "proj"))
 	os.MkdirAll(proj, 0o755)
 	t.Chdir(proj)
 	t.Setenv("PWD", proj)

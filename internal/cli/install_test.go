@@ -17,7 +17,7 @@ func TestInstall(t *testing.T) {
 	t.Setenv("AGENT_VM_BIN_DIR", bin)
 	te := newTestEnv(t, vmtest.New())
 	exe, _ := self()
-	link := filepath.Join(bin, "agent-vm")
+	link := binLink()
 
 	if te.run("install") != 0 || !strings.Contains(te.out(), "Linked "+link+" -> "+exe) || !strings.Contains(te.out(), "is not on your PATH") {
 		t.Fatalf("install: %s", te.out())

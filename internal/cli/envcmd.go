@@ -14,6 +14,7 @@ import (
 
 	"github.com/sylvinus/agent-vm/internal/env"
 	"github.com/sylvinus/agent-vm/internal/gitx"
+	"github.com/sylvinus/agent-vm/internal/paths"
 	"github.com/sylvinus/agent-vm/internal/vmname"
 )
 
@@ -222,8 +223,14 @@ func (e *app) warnUnignored(ctx context.Context, file string) {
 	if err != nil || top == "" {
 		return
 	}
-	// git prints C:/... on Windows.
-	rel, ok := strings.CutPrefix(filepath.ToSlash(file), top+"/")
+	// git prints the top resolved (/var is a link to /private/var on
+	// macOS): the file's spelling must be, or the prefix below misses and
+	// the warning never fires.
+	if phys, err := filepath.EvalSymlinks(file); err == nil {
+		file = phys
+	}
+	// git prints C:/... on Windows, in either case for the drive.
+	rel, ok := paths.CutPrefix(filepath.ToSlash(file), filepath.ToSlash(top)+"/")
 	if !ok {
 		// A worktree elsewhere, an odd spelling: not something to lecture about.
 		return

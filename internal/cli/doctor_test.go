@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/sylvinus/agent-vm/internal/paths"
 	"github.com/sylvinus/agent-vm/internal/state"
 	"github.com/sylvinus/agent-vm/internal/vmname"
 )
@@ -78,14 +79,15 @@ func TestDoctor(t *testing.T) {
 	if strings.Contains(se.fake.CallLog(), "edit") || strings.Contains(se.fake.CallLog(), "start") || strings.Contains(se.fake.CallLog(), "stop") {
 		t.Errorf("doctor changed the VM:\n%s", se.fake.CallLog())
 	}
-	// Lima's overrides, and a config Lima refuses.
-	cfg := filepath.Join(LimaHome(se.state), "_config")
+	// Lima's overrides, and a config Lima refuses. Host-spelled: doctor
+	// spells its folders so.
+	cfg := paths.Host(filepath.Join(LimaHome(se.state), "_config"))
 	os.MkdirAll(cfg, 0o755)
-	os.WriteFile(filepath.Join(cfg, "override.yaml"), []byte("mounts: []\n"), 0o644)
+	os.WriteFile(cfg+"/override.yaml", []byte("mounts: []\n"), 0o644)
 	v.ConfigErr = errors.New("field `mounts[1].sshfs.sftpDriver` must be `builtin`")
 	o = out()
 	for _, want := range []string{
-		"  FAIL  " + filepath.Join(cfg, "override.yaml") + " adds to every VM's config",
+		"  FAIL  " + cfg + "/override.yaml adds to every VM's config",
 		"  FAIL  Lima cannot read the config of " + vmname.Name(se.proj),
 		"        field `mounts[1].sshfs.sftpDriver` must be `builtin`",
 	} {
@@ -94,7 +96,7 @@ func TestDoctor(t *testing.T) {
 		}
 	}
 	v.ConfigErr = nil
-	os.Remove(filepath.Join(cfg, "override.yaml"))
+	os.Remove(cfg + "/override.yaml")
 	se.fake.Err = errors.New("broken")
 	if o = out(); !strings.Contains(o, "  warn  could not query Lima") {
 		t.Errorf("broken backend:\n%s", o)

@@ -14,9 +14,6 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
-    # Native Windows (no Git Bash) is not done yet: its job reports, and
-    # does not fail the run, until it is.
-    continue-on-error: ${{ matrix.os == 'windows-latest' }}
     defaults:
       run:
         shell: bash
@@ -32,6 +29,12 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
+
+      # The prerequisite checks need QEMU's binary (no VM is booted: the
+      # tests run Lima through a fake).
+      - name: QEMU
+        if: runner.os == 'Windows'
+        run: winget install -e --id SoftwareFreedomConservancy.QEMU --silent --accept-package-agreements --accept-source-agreements
 
       - name: third_party is upstream plus patches/
         if: runner.os == 'Linux'

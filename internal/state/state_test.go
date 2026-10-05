@@ -3,6 +3,8 @@ package state
 import (
 	"path/filepath"
 	"testing"
+
+	"github.com/sylvinus/agent-vm/internal/paths"
 )
 
 func TestDefault(t *testing.T) {
@@ -14,7 +16,7 @@ func TestDefault(t *testing.T) {
 	t.Setenv("AGENT_VM_STATE_DIR", "")
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
-	if d, err := Default(); err != nil || string(d) != filepath.Join(home, ".agent-vm") {
+	if d, err := Default(); err != nil || string(d) != paths.Host(filepath.Join(home, ".agent-vm")) {
 		t.Errorf("default: %q, %v", d, err)
 	}
 }

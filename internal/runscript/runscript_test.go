@@ -6,19 +6,31 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/sylvinus/agent-vm/internal/paths"
 )
 
 func TestProjectPath(t *testing.T) {
-	dir := filepath.FromSlash("/p")
-	for v, want := range map[string]string{
-		"":                 filepath.Join(dir, ".agent-vm.runtime.sh"),
-		".mytool/run.sh":   filepath.Join(dir, ".mytool", "run.sh"),
-		"/etc/mytool/r.sh": filepath.FromSlash("/etc/mytool/r.sh"),
-	} {
-		t.Setenv("AGENT_VM_PROJECT_RUNTIME", v)
-		if got := ProjectPath(dir); got != want {
-			t.Errorf("%q: %q, want %q", v, got, want)
+	// Both spellings, on every host: backslashes never reach here, the
+	// callers pass the project dir Host-spelled.
+	for _, win := range []bool{false, true} {
+		old := paths.Windows
+		paths.Windows = func() bool { return win }
+		dir := "/p"
+		if win {
+			dir = "C:/p"
 		}
+		for v, want := range map[string]string{
+			"":                 dir + "/.agent-vm.runtime.sh",
+			".mytool/run.sh":   dir + "/.mytool/run.sh",
+			"/etc/mytool/r.sh": "/etc/mytool/r.sh",
+		} {
+			t.Setenv("AGENT_VM_PROJECT_RUNTIME", v)
+			if got := ProjectPath(dir); got != want {
+				t.Errorf("windows=%v %q: %q, want %q", win, v, got, want)
+			}
+		}
+		paths.Windows = old
 	}
 }
 

@@ -71,20 +71,27 @@ func FuzzEntries(f *testing.F) {
 }
 
 // A filter with non-ASCII characters matches as written (0.3 took each byte
-// of é for a character before this test).
+// of é for a character before this test). A backslash escapes elsewhere,
+// and separates on Windows: both spellings, on every host.
 func TestMatchesNonASCII(t *testing.T) {
-	for _, c := range []struct {
-		filter, dir string
-		want        bool
-	}{
-		{"/home/café", "/home/café", true},
-		{"/home/caf?", "/home/café", true},
-		{"/home/caf\\é/*", "/home/café/x", true},
-		{"/home/café", "/home/cafe", false},
-	} {
-		if got := Matches(c.filter, c.dir, "/home", io.Discard); got != c.want {
-			t.Errorf("Matches(%q, %q) = %v", c.filter, c.dir, got)
+	for _, win := range []bool{false, true} {
+		old := paths.Windows
+		paths.Windows = func() bool { return win }
+		wantEscape := !win
+		for _, c := range []struct {
+			filter, dir string
+			want        bool
+		}{
+			{"/home/café", "/home/café", true},
+			{"/home/caf?", "/home/café", true},
+			{"/home/caf\\é/*", "/home/café/x", wantEscape},
+			{"/home/café", "/home/cafe", false},
+		} {
+			if got := Matches(c.filter, c.dir, "/home", io.Discard); got != c.want {
+				t.Errorf("windows=%v Matches(%q, %q) = %v", win, c.filter, c.dir, got)
+			}
 		}
+		paths.Windows = old
 	}
 }
 

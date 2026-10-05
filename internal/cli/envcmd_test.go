@@ -29,8 +29,12 @@ func TestEnvBash(t *testing.T) {
 		{{[]string{"project-env", "set", "K", "v"}, ""}, {[]string{"project-env", "get", "K"}, ""}, {[]string{"project-env", "list"}, ""}},
 	}
 	for i, seq := range seqs {
-		gproj, bproj := t.TempDir(), t.TempDir()
-		gst, bst := t.TempDir(), t.TempDir()
+		// Resolved: the bash recordings read back under one spelling
+		// (/var is a link to /private/var on macOS).
+		gproj, _ := filepath.EvalSymlinks(t.TempDir())
+		bproj, _ := filepath.EvalSymlinks(t.TempDir())
+		gst, _ := filepath.EvalSymlinks(t.TempDir())
+		bst, _ := filepath.EvalSymlinks(t.TempDir())
 		bfiles := []string{filepath.Join(bst, "env"), filepath.Join(bproj, ".agent-vm.env")}
 		var want bashref.Result
 		for _, s := range seq {
@@ -80,7 +84,9 @@ func TestProjectEnvGitBash(t *testing.T) {
 	t.Setenv("GIT_CONFIG_GLOBAL", "/dev/null")
 	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
 	for _, tracked := range []bool{false, true} {
-		gproj, bproj := t.TempDir(), t.TempDir()
+		// Resolved, as above: git prints --show-toplevel resolved too.
+		gproj, _ := filepath.EvalSymlinks(t.TempDir())
+		bproj, _ := filepath.EvalSymlinks(t.TempDir())
 		for _, p := range []string{gproj, bproj} {
 			sub := filepath.Join(p, "sub")
 			os.MkdirAll(sub, 0o755)
