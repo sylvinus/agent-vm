@@ -1,0 +1,147 @@
+Subject: [PATCH] qemu: give each help request its own output
+
+inspectFeatures runs `qemu -accel help`, `-netdev help`, `-machine help` and
+`-cpu help` into the same two buffers, and keeps each output as the buffer's
+Bytes() after its run. NetdevHelp is the accelerators' text followed by the
+netdevs', MachineHelp has both and its own, CPUHelp all four. The features
+are searched as text (strings.Contains): a word of an earlier help can match
+a later one's feature.
+
+Each request has its own buffers now (qemuHelp).
+
+Test: TestInspectFeaturesOwnOutputs.
+
+---
+diff --git a/pkg/driver/qemu/features_test.go b/pkg/driver/qemu/features_test.go
+new file mode 100644
+index 00000000..16228077
+--- /dev/null
++++ b/pkg/driver/qemu/features_test.go
+@@ -0,0 +1,36 @@
++//go:build !windows
++
++// SPDX-FileCopyrightText: Copyright The Lima Authors
++// SPDX-License-Identifier: Apache-2.0
++
++package qemu
++
++import (
++	"context"
++	"os"
++	"path/filepath"
++	"testing"
++
++	"gotest.tools/v3/assert"
++)
++
++// Each help text is its own: the features are searched as text, and a netdev
++// list holding the accelerators' words would match them.
++func TestInspectFeaturesOwnOutputs(t *testing.T) {
++	exe := filepath.Join(t.TempDir(), "qemu-fake")
++	script := `#!/bin/sh
++case "$*" in
++  *-cpu*) echo "cpus: max" ;;
++  *-accel*) echo "accels: tcg" ;;
++  *-netdev*) echo "netdevs: dgram" ;;
++  *-machine*) echo "machines: virt" ;;
++esac
++`
++	assert.NilError(t, os.WriteFile(exe, []byte(script), 0o755))
++	f, err := inspectFeatures(context.Background(), exe, "virt")
++	assert.NilError(t, err)
++	assert.Equal(t, string(f.AccelHelp), "accels: tcg\n")
++	assert.Equal(t, string(f.NetdevHelp), "netdevs: dgram\n")
++	assert.Equal(t, string(f.MachineHelp), "machines: virt\n")
++	assert.Equal(t, string(f.CPUHelp), "cpus: max\n")
++}
+diff --git a/pkg/driver/qemu/qemu.go b/pkg/driver/qemu/qemu.go
+index 1bb7bccf..79318857 100644
+--- a/pkg/driver/qemu/qemu.go
++++ b/pkg/driver/qemu/qemu.go
+@@ -310,61 +310,40 @@ type features struct {
+ }
+ 
+ func inspectFeatures(ctx context.Context, exe, machine string) (*features, error) {
+-	var (
+-		f      features
+-		stdout bytes.Buffer
+-		stderr bytes.Buffer
+-	)
+-	cmd := exec.CommandContext(ctx, exe, "-M", "none", "-accel", "help")
+-	cmd.Stdout = &stdout
+-	cmd.Stderr = &stderr
+-	if err := cmd.Run(); err != nil {
+-		return nil, fmt.Errorf("failed to run %v: stdout=%#q, stderr=%#q", cmd.Args, stdout.String(), stderr.String())
++	var f features
++	var err error
++	if f.AccelHelp, err = qemuHelp(ctx, exe, "-M", "none", "-accel", "help"); err != nil {
++		return nil, err
+ 	}
+-	f.AccelHelp = stdout.Bytes()
+-	// on older versions qemu will write "help" output to stderr
+-	if len(f.AccelHelp) == 0 {
+-		f.AccelHelp = stderr.Bytes()
++	if f.NetdevHelp, err = qemuHelp(ctx, exe, "-M", "none", "-netdev", "help"); err != nil {
++		logrus.Warn(err)
+ 	}
+-
+-	cmd = exec.CommandContext(ctx, exe, "-M", "none", "-netdev", "help")
+-	cmd.Stdout = &stdout
+-	cmd.Stderr = &stderr
+-	if err := cmd.Run(); err != nil {
+-		logrus.Warnf("failed to run %v: stdout=%#q, stderr=%#q", cmd.Args, stdout.String(), stderr.String())
+-	} else {
+-		f.NetdevHelp = stdout.Bytes()
+-		if len(f.NetdevHelp) == 0 {
+-			f.NetdevHelp = stderr.Bytes()
+-		}
++	if f.MachineHelp, err = qemuHelp(ctx, exe, "-machine", "help"); err != nil {
++		logrus.Warn(err)
+ 	}
+-
+-	cmd = exec.CommandContext(ctx, exe, "-machine", "help")
+-	cmd.Stdout = &stdout
+-	cmd.Stderr = &stderr
+-	if err := cmd.Run(); err != nil {
+-		logrus.Warnf("failed to run %v: stdout=%#q, stderr=%#q", cmd.Args, stdout.String(), stderr.String())
+-	} else {
+-		f.MachineHelp = stdout.Bytes()
+-		if len(f.MachineHelp) == 0 {
+-			f.MachineHelp = stderr.Bytes()
+-		}
++	// Avoid error: "No machine specified, and there is no default"
++	if f.CPUHelp, err = qemuHelp(ctx, exe, "-cpu", "help", "-machine", machine); err != nil {
++		logrus.Warn(err)
+ 	}
++	return &f, nil
++}
+ 
+-	// Avoid error: "No machine specified, and there is no default"
+-	cmd = exec.CommandContext(ctx, exe, "-cpu", "help", "-machine", machine)
++// qemuHelp is what exe prints for args, a help request. Each one has its own
++// buffers: the features are searched as text, and one holding another's
++// output would match words that are not its own.
++func qemuHelp(ctx context.Context, exe string, args ...string) ([]byte, error) {
++	var stdout, stderr bytes.Buffer
++	cmd := exec.CommandContext(ctx, exe, args...)
+ 	cmd.Stdout = &stdout
+ 	cmd.Stderr = &stderr
+ 	if err := cmd.Run(); err != nil {
+-		logrus.Warnf("failed to run %v: stdout=%#q, stderr=%#q", cmd.Args, stdout.String(), stderr.String())
+-	} else {
+-		f.CPUHelp = stdout.Bytes()
+-		if len(f.CPUHelp) == 0 {
+-			f.CPUHelp = stderr.Bytes()
+-		}
++		return nil, fmt.Errorf("failed to run %v: stdout=%#q, stderr=%#q", cmd.Args, stdout.String(), stderr.String())
+ 	}
+-
+-	return &f, nil
++	// on older versions qemu will write "help" output to stderr
++	if stdout.Len() == 0 {
++		return stderr.Bytes(), nil
++	}
++	return stdout.Bytes(), nil
+ }
+ 
+ // adjustMemBytesDarwinARM64HVF adjusts the memory to be <= 3 GiB, only when the following conditions are met:

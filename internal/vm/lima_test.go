@@ -312,14 +312,26 @@ func TestLimaStopOrphaned(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	driver := exec.Command("sleep", "60")
-	if err := driver.Start(); err != nil {
-		t.Fatal(err)
+	// sleep, under the name of a program: QEMU's, or any other.
+	spawn := func(name string) ([]byte, chan struct{}) {
+		sleep, err := exec.LookPath("sleep")
+		if err != nil {
+			t.Skip(err)
+		}
+		exe := filepath.Join(t.TempDir(), name)
+		if err := os.Symlink(sleep, exe); err != nil {
+			t.Fatal(err)
+		}
+		cmd := exec.Command(exe, "60")
+		if err := cmd.Start(); err != nil {
+			t.Fatal(err)
+		}
+		done := make(chan struct{})
+		go func() { cmd.Wait(); close(done) }()
+		t.Cleanup(func() { cmd.Process.Kill(); <-done })
+		return []byte(strconv.Itoa(cmd.Process.Pid)), done
 	}
-	exited := make(chan struct{})
-	go func() { driver.Wait(); close(exited) }()
-	t.Cleanup(func() { driver.Process.Kill(); <-exited })
-	pid := []byte(strconv.Itoa(driver.Process.Pid))
+	pid, exited := spawn("qemu-system-fake")
 
 	ha := filepath.Join(inst.Dir, filenames.HostAgentPID)
 	os.WriteFile(ha, pid, 0o644)
@@ -334,7 +346,22 @@ func TestLimaStopOrphaned(t *testing.T) {
 	}
 	os.Remove(ha)
 
-	os.WriteFile(filepath.Join(inst.Dir, filenames.PIDFile(inst.VMType)), pid, 0o644)
+	// A PID file left by a QEMU that aborted, its number another program's
+	// now: not orphaned, and Stop leaves it alone.
+	other, otherExited := spawn("not-a-vm")
+	driverPID := filepath.Join(inst.Dir, filenames.PIDFile(inst.VMType))
+	os.WriteFile(driverPID, other, 0o644)
+	if got, _ := l.Get(ctx, "o"); got.Orphaned {
+		t.Fatalf("another program's process: %+v", got)
+	}
+	l.Stop(ctx, "o")
+	select {
+	case <-otherExited:
+		t.Fatal("Stop killed a process that is not QEMU")
+	case <-time.After(200 * time.Millisecond):
+	}
+
+	os.WriteFile(driverPID, pid, 0o644)
 	if got, _ := l.Get(ctx, "o"); got.Status != Broken || !got.Orphaned {
 		t.Fatalf("a driver without its hostagent: %+v", got)
 	}

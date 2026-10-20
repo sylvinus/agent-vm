@@ -234,6 +234,28 @@ func TestStartSSHPort(t *testing.T) {
 	}
 }
 
+// A start that fails stops the VM: the hostagent would outlive the command.
+// An interrupted one is left to finish in the background.
+func TestStartFailedStops(t *testing.T) {
+	se := newStartEnv(t)
+	se.base()
+	name := vmname.Name(se.proj)
+	se.fake.FailOn = map[string]error{"start": errors.New("boom")}
+	if se.run("run", "true") != 1 || !strings.HasSuffix(se.fake.CallLog(), "start "+name+"\nstop "+name) {
+		t.Errorf("start fails: %s\n%s", se.out(), se.fake.CallLog())
+	}
+	e, err := newApp(IO{Stdin: strings.NewReader(""), Stdout: io.Discard, Stderr: io.Discard})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	n := len(se.fake.Calls)
+	if err := e.startVM(ctx, se.fake, name, io.Discard); err == nil || strings.Contains(strings.Join(se.fake.Calls[n:], "\n"), "stop") {
+		t.Errorf("interrupted: %v\n%s", err, se.fake.CallLog())
+	}
+}
+
 // A new VM that cannot be configured is deleted, never started, nothing
 // recorded; --reset that cannot delete changes nothing.
 func TestStartFailures(t *testing.T) {

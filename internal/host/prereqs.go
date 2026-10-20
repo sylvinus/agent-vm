@@ -13,15 +13,19 @@ import (
 )
 
 // qemuBinary is QEMU's emulator for this host's architecture, and the
-// command that installs it: dnf's package where there is dnf and no apt-get,
-// else Debian's.
+// way to install it: the command with apt-get's package, or dnf's where there
+// is dnf and no apt-get; a general hint where there is neither (NixOS, Arch).
 func qemuBinary() (bin, install string) {
-	_, aptErr := exec.LookPath("apt-get")
-	_, dnfErr := exec.LookPath("dnf")
-	return qemuBinaryFor(runtime.GOARCH, aptErr != nil && dnfErr == nil)
+	manager := ""
+	if _, err := exec.LookPath("apt-get"); err == nil {
+		manager = "apt-get"
+	} else if _, err := exec.LookPath("dnf"); err == nil {
+		manager = "dnf"
+	}
+	return qemuBinaryFor(runtime.GOARCH, manager)
 }
 
-func qemuBinaryFor(goarch string, dnf bool) (bin, install string) {
+func qemuBinaryFor(goarch, manager string) (bin, install string) {
 	bin, deb, rpm := "qemu-system-"+goarch, "qemu-system", "qemu-system-"+goarch+"-core"
 	switch goarch {
 	case "amd64":
@@ -29,10 +33,13 @@ func qemuBinaryFor(goarch string, dnf bool) (bin, install string) {
 	case "arm64":
 		bin, deb, rpm = "qemu-system-aarch64", "qemu-system-arm", "qemu-system-aarch64-core"
 	}
-	if dnf {
+	switch manager {
+	case "dnf":
 		return bin, "sudo dnf install " + rpm
+	case "apt-get":
+		return bin, "sudo apt-get install " + deb
 	}
-	return bin, "sudo apt-get install " + deb
+	return bin, "your distribution's QEMU package (with Nix, 'nix run github:sylvinus/agent-vm' brings its own)"
 }
 
 // WSLVersion is 2 or 1 under WSL, from the kernel release, 0 elsewhere.

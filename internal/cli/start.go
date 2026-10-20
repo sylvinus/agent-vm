@@ -631,7 +631,7 @@ func (s *start) boot() error {
 	fmt.Fprintf(s.io.Stdout, "Starting VM '%s'...\n", s.name)
 	b, _ := s.backend()
 	var log bytes.Buffer
-	if err := b.Start(s.ctx, s.name, &log); err != nil {
+	if err := s.startVM(s.ctx, b, s.name, &log); err != nil {
 		ha := paths.Host(filepath.Join(LimaHome(s.state), s.name, "ha.stderr.log"))
 		s.warnf("Error: Failed to start VM '%s'.\n--- Lima's output ---\n%s%v\nFull log: %s", s.name, log.String(), err, ha)
 		host.WindowsStartHint(s.io.Stderr, ha)
@@ -711,7 +711,7 @@ func (s *start) afterBoot(isNew, wasRunning, wantWritable bool) error {
 			return err
 		}
 		b, _ := s.backend()
-		if err := b.Start(s.ctx, s.name, io.Discard); err != nil {
+		if err := s.startVM(s.ctx, b, s.name, io.Discard); err != nil {
 			s.warnf("Error: VM '%s' did not come back up after changing the project mount.", s.name)
 			return errStop
 		}

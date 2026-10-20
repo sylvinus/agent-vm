@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"strings"
 	"text/tabwriter"
 
@@ -65,6 +66,18 @@ func (e *app) stopCmd(ctx context.Context, args []string) int {
 	}
 	fmt.Fprintln(e.io.Stdout, "VM stopped.")
 	return 0
+}
+
+// startVM starts name on b. Lima's hostagent outlives the command, so a start
+// that fails (the VM never came up) would leave it running, cut off: it is
+// stopped. Not after an interrupt: that start goes on in the background, as
+// limactl's does, and the next command finds the VM up.
+func (e *app) startVM(ctx context.Context, b vm.Backend, name string, log io.Writer) error {
+	err := b.Start(ctx, name, log)
+	if err != nil && ctx.Err() == nil {
+		_ = b.Stop(ctx, name)
+	}
+	return err
 }
 
 // stopVM stops name, and reports whether it is known to be stopped.

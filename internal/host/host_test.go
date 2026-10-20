@@ -52,17 +52,17 @@ func TestCapBash(t *testing.T) {
 // recommend it.
 func TestQemuBinaryFor(t *testing.T) {
 	for _, c := range []struct {
-		goarch   string
-		dnf      bool
-		bin, cmd string
+		goarch, manager string
+		bin, cmd        string
 	}{
-		{"amd64", false, "qemu-system-x86_64", "sudo apt-get install qemu-system-x86"},
-		{"arm64", false, "qemu-system-aarch64", "sudo apt-get install qemu-system-arm"},
-		{"amd64", true, "qemu-system-x86_64", "sudo dnf install qemu-system-x86-core"},
-		{"arm64", true, "qemu-system-aarch64", "sudo dnf install qemu-system-aarch64-core"},
+		{"amd64", "apt-get", "qemu-system-x86_64", "sudo apt-get install qemu-system-x86"},
+		{"arm64", "apt-get", "qemu-system-aarch64", "sudo apt-get install qemu-system-arm"},
+		{"amd64", "dnf", "qemu-system-x86_64", "sudo dnf install qemu-system-x86-core"},
+		{"arm64", "dnf", "qemu-system-aarch64", "sudo dnf install qemu-system-aarch64-core"},
+		{"amd64", "", "qemu-system-x86_64", "your distribution's QEMU package (with Nix, 'nix run github:sylvinus/agent-vm' brings its own)"},
 	} {
-		if bin, cmd := qemuBinaryFor(c.goarch, c.dnf); bin != c.bin || cmd != c.cmd {
-			t.Errorf("%s dnf=%v: %s %q", c.goarch, c.dnf, bin, cmd)
+		if bin, cmd := qemuBinaryFor(c.goarch, c.manager); bin != c.bin || cmd != c.cmd {
+			t.Errorf("%s %q: %s %q", c.goarch, c.manager, bin, cmd)
 		}
 	}
 }

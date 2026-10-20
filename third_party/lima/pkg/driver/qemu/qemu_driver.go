@@ -67,51 +67,81 @@ type LimaQemuDriver struct {
 	usernetStop   context.CancelFunc
 }
 
+// usernetSockets are what connects QEMU to the instance's own gvisor netstack
+// (see startUsernet). QEMU gets the dgram end, or the socket path when its
+// netdevs have no dgram (see Cmdline): the netstack listens on the path only
+// then, as nothing else should be able to connect to it.
+type usernetSockets struct {
+	endpoint string
+	// qemu is the path of the socket netdev's listener.
+	qemu string
+	// dgramConn is the netstack's end of a datagram socketpair, qemuDgram
+	// QEMU's. Both are nil on Windows.
+	dgramConn net.Conn
+	qemuDgram *os.File
+}
+
+func newUsernetSockets(inst *limatype.Instance) (*usernetSockets, error) {
+	endpoint, err := usernet.SockWithDirectory(inst.Dir, "", usernet.EndpointSock)
+	if err != nil {
+		return nil, err
+	}
+	qemu, err := usernet.SockWithDirectory(inst.Dir, "", usernet.QEMUSock)
+	if err != nil {
+		return nil, err
+	}
+	os.RemoveAll(endpoint)
+	os.RemoveAll(qemu)
+	s := &usernetSockets{endpoint: endpoint, qemu: qemu}
+	s.dgramConn, s.qemuDgram, err = dgramPair()
+	if err != nil && !errors.Is(err, errors.ErrUnsupported) {
+		return nil, err
+	}
+	return s, nil
+}
+
+// closeQEMUEnd closes the file given to QEMU: it has its own copy once started.
+func (s *usernetSockets) closeQEMUEnd() {
+	if s.qemuDgram != nil {
+		s.qemuDgram.Close()
+	}
+}
+
 // startUsernet starts the instance's own gvisor netstack, as vz does: one
 // network per instance, in the hostagent, where usernet.Outbound applies.
-//
-// QEMU reaches it through qemuDgram (its dgram netdev) when it has one, and
-// qemuSock otherwise (see Cmdline). qemuDgram is nil on Windows.
-func startUsernet(ctx context.Context, inst *limatype.Instance) (client *usernet.Client, qemuSock string, qemuDgram *os.File, stop context.CancelFunc, err error) {
-	endpointSock, err := usernet.SockWithDirectory(inst.Dir, "", usernet.EndpointSock)
-	if err != nil {
-		return nil, "", nil, nil, err
-	}
-	qemuSock, err = usernet.SockWithDirectory(inst.Dir, "", usernet.QEMUSock)
-	if err != nil {
-		return nil, "", nil, nil, err
-	}
-	os.RemoveAll(endpointSock)
-	os.RemoveAll(qemuSock)
-	dgramConn, qemuDgram, err := dgramPair()
-	if err != nil && !errors.Is(err, errors.ErrUnsupported) {
-		return nil, "", nil, nil, err
-	}
-	ctx, stop = context.WithCancel(ctx)
-	err = usernet.StartGVisorNetstack(ctx, &usernet.GVisorNetstackOpts{
-		MTU:        1500,
-		Endpoint:   endpointSock,
-		QemuSocket: qemuSock,
-		DgramConn:  dgramConn,
-		Async:      true,
+// viaDgram says which end QEMU was given.
+func startUsernet(ctx context.Context, inst *limatype.Instance, s *usernetSockets, viaDgram bool) (client *usernet.Client, stop context.CancelFunc, err error) {
+	opts := &usernet.GVisorNetstackOpts{
+		MTU:      1500,
+		Endpoint: s.endpoint,
+		Async:    true,
 		DefaultLeases: map[string]string{
 			networks.SlirpIPAddress: limayaml.MACAddress(inst.Dir),
 		},
 		Subnet: networks.SlirpNetwork,
-	})
+	}
+	if viaDgram {
+		opts.DgramConn = s.dgramConn
+	} else {
+		opts.QemuSocket = s.qemu
+		if s.dgramConn != nil {
+			s.dgramConn.Close()
+		}
+	}
+	ctx, stop = context.WithCancel(ctx)
+	err = usernet.StartGVisorNetstack(ctx, opts)
 	if err == nil {
 		var subnetIP net.IP
 		subnetIP, _, err = net.ParseCIDR(networks.SlirpNetwork)
 		if err == nil {
-			return usernet.NewClient(endpointSock, subnetIP), qemuSock, qemuDgram, stop, nil
+			return usernet.NewClient(s.endpoint, subnetIP), stop, nil
 		}
 	}
 	stop()
-	if dgramConn != nil {
-		dgramConn.Close()
-		qemuDgram.Close()
+	if viaDgram {
+		s.dgramConn.Close()
 	}
-	return nil, "", nil, nil, err
+	return nil, nil, err
 }
 
 var _ driver.Driver = (*LimaQemuDriver)(nil)
@@ -376,25 +406,39 @@ func (l *LimaQemuDriver) Start(ctx context.Context) (chan error, error) {
 		SSHAddress:   l.Instance.SSHAddress,
 		VirtioGA:     l.virtioPort != "",
 	}
+	// The netstack starts once Cmdline has chosen how QEMU reaches it.
+	var socks *usernetSockets
 	if limayaml.FirstUsernetIndex(l.Instance.Config) == -1 {
-		client, sock, dgram, stop, err := startUsernet(ctx, l.Instance)
+		var err error
+		if socks, err = newUsernetSockets(l.Instance); err != nil {
+			return nil, err
+		}
+		qCfg.UsernetQEMUSock, qCfg.UsernetDgram = socks.qemu, socks.qemuDgram
+		defer socks.closeQEMUEnd()
+	}
+	netstackStarted := false
+	defer func() {
+		if socks != nil && socks.dgramConn != nil && !netstackStarted {
+			socks.dgramConn.Close()
+		}
+	}()
+	qExe, qArgs, err := Cmdline(ctx, qCfg)
+	if err != nil {
+		return nil, err
+	}
+	if socks != nil {
+		viaDgram := slices.ContainsFunc(qArgs, func(a string) bool { return strings.HasPrefix(a, "dgram,id=net0,") })
+		client, stop, err := startUsernet(ctx, l.Instance, socks, viaDgram)
 		if err != nil {
 			return nil, err
 		}
-		l.usernetClient, l.usernetStop, qCfg.UsernetQEMUSock, qCfg.UsernetDgram = client, stop, sock, dgram
+		netstackStarted = true
+		l.usernetClient, l.usernetStop = client, stop
 		defer func() {
-			// QEMU has its own copy once started.
-			if dgram != nil {
-				dgram.Close()
-			}
 			if l.qCmd == nil {
 				stop()
 			}
 		}()
-	}
-	qExe, qArgs, err := Cmdline(ctx, qCfg)
-	if err != nil {
-		return nil, err
 	}
 
 	var vhostCmds []*exec.Cmd

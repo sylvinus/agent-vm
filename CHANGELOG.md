@@ -1,17 +1,5 @@
 # Changelog
 
-## Unreleased
-
-### Fixed
-
-- Linux: a VM could lose its network and stop in the middle of `agent-vm
-  setup` or any download (`exit status 255`, the VM Stopped), with QEMU
-  10.2 and a KVM host. QEMU aborted on `net_fill_rstate: Assertion 'size ==
-  0' failed`, a bug of its `socket` network backend, which handled a failed
-  read of the stream badly. The VMs' network now goes through QEMU's `dgram`
-  backend (QEMU 7.2 or later): no stream, nothing to lose. An older QEMU keeps
-  the former backend, and so does Windows (it has no unix datagram sockets).
-
 ## 0.3.1
 
 ### Added
@@ -33,6 +21,19 @@
 - A VM left in that state is stopped by force, then started again, on the
   next run; `agent-vm stop` stops it too. `stop` no longer says "VM stopped."
   for a Broken VM it did not stop.
+- A start that fails (the VM never came up) now stops the VM, which Lima's
+  host agent would otherwise keep running. The force-stop of a VM left without
+  its host agent checks that the process is QEMU first: the PID file of a QEMU
+  that aborted may name another program's process by now.
+- The missing-QEMU hint no longer says `apt-get` where there is neither apt
+  nor dnf (NixOS): it points to the distribution's package, or the Nix flake.
+- Linux: a VM could lose its network and stop in the middle of `agent-vm
+  setup` or any download (`exit status 255`, the VM Stopped), with QEMU
+  10.2 and a KVM host. QEMU aborted on `net_fill_rstate: Assertion 'size ==
+  0' failed`, a bug of its `socket` network backend, which handled a failed
+  read of the stream badly. The VMs' network now goes through QEMU's `dgram`
+  backend (QEMU 7.2 or later): no stream, nothing to lose. An older QEMU keeps
+  the former backend, and so does Windows (it has no unix datagram sockets).
 
 ## 0.3.0
 
