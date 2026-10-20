@@ -23,6 +23,9 @@ binaries `osslsigncode` (`brew install osslsigncode`).
      `AGENT_VM_WINDOWS_PFX_PASS=<its password>`. Without, they go out unsigned, with a warning.
    - Homebrew: `AGENT_VM_TAP=<clone of the tap>` updates `Formula/agent-vm.rb` there (each
      platform's url and sha256) and prints the commands to commit it.
+   - The Linux `.deb` and `.rpm` (`packaging/nfpm.yaml`) are made with nfpm, built with Go at the
+     version pinned in `release.sh` (`NFPM_VERSION`; `AGENT_VM_NFPM=<binary>` uses another). They
+     are release assets and in `SHA256SUMS`, after the tarballs.
    - A run that tagged and then failed is resumed by running it again.
 3. In a commit after it: `NEXT_VERSION` to the next version, and a new `## Unreleased` section.
 
@@ -34,5 +37,11 @@ binaries `osslsigncode` (`brew install osslsigncode`).
   `on_arm`/`on_intel`), installing the tarball's `agent-vm`: that is the shape `AGENT_VM_TAP` updates.
   Then, in the tap: `brew audit --strict sylvinus/tap/agent-vm`, `brew reinstall` and `brew test`
   before pushing.
+- `flake.nix` builds from source, with its `vendorHash` for the Go dependencies. When go.mod or
+  go.sum change, `release.sh` stops until it is updated: on a machine with Nix, set
+  `pkgs.lib.fakeHash`, run `nix build .#agent-vm` (Linux), put the hash it prints back, and update
+  the `go.mod+go.sum:` checksum line next to it (the error gives the value). The hash is of the
+  downloaded modules only (`proxyVendor`), so patches to `third_party/` leave it as it is. Do the
+  same after `nix flake update`: `flake.lock` pins nixpkgs, and with it the Go that downloads them.
 - `--not-latest` publishes a release without making it GitHub's latest: the installer's default
   stays the previous release, and the Homebrew formula is left alone, `AGENT_VM_TAP` or not.

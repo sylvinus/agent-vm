@@ -30,7 +30,11 @@
 #      SHA256SUMS. Each tarball holds that platform's binary, agent-vm, built
 #      here from the tag, agent-vm.sh, and LICENSE, NOTICE and
 #      THIRD_PARTY_LICENSES: the curl installer takes the one of the
-#      machine, unpacks it and runs `agent-vm.sh install`. The release is
+#      machine, unpacks it and runs `agent-vm.sh install`. The Linux builds
+#      also come as agent-vm_X.Y.Z_<arch>.deb and agent-vm-X.Y.Z-1.<arch>.rpm
+#      (packaging/nfpm.yaml; nfpm is built with Go at a pinned version, or
+#      AGENT_VM_NFPM names a binary), listed in SHA256SUMS after the tarballs.
+#      The release is
 #      created as a draft, its assets are downloaded back and compared with
 #      the local ones, and only then is it published; then the published
 #      assets are downloaded once more and checked against SHA256SUMS (and
@@ -153,7 +157,43 @@ package() {
       "$src/README.md" "$src/CHANGELOG.md" "$src/runtime.example.sh" "$stage/"
     [ "$os" != windows ] || [ -z "${AGENT_VM_WINDOWS_PFX:-}" ] || sign_windows "$stage/$bin" "$out"
     make_tarball "$out/agent-vm-$version-$p.tar.gz" "$out/stage-$p" "agent-vm-$version"
+    [ "$os" != linux ] || linux_packages "$ref" "$version" "$out" "$arch" "$stage"
   done
+}
+
+# nfpm, which makes the .deb and .rpm: AGENT_VM_NFPM names a binary, else the
+# pinned version is built with Go (once, into $WORK/bin).
+NFPM_VERSION=v2.48.0
+nfpm_bin() {
+  if [ -n "${AGENT_VM_NFPM:-}" ]; then echo "$AGENT_VM_NFPM"; return; fi
+  local bin="$WORK/bin/nfpm"
+  if [ ! -x "$bin" ]; then
+    ( cd "$WORK" && GOWORK=off GOBIN="$WORK/bin" go install "github.com/goreleaser/nfpm/v2/cmd/nfpm@$NFPM_VERSION" ) >"$WORK/nfpm-build.log" 2>&1 \
+      || { tail -n 20 "$WORK/nfpm-build.log" >&2; die "could not build nfpm $NFPM_VERSION (or set AGENT_VM_NFPM)"; }
+  fi
+  echo "$bin"
+}
+
+# linux_packages <ref> <version> <outdir> <goarch> <stagedir>: in outdir,
+# agent-vm_<version>_<goarch>.deb and agent-vm-<version>-1.<arch>.rpm, from
+# packaging/nfpm.yaml and the files of the tarball's folder. The dates inside
+# are the commit's, so the same commit gives the same packages.
+linux_packages() {
+  local ref="$1" version="$2" out="$3" goarch="$4" stage="$5" nfpm rpmarch qdeb qrpm
+  case "$goarch" in
+    amd64) rpmarch=x86_64;  qdeb=qemu-system-x86; qrpm=qemu-system-x86-core ;;
+    arm64) rpmarch=aarch64; qdeb=qemu-system-arm; qrpm=qemu-system-aarch64-core ;;
+    *) die "no .deb or .rpm for $goarch" ;;
+  esac
+  nfpm="$(nfpm_bin)"
+  echo "  packaging linux-$goarch (.deb, .rpm)"
+  local vars=(GOARCH="$goarch" VERSION="$version" QEMU_DEB="$qdeb" QEMU_RPM="$qrpm"
+              SOURCE_DATE_EPOCH="$(git -C "$REPO_DIR" log -1 --format=%ct "$ref")")
+  ( cd "$stage" \
+    && env "${vars[@]}" "$nfpm" package -f "$out/src/packaging/nfpm.yaml" -p deb -t "$out/agent-vm_${version}_${goarch}.deb" \
+    && env "${vars[@]}" "$nfpm" package -f "$out/src/packaging/nfpm.yaml" -p rpm -t "$out/agent-vm-${version}-1.${rpmarch}.rpm" ) \
+    >"$out/nfpm-$goarch.log" 2>&1 || { tail -n 20 "$out/nfpm-$goarch.log" >&2; die "packaging linux-$goarch failed: $out/nfpm-$goarch.log"; }
+  printf '%s\n' "agent-vm_${version}_${goarch}.deb" "agent-vm-${version}-1.${rpmarch}.rpm" >> "$out/packages.list"
 }
 
 # make_tarball <tarball> <dir> <name>: <name> of <dir> as a tarball owned by
@@ -412,6 +452,15 @@ for f in LICENSE NOTICE THIRD_PARTY_LICENSES; do
 done
 ok "LICENSE, NOTICE and THIRD_PARTY_LICENSES are there"
 
+# flake.nix's vendorHash is of the Go dependencies: it notes the checksum of
+# go.mod and go.sum it was made for.
+if [ -f flake.nix ]; then
+  mods="$(cat go.mod go.sum | sha256_of /dev/stdin)"
+  grep -q "go.mod+go.sum: $mods\$" flake.nix \
+    || die "flake.nix's vendorHash is not for this go.mod and go.sum: update it and its 'go.mod+go.sum: $mods' line (see the comment there)"
+  ok "flake.nix's vendorHash is for this go.mod and go.sum"
+fi
+
 # --- 3. tests ------------------------------------------------------------------
 # CI is the authority: it runs on Linux, macOS and Windows.
 # --bypass-checks skips the workflow only: the checks above decide what the
@@ -490,6 +539,16 @@ for p in $PLATFORMS; do
   assets+=("$WORK/$f")
   ok "$f: $(du -h "$WORK/$f" | cut -f1), sha256 $sha"
 done
+# The Linux packages, after the tarballs: the installer reads only the
+# tarballs' lines of SHA256SUMS.
+if [ -f "$WORK/packages.list" ]; then
+  while read -r f; do
+    sha="$(sha256_of "$WORK/$f")"
+    printf '%s  %s\n' "$sha" "$f" >> "$WORK/SHA256SUMS"
+    assets+=("$WORK/$f")
+    ok "$f: $(du -h "$WORK/$f" | cut -f1), sha256 $sha"
+  done < "$WORK/packages.list"
+fi
 if [ -n "${AGENT_VM_MINISIGN_KEY:-}" ]; then
   # Prompts for the key's password, on the terminal.
   if [ -z "$DRY_RUN" ]; then
@@ -529,6 +588,7 @@ SMOKE_FAILED=""
 echo
 echo "Homebrew formula, per platform (each tarball's agent-vm is the binary):"
 while read -r sha f; do
+  case "$f" in *.tar.gz) ;; *) continue ;; esac
   echo "  url \"$BASE/$f\""
   echo "  sha256 \"$sha\""
 done < "$WORK/SHA256SUMS"
@@ -545,7 +605,7 @@ if [ -n "${AGENT_VM_TAP:-}" ]; then
     # sha256 after it that tarball's. A `bottle do` block has sha256 lines
     # of its own, after no url: left alone.
     awk -v base="$BASE" -v version="$VERSION" -v sums="$WORK/SHA256SUMS" '
-      BEGIN { while ((getline l < sums) > 0) { split(l, a, "  "); p = a[2]; sub(/^agent-vm-[0-9.]+-/, "", p); sub(/\.tar\.gz$/, "", p); sha[p] = a[1] } }
+      BEGIN { while ((getline l < sums) > 0) { split(l, a, "  "); p = a[2]; if (p !~ /\.tar\.gz$/) continue; sub(/^agent-vm-[0-9.]+-/, "", p); sub(/\.tar\.gz$/, "", p); sha[p] = a[1] } }
       /^[[:space:]]*url / {
         for (p in sha) if (index($0, "-" p ".tar.gz")) {
           sub(/url .*/, "url \"" base "/agent-vm-" version "-" p ".tar.gz\""); want = p

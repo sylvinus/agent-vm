@@ -50,6 +50,10 @@ type Config struct {
 	// UsernetQEMUSock is the QEMU socket of the instance's own gvisor
 	// netstack, used instead of slirp when set (see startUsernet).
 	UsernetQEMUSock string
+	// UsernetDgram is QEMU's end of a datagram socketpair whose other end the
+	// netstack serves, preferred to UsernetQEMUSock when QEMU has the dgram
+	// netdev (see dgramPair). Nil on Windows.
+	UsernetDgram *os.File
 }
 
 // minimumQemuVersion returns hardMin and softMin.
@@ -310,61 +314,40 @@ type features struct {
 }
 
 func inspectFeatures(ctx context.Context, exe, machine string) (*features, error) {
-	var (
-		f      features
-		stdout bytes.Buffer
-		stderr bytes.Buffer
-	)
-	cmd := exec.CommandContext(ctx, exe, "-M", "none", "-accel", "help")
+	var f features
+	var err error
+	if f.AccelHelp, err = qemuHelp(ctx, exe, "-M", "none", "-accel", "help"); err != nil {
+		return nil, err
+	}
+	if f.NetdevHelp, err = qemuHelp(ctx, exe, "-M", "none", "-netdev", "help"); err != nil {
+		logrus.Warn(err)
+	}
+	if f.MachineHelp, err = qemuHelp(ctx, exe, "-machine", "help"); err != nil {
+		logrus.Warn(err)
+	}
+	// Avoid error: "No machine specified, and there is no default"
+	if f.CPUHelp, err = qemuHelp(ctx, exe, "-cpu", "help", "-machine", machine); err != nil {
+		logrus.Warn(err)
+	}
+	return &f, nil
+}
+
+// qemuHelp is what exe prints for args, a help request. Each one has its own
+// buffers: the features are searched as text, and one holding another's
+// output would match words that are not its own.
+func qemuHelp(ctx context.Context, exe string, args ...string) ([]byte, error) {
+	var stdout, stderr bytes.Buffer
+	cmd := exec.CommandContext(ctx, exe, args...)
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
 		return nil, fmt.Errorf("failed to run %v: stdout=%#q, stderr=%#q", cmd.Args, stdout.String(), stderr.String())
 	}
-	f.AccelHelp = stdout.Bytes()
 	// on older versions qemu will write "help" output to stderr
-	if len(f.AccelHelp) == 0 {
-		f.AccelHelp = stderr.Bytes()
+	if stdout.Len() == 0 {
+		return stderr.Bytes(), nil
 	}
-
-	cmd = exec.CommandContext(ctx, exe, "-M", "none", "-netdev", "help")
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		logrus.Warnf("failed to run %v: stdout=%#q, stderr=%#q", cmd.Args, stdout.String(), stderr.String())
-	} else {
-		f.NetdevHelp = stdout.Bytes()
-		if len(f.NetdevHelp) == 0 {
-			f.NetdevHelp = stderr.Bytes()
-		}
-	}
-
-	cmd = exec.CommandContext(ctx, exe, "-machine", "help")
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		logrus.Warnf("failed to run %v: stdout=%#q, stderr=%#q", cmd.Args, stdout.String(), stderr.String())
-	} else {
-		f.MachineHelp = stdout.Bytes()
-		if len(f.MachineHelp) == 0 {
-			f.MachineHelp = stderr.Bytes()
-		}
-	}
-
-	// Avoid error: "No machine specified, and there is no default"
-	cmd = exec.CommandContext(ctx, exe, "-cpu", "help", "-machine", machine)
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		logrus.Warnf("failed to run %v: stdout=%#q, stderr=%#q", cmd.Args, stdout.String(), stderr.String())
-	} else {
-		f.CPUHelp = stdout.Bytes()
-		if len(f.CPUHelp) == 0 {
-			f.CPUHelp = stderr.Bytes()
-		}
-	}
-
-	return &f, nil
+	return stdout.Bytes(), nil
 }
 
 // adjustMemBytesDarwinARM64HVF adjusts the memory to be <= 3 GiB, only when the following conditions are met:
@@ -809,11 +792,22 @@ func Cmdline(ctx context.Context, cfg Config) (exe string, args []string, err er
 	case firstUsernetIndex == -1 && cfg.UsernetQEMUSock != "" && runtime.GOOS == "windows":
 		// No file descriptor passing there (fd_connect): QEMU connects to the
 		// socket itself, which QEMU 7.2 or later can on Windows. The same
-		// stream as the socket netdev's.
+		// stream as the socket netdev's, so the same abort on EAGAIN (see the
+		// dgram netdev below): Windows has no datagram unix sockets.
 		if !strings.Contains(string(features.NetdevHelp), "stream") {
 			return "", nil, errors.New("QEMU 7.2 or later is needed (its stream netdev)")
 		}
 		args = append(args, "-netdev", fmt.Sprintf("stream,id=net0,server=off,addr.type=unix,addr.path=%s", cfg.UsernetQEMUSock))
+	case firstUsernetIndex == -1 && cfg.UsernetDgram != nil && strings.Contains(string(features.NetdevHelp), "dgram"):
+		// Not the socket netdev below: it reads a length-prefixed stream, and
+		// QEMU (10.2.4 at least) aborts with `net_fill_rstate: Assertion
+		// 'size == 0' failed` when its recv() returns EAGAIN, which it
+		// meant to ignore (net_socket_send, and net_stream_data_send for the
+		// stream netdev, fall through to net_fill_rstate with size -1).
+		// Seen on Linux hosts, under sustained guest traffic. The dgram
+		// netdev ignores a failed recv() and has no framing to lose. It
+		// needs QEMU 7.2 or later.
+		args = append(args, "-netdev", "dgram,id=net0,local.type=fd,local.str={{ fd_dgram }}")
 	case firstUsernetIndex == -1 && cfg.UsernetQEMUSock != "":
 		args = append(args, "-netdev", fmt.Sprintf("socket,id=net0,fd={{ fd_connect %q }}", cfg.UsernetQEMUSock))
 	case firstUsernetIndex == -1:

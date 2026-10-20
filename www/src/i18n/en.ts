@@ -107,7 +107,7 @@ export const en = {
       },
     ],
     methodsTitle: 'Install the command',
-    methodsBody: 'Pick one. Each puts `agent-vm` on your `PATH` without root.',
+    methodsBody: 'Pick one. Each puts `agent-vm` on your `PATH`; only the Linux packages need root.',
     methodsLabel: 'Install method',
     methods: [
       {
@@ -121,6 +121,18 @@ export const en = {
         label: 'Homebrew',
         code: 'brew install sylvinus/tap/agent-vm',
         note: 'macOS, or Linux with Homebrew. `brew upgrade agent-vm` updates it.',
+      },
+      {
+        id: 'linux',
+        label: 'Linux package',
+        code: 'sudo apt install ./agent-vm_X.Y.Z_amd64.deb\nsudo dnf install ./agent-vm-X.Y.Z-1.x86_64.rpm',
+        note: 'Download the `.deb` or `.rpm` of your architecture (`amd64`, `arm64`; `x86_64`, `aarch64`) from the GitHub releases. It installs `agent-vm` in `/usr/bin` and recommends QEMU and ssh. Not in a package repository yet: install the new file to update.',
+      },
+      {
+        id: 'nix',
+        label: 'Nix',
+        code: 'nix run github:sylvinus/agent-vm\nnix profile install github:sylvinus/agent-vm',
+        note: 'Linux, NixOS included. QEMU comes with it; ssh is the system’s. `nix profile upgrade agent-vm` updates it.',
       },
       {
         id: 'git',

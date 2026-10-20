@@ -92,6 +92,18 @@ func TestStopRm(t *testing.T) {
 	if te.run("stop", "proj-deadbeef") != 1 || !strings.Contains(te.out(), "is still running") {
 		t.Errorf("stop that did not take: %s", te.out())
 	}
+	// A Broken VM is not stopped: said so. An orphaned one is stopped by force.
+	te.fake.Sticky = map[string]bool{}
+	te.fake.VMs["proj-deadbeef"].Status = vm.Broken
+	if te.run("stop", "proj-deadbeef") != 1 || !strings.Contains(te.out(), "is still running") {
+		t.Errorf("stop of a Broken VM: %s", te.out())
+	}
+	te.fake.VMs["proj-deadbeef"].Orphaned = true
+	if te.run("stop", "proj-deadbeef") != 0 || !strings.HasSuffix(te.out(), "VM stopped.\n") || te.fake.VMs["proj-deadbeef"].Status != vm.Stopped {
+		t.Errorf("stop of an orphaned VM: %s", te.out())
+	}
+	te.fake.VMs["proj-deadbeef"].Status = vm.Running
+	te.fake.Sticky["proj-deadbeef"] = true
 	// Nor a delete that did not take.
 	os.WriteFile(te.state.Marker(state.VersionOf, "proj-deadbeef"), []byte("1\n"), 0o644)
 	if te.run("rm", "proj-deadbeef") != 1 || !strings.Contains(te.out(), "could not delete VM 'proj-deadbeef'") ||

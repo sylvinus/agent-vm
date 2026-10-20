@@ -446,7 +446,7 @@ func (e *app) buildBase(ctx context.Context, in install, disk, memory, cpus int)
 	(&start{app: e, ctx: ctx, name: building}).printResources()
 
 	fmt.Fprintln(e.io.Stdout, "Starting base VM (the first run downloads a Debian image)...")
-	if !windowed(func(w io.Writer) error { return b.Start(ctx, building, w) }) {
+	if !windowed(func(w io.Writer) error { return e.startVM(ctx, b, building, w) }) {
 		ha := filepath.Join(LimaHome(e.state), building, "ha.stderr.log")
 		fmt.Fprintf(e.io.Stderr, "Error: Failed to start base VM. Full log: %s\nLima's own log: %s\n", logPath, ha)
 		host.WindowsStartHint(e.io.Stderr, logPath, ha)

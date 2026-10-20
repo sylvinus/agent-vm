@@ -96,6 +96,10 @@ func (e *Switch) Accept(ctx context.Context, rawConn net.Conn, protocol types.Pr
 		e.disconnect(id, conn)
 	}()
 	if err := e.rx(ctx, id, conn); err != nil {
+		if ctx.Err() != nil {
+			// Closing the connection is how a program ends the switch.
+			return nil
+		}
 		err := fmt.Errorf("cannot receive packets from %s, disconnecting: %w", conn.RemoteAddr().String(), err)
 		log.Error(err)
 		return err

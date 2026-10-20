@@ -171,8 +171,26 @@ func versionCmd(args []string, io IO) int {
 	return 1
 }
 
-// updateCommand is how this copy of agent-vm is updated.
+// updateCommand is how this copy of agent-vm is updated: by what installed
+// it. The installer's copy would otherwise land in ~/.local/bin, ahead of a
+// package's on the PATH, and hide its updates.
 func updateCommand() string {
+	exe, err := self()
+	if err != nil {
+		exe = ""
+	}
+	return updateCommandFor(exe)
+}
+
+func updateCommandFor(exe string) string {
+	switch {
+	case strings.HasPrefix(exe, "/nix/store/"):
+		return "with Nix, as installed (nix profile upgrade agent-vm, or the flake input)"
+	case strings.Contains(exe, "/Cellar/agent-vm/"):
+		return "brew upgrade agent-vm"
+	case exe == "/usr/bin/agent-vm":
+		return "install the .deb or .rpm of https://github.com/sylvinus/agent-vm/releases/latest"
+	}
 	return "curl -fsSL https://www.agent-vm.org/install.sh | sh"
 }
 

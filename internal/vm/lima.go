@@ -222,6 +222,13 @@ func fromLima(inst *limatype.Instance) *Instance {
 		out.Status = Broken
 		out.ConfigErr = errors.Join(inst.Errors...)
 	}
+	// "driver is running but host agent is not". Not the other way around: a
+	// hostagent without its driver is also one booting the VM. Only QEMU
+	// outlives the hostagent (vz and the others run in it), and the PID file
+	// of one that aborted may name another program's process now: Stop kills
+	// this one.
+	out.Orphaned = out.Status == Broken && inst.Config != nil && inst.HostAgentPID == 0 && inst.DriverPID > 0 &&
+		inst.VMType == limatype.QEMU && isQEMU(inst.DriverPID)
 	if c := inst.Config; c != nil {
 		if c.SSH.LocalPort != nil {
 			out.SSHPortConfig = *c.SSH.LocalPort
@@ -505,12 +512,18 @@ func (l *Lima) Stop(ctx context.Context, name string) error {
 	if err != nil {
 		return err
 	}
-	if inst.Status != limatype.StatusRunning {
-		return nil
+	switch {
+	case inst.Status == limatype.StatusRunning:
+		return withLog(io.Discard, func() error {
+			return errors.Join(instance.StopGracefully(ctx, inst, false), reconcile.Reconcile(ctx, ""))
+		})
+	case fromLima(inst).Orphaned:
+		return withLog(io.Discard, func() error {
+			instance.StopForcibly(inst)
+			return reconcile.Reconcile(ctx, "")
+		})
 	}
-	return withLog(io.Discard, func() error {
-		return errors.Join(instance.StopGracefully(ctx, inst, false), reconcile.Reconcile(ctx, ""))
-	})
+	return nil
 }
 
 func (l *Lima) Delete(ctx context.Context, name string) error {

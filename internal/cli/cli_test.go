@@ -114,6 +114,23 @@ func TestHelp(t *testing.T) {
 	}
 }
 
+// A copy a package manager installed is updated by it: the installer's
+// would land ahead of it on the PATH.
+func TestUpdateCommand(t *testing.T) {
+	for exe, want := range map[string]string{
+		"/nix/store/abc-agent-vm-0.3.1/bin/agent-vm":       "nix profile upgrade",
+		"/opt/homebrew/Cellar/agent-vm/0.3.1/bin/agent-vm": "brew upgrade agent-vm",
+		"/usr/bin/agent-vm":                                ".deb or .rpm",
+		"/home/u/.local/share/agent-vm/0.3.1/agent-vm":     "install.sh | sh",
+		"/usr/local/bin/agent-vm":                          "install.sh | sh",
+		"":                                                 "install.sh | sh",
+	} {
+		if got := updateCommandFor(exe); !strings.Contains(got, want) {
+			t.Errorf("%q: %q", exe, got)
+		}
+	}
+}
+
 func TestSplit(t *testing.T) {
 	for _, c := range []struct {
 		in   []string

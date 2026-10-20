@@ -177,8 +177,8 @@ func (f *Fake) Stop(_ context.Context, name string) error {
 	if err := f.call("stop %s", name); err != nil {
 		return err
 	}
-	if v, ok := f.VMs[name]; ok && !f.Sticky[name] {
-		v.Status = vm.Stopped
+	if v, ok := f.VMs[name]; ok && !f.Sticky[name] && (v.Status == vm.Running || v.Orphaned) {
+		v.Status, v.Orphaned = vm.Stopped, false
 	}
 	return nil
 }

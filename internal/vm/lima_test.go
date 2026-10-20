@@ -5,15 +5,20 @@ import (
 	"errors"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
+	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/lima-vm/lima/v2/pkg/guestagent/api"
 	"github.com/lima-vm/lima/v2/pkg/hostagent/events"
 	"github.com/lima-vm/lima/v2/pkg/limatype"
+	"github.com/lima-vm/lima/v2/pkg/limatype/filenames"
 	"github.com/lima-vm/lima/v2/pkg/limayaml"
 	"github.com/lima-vm/lima/v2/pkg/portfwd"
 
@@ -288,6 +293,91 @@ func TestSharesKeptWindows(t *testing.T) {
 	}
 	if err := sharesKept(want, []limatype.Mount{{Location: `C:\q`, MountPoint: &mp}}); !errors.Is(err, ErrUnmountable) {
 		t.Errorf("C:\\q: %v", err)
+	}
+}
+
+// A driver running without its hostagent: orphaned, and Stop kills it. A
+// hostagent without its driver is not: it may be booting the VM.
+func TestLimaStopOrphaned(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("no sleep to stand for the driver")
+	}
+	ctx := context.Background()
+	l := newTestLima(t)
+	none := []Mount{}
+	if err := l.Create(ctx, "o", "template:debian-13", Settings{Mounts: &none}, io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	inst, err := l.Get(ctx, "o")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inst.VMType != "qemu" {
+		t.Skip("only QEMU outlives the hostagent")
+	}
+	// sleep, under the name of a program: QEMU's, or any other.
+	spawn := func(name string) ([]byte, chan struct{}) {
+		sleep, err := exec.LookPath("sleep")
+		if err != nil {
+			t.Skip(err)
+		}
+		exe := filepath.Join(t.TempDir(), name)
+		if err := os.Symlink(sleep, exe); err != nil {
+			t.Fatal(err)
+		}
+		cmd := exec.Command(exe, "60")
+		if err := cmd.Start(); err != nil {
+			t.Fatal(err)
+		}
+		done := make(chan struct{})
+		go func() { cmd.Wait(); close(done) }()
+		t.Cleanup(func() { cmd.Process.Kill(); <-done })
+		return []byte(strconv.Itoa(cmd.Process.Pid)), done
+	}
+	pid, exited := spawn("qemu-system-fake")
+
+	ha := filepath.Join(inst.Dir, filenames.HostAgentPID)
+	os.WriteFile(ha, pid, 0o644)
+	if got, _ := l.Get(ctx, "o"); got.Status != Broken || got.Orphaned {
+		t.Fatalf("a hostagent without its driver: %+v", got)
+	}
+	l.Stop(ctx, "o")
+	select {
+	case <-exited:
+		t.Fatal("Stop killed a hostagent without its driver")
+	case <-time.After(200 * time.Millisecond):
+	}
+	os.Remove(ha)
+
+	// A PID file left by a QEMU that aborted, its number another program's
+	// now: not orphaned, and Stop leaves it alone.
+	other, otherExited := spawn("not-a-vm")
+	driverPID := filepath.Join(inst.Dir, filenames.PIDFile(inst.VMType))
+	os.WriteFile(driverPID, other, 0o644)
+	if got, _ := l.Get(ctx, "o"); got.Orphaned {
+		t.Fatalf("another program's process: %+v", got)
+	}
+	l.Stop(ctx, "o")
+	select {
+	case <-otherExited:
+		t.Fatal("Stop killed a process that is not QEMU")
+	case <-time.After(200 * time.Millisecond):
+	}
+
+	os.WriteFile(driverPID, pid, 0o644)
+	if got, _ := l.Get(ctx, "o"); got.Status != Broken || !got.Orphaned {
+		t.Fatalf("a driver without its hostagent: %+v", got)
+	}
+	if err := l.Stop(ctx, "o"); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-exited:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the driver still runs")
+	}
+	if got, _ := l.Get(ctx, "o"); got.Status != Stopped || got.Orphaned {
+		t.Errorf("after Stop: %+v", got)
 	}
 }
 

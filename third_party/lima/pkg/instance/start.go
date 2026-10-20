@@ -291,7 +291,9 @@ func StartWithPaths(ctx context.Context, inst *limatype.Instance, launchHostAgen
 			args = append(args, "--progress")
 		}
 		args = append(args, inst.Name)
-		haCmd = exec.CommandContext(ctx, limactl, args...)
+		// Not exec.CommandContext: the hostagent outlives this call, and os/exec
+		// would kill it whenever ctx ends, even after Start returned.
+		haCmd = exec.Command(limactl, args...)
 
 		haCmd.SysProcAttr = executil.BackgroundSysProcAttr
 
@@ -317,12 +319,15 @@ func StartWithPaths(ctx context.Context, inst *limatype.Instance, launchHostAgen
 		return err
 	}
 
-	watchErrCh := make(chan error)
+	// Buffered: the goroutine that loses the race below must not block on its
+	// send for as long as the program lives (it would, once StartWithPaths
+	// has returned).
+	watchErrCh := make(chan error, 1)
 	go func() {
 		watchErrCh <- watchHostAgentEvents(ctx, inst, haStdoutPath, haStderrPath, begin, showProgress)
 		close(watchErrCh)
 	}()
-	waitErrCh := make(chan error)
+	waitErrCh := make(chan error, 1)
 	if haCmd != nil {
 		go func() {
 			waitErrCh <- haCmd.Wait()
