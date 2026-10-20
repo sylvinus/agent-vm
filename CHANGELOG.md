@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- `agent-vm setup`: Added `code-opencode` preinstall option to install the OpenCode VS Code extension (`sst-dev.opencode`) into code-server (#37).
+
 ## 0.3.0
 
 agent-vm 0.3 is one Go binary with Lima built in. The

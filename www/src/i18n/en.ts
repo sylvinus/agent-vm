@@ -669,12 +669,12 @@ export const en = {
       ['MCP', 'Chrome DevTools MCP, wired into every installed agent but Pi (no MCP support)', 'mcp-chrome', 'yes'],
       ['MCP', 'Playwright MCP, reusing the same Chromium', 'mcp-playwright', 'no'],
       ['Editor', 'code-server (VS Code in the browser, for `agent-vm code`), dark theme, GitHub Copilot off, no telemetry', 'code-server', 'no'],
-      ['Editor', 'The Claude Code, Codex or Mistral Vibe extension, each starting with no permission prompts, with code-server', 'code-claude, code-codex, code-vibe', 'no'],
+      ['Editor', 'The Claude Code, OpenCode, Codex or Mistral Vibe extension, each starting with no permission prompts, with code-server', 'code-claude, code-opencode, code-codex, code-vibe', 'no'],
     ],
     contentsCode:
       'agent-vm setup --preinstall=default                  # no prompts\nagent-vm setup --preinstall=default,rust             # plus Rust\nagent-vm setup --preinstall=python,docker,claude     # minimal Claude setup\nagent-vm setup --preinstall=default,code-claude      # plus the editor\nagent-vm setup --disk 50 --memory 16 --cpus 8        # a bigger template',
     contentsNote:
-      '`codex` and `pi` pull in `node`, and so does `mcp-chrome` with `chromium` and an agent. Both MCP servers are skipped without `node` and `chromium`. Each editor extension ships its own copy of its agent (200 to 600 MB): the wizard asks whether to keep the command-line one too. Without it, `agent-vm claude` says it is not installed. This is only what the template ships: the agent is root in the VM and reaches the internet, so it installs whatever else it needs.',
+      '`codex` and `pi` pull in `node`, and so does `mcp-chrome` with `chromium` and an agent. Both MCP servers are skipped without `node` and `chromium`. Each editor extension ships its own copy of its agent (200 to 600 MB): the wizard asks whether to keep the command-line one too (OpenCode’s extension requires the CLI, which is always installed with it). Without it, `agent-vm claude` says it is not installed. This is only what the template ships: the agent is root in the VM and reaches the internet, so it installs whatever else it needs.',
     dockerTitle: 'Why not Docker',
     dockerLede:
       'On Linux, containers share the host kernel, so a compromised dependency that finds a kernel bug is on your host. On macOS, Docker Desktop already runs a VM, which narrows the gap, but it is one VM shared by every container rather than one per project. A VM brings its own kernel, and root inside it still has the hypervisor between it and your machine. The practical differences matter as much as the security one.',

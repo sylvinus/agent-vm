@@ -49,11 +49,12 @@ INSTALL_PI="${AGENT_VM_INSTALL_PI:-0}"
 INSTALL_CODE_SERVER="${AGENT_VM_INSTALL_CODE_SERVER:-0}"
 # Each agent's code-server extension, which brings its own copy of the agent.
 INSTALL_CODE_CLAUDE="${AGENT_VM_INSTALL_CODE_CLAUDE:-0}"
+INSTALL_CODE_OPENCODE="${AGENT_VM_INSTALL_CODE_OPENCODE:-0}"
 INSTALL_CODE_CODEX="${AGENT_VM_INSTALL_CODE_CODEX:-0}"
 INSTALL_CODE_VIBE="${AGENT_VM_INSTALL_CODE_VIBE:-0}"
 # An extension needs the editor: `agent-vm setup` says so already, a run of
 # this script on its own may not.
-if [[ "$INSTALL_CODE_CLAUDE$INSTALL_CODE_CODEX$INSTALL_CODE_VIBE" == *1* ]]; then
+if [[ "$INSTALL_CODE_CLAUDE$INSTALL_CODE_OPENCODE$INSTALL_CODE_CODEX$INSTALL_CODE_VIBE" == *1* ]]; then
   INSTALL_CODE_SERVER=1
 fi
 # MCP servers wired into every installed agent's config (see `agent-vm setup --help`).
@@ -62,8 +63,9 @@ INSTALL_MCP_PLAYWRIGHT="${AGENT_VM_INSTALL_MCP_PLAYWRIGHT:-0}"
 
 # An agent there in either form: its command line and its extension read the
 # same config, which is written for both.
-HAS_CLAUDE=0 HAS_CODEX=0 HAS_VIBE=0
+HAS_CLAUDE=0 HAS_OPENCODE=0 HAS_CODEX=0 HAS_VIBE=0
 [[ "$INSTALL_CLAUDE$INSTALL_CODE_CLAUDE" == *1* ]] && HAS_CLAUDE=1
+[[ "$INSTALL_OPENCODE$INSTALL_CODE_OPENCODE" == *1* ]] && HAS_OPENCODE=1
 [[ "$INSTALL_CODEX$INSTALL_CODE_CODEX" == *1* ]] && HAS_CODEX=1
 [[ "$INSTALL_VIBE$INSTALL_CODE_VIBE" == *1* ]] && HAS_VIBE=1
 
@@ -266,7 +268,7 @@ if [[ "$HAS_CLAUDE" == "1" ]]; then
 JSON
 fi
 
-if [[ "$INSTALL_OPENCODE" == "1" ]]; then
+if [[ "$INSTALL_OPENCODE" == "1" || "$INSTALL_CODE_OPENCODE" == "1" ]]; then
   echo "Installing OpenCode..."
   curl -fsSL https://opencode.ai/install | bash
   echo 'export PATH=$HOME/.opencode/bin:$PATH' >> ~/.zshenv
@@ -425,6 +427,7 @@ if [[ "$INSTALL_CODE_SERVER" == "1" ]]; then
   curl -fsSL https://code-server.dev/install.sh | sh
   extensions=()
   [[ "$INSTALL_CODE_CLAUDE" == "1" ]] && extensions+=(--install-extension anthropic.claude-code)
+  [[ "$INSTALL_CODE_OPENCODE" == "1" ]] && extensions+=(--install-extension sst-dev.opencode)
   [[ "$INSTALL_CODE_CODEX" == "1" ]] && extensions+=(--install-extension openai.chatgpt)
   [[ "$INSTALL_CODE_VIBE" == "1" ]] && extensions+=(--install-extension mistralai.mistral-vibe-code)
   if [[ ${#extensions[@]} -gt 0 ]]; then
@@ -537,7 +540,7 @@ configure_mcp() {
     fi
   fi
 
-  if [[ "$INSTALL_OPENCODE" == "1" ]]; then
+  if [[ "$HAS_OPENCODE" == "1" ]]; then
     echo "Configuring $name MCP server for OpenCode..."
     mkdir -p "$HOME/.config/opencode"
     local config="$HOME/.config/opencode/opencode.json"
@@ -587,7 +590,7 @@ configure_mcp() {
 # True when at least one agent is installed: nothing to configure otherwise,
 # and no reason to print a "skipping" notice either.
 any_agent_installed() {
-  [[ "$HAS_CLAUDE" == "1" || "$INSTALL_OPENCODE" == "1" \
+  [[ "$HAS_CLAUDE" == "1" || "$HAS_OPENCODE" == "1" \
      || "$HAS_CODEX" == "1" || "$HAS_VIBE" == "1" ]]
 }
 

@@ -671,12 +671,12 @@ export const fr: Dictionary = {
       ['MCP', 'Chrome DevTools MCP, câblé dans chaque agent installé sauf Pi (pas de support MCP)', 'mcp-chrome', 'oui'],
       ['MCP', 'Playwright MCP, réutilisant le même Chromium', 'mcp-playwright', 'non'],
       ['Éditeur', 'code-server (VS Code dans le navigateur, pour `agent-vm code`), thème sombre, GitHub Copilot désactivé, sans télémétrie', 'code-server', 'non'],
-      ['Éditeur', 'L\'extension Claude Code, Codex ou Mistral Vibe, chacune démarrant sans demande de permission, avec code-server', 'code-claude, code-codex, code-vibe', 'non'],
+      ['Éditeur', 'L\'extension Claude Code, OpenCode, Codex ou Mistral Vibe, chacune démarrant sans demande de permission, avec code-server', 'code-claude, code-opencode, code-codex, code-vibe', 'non'],
     ],
     contentsCode:
       'agent-vm setup --preinstall=default                  # sans question\nagent-vm setup --preinstall=default,rust             # avec Rust en plus\nagent-vm setup --preinstall=python,docker,claude     # Claude seul, minimal\nagent-vm setup --preinstall=default,code-claude      # avec l\'éditeur\nagent-vm setup --disk 50 --memory 16 --cpus 8        # une image plus grosse',
     contentsNote:
-      '`codex` et `pi` entraînent `node`, tout comme `mcp-chrome` avec `chromium` et un agent. Les deux serveurs MCP sont ignorés sans `node` et `chromium`. Chaque extension de l\'éditeur apporte sa propre copie de son agent (200 à 600 Mo) : l\'assistant demande s\'il faut garder aussi celle en ligne de commande. Sans elle, `agent-vm claude` dit qu\'il n\'est pas installé. Ce n\'est que ce que l\'image contient au départ : l\'agent est root dans la VM et atteint Internet, il installe lui-même ce qui lui manque.',
+      '`codex` et `pi` entraînent `node`, tout comme `mcp-chrome` avec `chromium` et un agent. Les deux serveurs MCP sont ignorés sans `node` et `chromium`. Chaque extension de l\'éditeur apporte sa propre copie de son agent (200 à 600 Mo) : l\'assistant demande s\'il faut garder aussi celle en ligne de commande (l\'extension d\'OpenCode nécessite l\'outil en ligne de commande, qui est toujours installé avec elle). Sans elle, `agent-vm claude` dit qu\'il n\'est pas installé. Ce n\'est que ce que l\'image contient au départ : l\'agent est root dans la VM et atteint Internet, il installe lui-même ce qui lui manque.',
     dockerTitle: 'Pourquoi pas Docker',
     dockerLede:
       'Sous Linux, les conteneurs partagent le noyau de l\'hôte : une dépendance compromise qui trouve une faille dans le noyau se retrouve sur ta machine. Sous macOS, Docker Desktop fait déjà tourner une VM, ce qui réduit l\'écart, mais c\'est une seule VM partagée par tous tes conteneurs, pas une par projet. Une VM a son propre noyau, et root dans la VM a encore l\'hyperviseur entre lui et ton poste. Les différences pratiques comptent autant que celle-ci.',
