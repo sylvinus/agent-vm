@@ -35,7 +35,7 @@ func qemuBinaryFor(goarch, manager string) (bin, install string) {
 	}
 	switch manager {
 	case "dnf":
-		return bin, "sudo dnf install " + rpm
+		return bin, "sudo dnf install " + rpm + " qemu-img"
 	case "apt-get":
 		return bin, "sudo apt-get install " + deb
 	}
@@ -66,9 +66,13 @@ func LinuxPrereqs(w io.Writer) bool {
 	}
 	ok := true
 	bin, install := qemuBinary()
-	if _, err := exec.LookPath(bin); err != nil {
-		fmt.Fprintf(w, "Error: Lima needs '%s' on PATH (not found).\n  Install with: %s\n", bin, install)
-		ok = false
+	// Fedora packages qemu-img apart from the emulator, and Lima runs it on
+	// the disk image.
+	for _, b := range []string{bin, "qemu-img"} {
+		if _, err := exec.LookPath(b); err != nil {
+			fmt.Fprintf(w, "Error: Lima needs '%s' on PATH (not found).\n  Install with: %s\n", b, install)
+			ok = false
+		}
 	}
 	_, err := os.Stat("/dev/kvm")
 	switch {

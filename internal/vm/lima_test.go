@@ -312,6 +312,9 @@ func TestLimaStopOrphaned(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if inst.VMType != "qemu" {
+		t.Skip("only QEMU outlives the hostagent")
+	}
 	// sleep, under the name of a program: QEMU's, or any other.
 	spawn := func(name string) ([]byte, chan struct{}) {
 		sleep, err := exec.LookPath("sleep")

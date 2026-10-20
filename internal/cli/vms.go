@@ -75,7 +75,9 @@ func (e *app) stopCmd(ctx context.Context, args []string) int {
 func (e *app) startVM(ctx context.Context, b vm.Backend, name string, log io.Writer) error {
 	err := b.Start(ctx, name, log)
 	if err != nil && ctx.Err() == nil {
-		_ = b.Stop(ctx, name)
+		if stopErr := b.Stop(ctx, name); stopErr != nil {
+			err = errors.Join(err, fmt.Errorf("stopping VM '%s' failed, it may still be running: %w", name, stopErr))
+		}
 	}
 	return err
 }
