@@ -7,7 +7,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 
-	"github.com/lima-vm/lima/v2/pkg/copytool"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/copytool"
 )
 
 const copyHelp = `Copy files between host and guest

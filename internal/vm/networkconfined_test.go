@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/lima-vm/lima/v2/pkg/limatype"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype"
 )
 
 func TestNetworkConfined(t *testing.T) {
@@ -39,7 +39,7 @@ func TestLimaStartRefusesNetworks(t *testing.T) {
 	if err := l.Create(ctx, "n-12345678", "template:debian-13", Settings{Mounts: &none}, io.Discard); err != nil {
 		t.Fatal(err)
 	}
-	yamlPath := filepath.Join(os.Getenv("LIMA_HOME"), "n-12345678", "lima.yaml")
+	yamlPath := filepath.Join(os.Getenv("LIMA_INSTANCES_DIR"), "n-12345678", "lima", "lima.yaml")
 	orig, _ := os.ReadFile(yamlPath)
 	if err := os.WriteFile(yamlPath, append(orig, "\nnetworks:\n- lima: user-v2\n"...), 0o644); err != nil {
 		t.Fatal(err)

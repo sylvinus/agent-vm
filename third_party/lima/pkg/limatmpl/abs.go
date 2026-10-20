@@ -13,7 +13,7 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/lima-vm/lima/v2/pkg/localpathutil"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/localpathutil"
 )
 
 // UseAbsLocators will replace all relative template locators with absolute ones, so this template

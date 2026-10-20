@@ -14,7 +14,7 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	"github.com/lima-vm/lima/v2/pkg/guestagent/api"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/guestagent/api"
 )
 
 type GuestAgentClient struct {

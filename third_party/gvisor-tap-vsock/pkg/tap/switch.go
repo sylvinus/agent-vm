@@ -11,8 +11,8 @@ import (
 	"sync/atomic"
 	"syscall"
 
-	"github.com/containers/gvisor-tap-vsock/pkg/notification"
-	"github.com/containers/gvisor-tap-vsock/pkg/types"
+	"github.com/sylvinus/agent-vm/third_party/gvisor-tap-vsock/pkg/notification"
+	"github.com/sylvinus/agent-vm/third_party/gvisor-tap-vsock/pkg/types"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	log "github.com/sirupsen/logrus"

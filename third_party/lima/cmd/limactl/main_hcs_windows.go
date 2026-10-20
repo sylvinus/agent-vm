@@ -6,4 +6,4 @@
 package main
 
 // Import hcs driver to register it in the registry on windows.
-import _ "github.com/lima-vm/lima/v2/pkg/driver/hcs"
+import _ "github.com/sylvinus/agent-vm/third_party/lima/pkg/driver/hcs"

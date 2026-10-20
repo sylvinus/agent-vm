@@ -10,9 +10,9 @@ import (
 	"github.com/mikefarah/yq/v4/pkg/yqlib"
 	"github.com/spf13/cobra"
 
-	"github.com/lima-vm/lima/v2/pkg/limainfo"
-	"github.com/lima-vm/lima/v2/pkg/uiutil"
-	"github.com/lima-vm/lima/v2/pkg/yqutil"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limainfo"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/uiutil"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/yqutil"
 )
 
 func newInfoCommand() *cobra.Command {

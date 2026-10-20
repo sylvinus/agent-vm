@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -11,7 +10,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/sylvinus/agent-vm/internal/engine"
 	"github.com/sylvinus/agent-vm/internal/paths"
+	"github.com/sylvinus/agent-vm/internal/policy"
 	"github.com/sylvinus/agent-vm/internal/state"
 	"github.com/sylvinus/agent-vm/internal/vm"
 	"github.com/sylvinus/agent-vm/internal/vm/vmtest"
@@ -25,10 +26,13 @@ type guest struct {
 	lost     bool
 	payloads []string
 	ran      [][]string
+	// local are the VMs that share nothing, and have the project's folder
+	// of their own disk (scratch ones always).
+	local map[string]bool
 }
 
 func (g *guest) shell(name string, o vm.ShellOpts) int {
-	if len(o.Args) > 2 && o.Args[0] == "sh" && o.Args[2] == probeScript {
+	if len(o.Args) > 2 && o.Args[0] == "sh" && o.Args[2] == engine.ProbeScript {
 		b, _ := io.ReadAll(o.Stdin)
 		g.payloads = append(g.payloads, string(b))
 		fmt.Fprintln(o.Stdout, "env-ok")
@@ -36,7 +40,7 @@ func (g *guest) shell(name string, o vm.ShellOpts) int {
 			fmt.Fprintln(o.Stdout, "share-ok")
 		}
 		v := g.fake.VMs[name]
-		if g.lost || v == nil || len(v.Mounts) == 0 && !strings.Contains(name, "scratch") || len(v.Mounts) > 0 && !v.Mounts[0].Writable {
+		if g.lost || v == nil || len(v.Mounts) == 0 && !strings.Contains(name, "scratch") && !g.local[name] || len(v.Mounts) > 0 && !v.Mounts[0].Writable {
 			return 1
 		}
 		return 0
@@ -89,8 +93,9 @@ func newStartEnv(t *testing.T, answers ...string) *startEnv {
 
 func (se *startEnv) base() {
 	se.fake.VMs[vmname.Template] = &vm.Instance{Name: vmname.Template, Status: vm.Stopped, CPUs: 1, Memory: 3 << 30, Disk: 10 << 30}
-	os.WriteFile(se.state.Path(state.BaseVersion), []byte("1759000000\n"), 0o644)
-	os.WriteFile(se.state.Path(state.BaseBuiltBy), []byte("0.3.0\n"), 0o644)
+	se.state.UpdateMeta(vmname.Template, func(m *state.Metadata) {
+		m.Base = &state.Base{Name: vmname.Template, Built: 1759000000, BuiltBy: "0.3.0"}
+	})
 }
 
 func TestStartNoBase(t *testing.T) {
@@ -127,10 +132,12 @@ func TestStartNewVM(t *testing.T) {
 	if last[0] != paths.Guest(se.proj) || last[1] != "zsh" || last[len(last)-2] != "echo" || last[len(last)-1] != "hi" {
 		t.Errorf("command: %q", last)
 	}
-	for _, m := range []string{state.VersionOf, state.BuiltByOf} {
-		if _, err := os.Stat(se.state.Marker(m, name)); err != nil {
-			t.Errorf("marker %s not recorded", m)
-		}
+	if b := se.state.Known(name).Base; b == nil || *b != (state.Base{Name: vmname.Template, Built: 1759000000, BuiltBy: "0.3.0"}) {
+		t.Errorf("the base it was cloned from is not recorded: %+v", b)
+	}
+	// Its policies, as the hostagent will read them.
+	if pf, err := policy.Read(se.state.Policy(name)); err != nil || pf.Network == nil || pf.App != "agent-vm" {
+		t.Errorf("policy.json: %+v %v", pf, err)
 	}
 	// Again: nothing to change, nothing restarted.
 	se.run("run", "true")
@@ -143,32 +150,26 @@ func TestStartNewVM(t *testing.T) {
 	}
 }
 
-// The resources asked against the VM's: in bytes, the disk one way (it
-// only grows), a VM that cannot be read counts as a change.
-func TestResourcesDiffer(t *testing.T) {
-	inst := &vm.Instance{CPUs: 2, Memory: 4 << 30, Disk: 20 << 30}
-	for _, c := range []struct {
-		o    VMOpts
-		want bool
-	}{
-		{VMOpts{}, false},
-		{VMOpts{CPUs: 2, Memory: 4, Disk: 20}, false},
-		{VMOpts{CPUs: 3}, true},
-		{VMOpts{Memory: 5}, true},
-		{VMOpts{Disk: 10}, false},
-		{VMOpts{Disk: 30}, true},
-	} {
-		s := &start{opts: c.o}
-		if got := s.resourcesDiffer(inst); got != c.want {
-			t.Errorf("%+v: %v", c.o, got)
-		}
+// A VM left running without Lima's hostagent is stopped by force, then
+// started again.
+func TestStartOrphaned(t *testing.T) {
+	se := newStartEnv(t)
+	se.base()
+	name := vmname.Name(se.proj)
+	if code := se.run("run", "true"); code != 0 {
+		t.Fatalf("run: %d %s", code, se.out())
 	}
-	if !(&start{opts: VMOpts{CPUs: 2}}).resourcesDiffer(nil) {
-		t.Error("an unknown VM is no change")
+	v := se.fake.VMs[name]
+	v.Status, v.Orphaned = vm.Broken, true
+	if se.run("run", "true") != 0 || !strings.Contains(se.out(), "left running without Lima's host agent") ||
+		!strings.HasPrefix(se.fake.CallLog(), "stop "+name) || !strings.Contains(se.fake.CallLog(), "start "+name) || v.Status != vm.Running {
+		t.Errorf("orphaned: %s\n%s", se.out(), se.fake.CallLog())
 	}
-	// Half a GiB more than asked: a change.
-	if !(&start{opts: VMOpts{Memory: 4}}).resourcesDiffer(&vm.Instance{Memory: 4<<30 + 1<<29}) {
-		t.Error("compared in whole GiB")
+	// One that does not stop: no start.
+	v.Status, v.Orphaned = vm.Broken, true
+	se.fake.Sticky[name] = true
+	if se.run("run", "true") != 1 || !strings.Contains(se.out(), "could not stop VM") || strings.Contains(se.fake.CallLog(), "start") {
+		t.Errorf("orphaned, stop failed: %s\n%s", se.out(), se.fake.CallLog())
 	}
 }
 
@@ -176,7 +177,7 @@ func TestResourcesDiffer(t *testing.T) {
 func TestStartPartialVM(t *testing.T) {
 	se := newStartEnv(t)
 	se.base()
-	d := filepath.Join(LimaHome(se.state), vmname.Name(se.proj))
+	d := se.state.VM(vmname.Name(se.proj))
 	os.MkdirAll(d, 0o755)
 	os.WriteFile(filepath.Join(d, "basedisk"), nil, 0o644)
 	if se.run("run", "true") != 0 || !strings.Contains(se.out(), "Detected partial VM state at "+d) {
@@ -222,8 +223,8 @@ func TestStartFailures(t *testing.T) {
 		if se.run("run", "true") != 1 || strings.Contains(se.fake.CallLog(), "start") || se.fake.VMs[name] != nil {
 			t.Errorf("%s fails: %s\n%s", op, se.out(), se.fake.CallLog())
 		}
-		if _, err := os.Stat(se.state.Marker(state.VersionOf, name)); err == nil {
-			t.Errorf("%s fails: recorded", op)
+		if _, err := os.Stat(se.state.VM(name)); err == nil {
+			t.Errorf("%s fails: its folder is left", op)
 		}
 	}
 	se.fake.FailOn = nil
@@ -347,55 +348,6 @@ func TestStartReadonly(t *testing.T) {
 	se2.state = se.state
 	if se2.run("run", "true") != 0 || !se.fake.VMs[name].Mounts[0].Writable {
 		t.Errorf("writable again, yes: %s\n%s", se2.out(), se.fake.CallLog())
-	}
-}
-
-// beforeBoot holds every check that applies: --readonly with .git
-// protected refuses a protected share left writable.
-func TestBeforeBootAll(t *testing.T) {
-	se := newStartEnv(t)
-	se.base()
-	if se.run("run", "true") != 0 {
-		t.Fatal(se.out())
-	}
-	name := vmname.Name(se.proj)
-	se.fake.VMs[name].Status = vm.Stopped
-	s := &start{app: se.app, ctx: context.Background(), name: name, opts: VMOpts{ReadOnly: true}, protect: true, names: []string{".git", ".hg"}}
-	if s.beforeBoot() == nil || !strings.Contains(se.stderr.String(), "a writable share of "+se.proj) {
-		t.Errorf("--readonly, protected, writable: %s", se.out())
-	}
-	s.opts.ReadOnly = false
-	if s.beforeBoot() != nil {
-		t.Errorf("writable asked: %s", se.out())
-	}
-}
-
-// The verdicts on a VM's shares: confined first, then the names or the
-// read-only mode.
-func TestShareVerdicts(t *testing.T) {
-	b := func(names ...string) *vm.SSHFS { return &vm.SSHFS{SFTPDriver: "builtin", ReadonlyNames: names} }
-	inst := func(mt string, ms ...vm.Mount) *vm.Instance { return &vm.Instance{MountType: mt, Mounts: ms} }
-	rs := vm.ReverseSSHFS
-	for _, c := range []struct {
-		inst          *vm.Instance
-		names         []string
-		unprot, notRO string
-	}{
-		{inst(rs, vm.Mount{Location: "/p", SSHFS: b(".git", ".hg")}), []string{".git"}, "", ""},
-		{inst(rs, vm.Mount{Location: "/p", SSHFS: b(".git", ".hg", "tools")}), []string{".git", ".hg"}, "", ""},
-		{inst(rs, vm.Mount{Location: "/p", SSHFS: b(".git")}), []string{".git", "tools"}, "lacks the read-only names", ""},
-		{inst(rs, vm.Mount{Location: "/p", SSHFS: b()}), nil, "lacks the read-only names", ""},
-		{inst(rs, vm.Mount{Location: "/p", Writable: true, SSHFS: b(".git", ".hg", ".sl", ".jj")}), nil, "", "a writable share of /p"},
-		{inst(rs, vm.Mount{Location: "/p", SSHFS: b("tools")}), nil, "lacks the read-only names", ""},
-		{inst(rs, vm.Mount{Location: "/p", SSHFS: &vm.SSHFS{ReadonlyNames: []string{".git"}}}), nil, "not served by the builtin SFTP server", "not served by the builtin SFTP server"},
-		{inst("9p", vm.Mount{Location: "/p", SSHFS: b(".git")}), nil, "the mount type", "the mount type"},
-	} {
-		if got := unprotected(c.inst, c.names); c.unprot == "" && got != "" || !strings.Contains(got, c.unprot) {
-			t.Errorf("unprotected %+v %v: %q", c.inst.Mounts, c.names, got)
-		}
-		if got := notReadOnly(c.inst); c.notRO == "" && got != "" || !strings.Contains(got, c.notRO) {
-			t.Errorf("notReadOnly %+v: %q", c.inst.Mounts, got)
-		}
 	}
 }
 
@@ -752,11 +704,147 @@ func TestStartScratch(t *testing.T) {
 	for _, n := range []string{gone, used} {
 		se.fake.VMs[n] = &vm.Instance{Name: n, Status: vm.Running}
 	}
-	os.WriteFile(se.state.Marker(state.ScratchOf, gone), []byte("999999999\n"), 0o644)
-	os.WriteFile(se.state.Marker(state.ScratchOf, used), []byte(fmt.Sprintln(os.Getpid())), 0o644)
+	se.state.UpdateMeta(gone, func(m *state.Metadata) { m.ScratchPID = 999999999 })
+	se.state.UpdateMeta(used, func(m *state.Metadata) { m.ScratchPID = os.Getpid() })
 	se.run("--scratch", "run", "true")
 	if se.fake.VMs[gone] != nil || se.fake.VMs[used] == nil {
 		t.Errorf("leftovers: %s", se.out())
+	}
+}
+
+// --name: a second VM on the folder, bound to it.
+func TestStartNamed(t *testing.T) {
+	se := newStartEnv(t)
+	se.base()
+	here := vmname.Name(se.proj)
+	if se.run("--name", "agent2", "run", "true") != 0 {
+		t.Fatalf("first run: %s", se.out())
+	}
+	v := se.fake.VMs["agent2"]
+	if v == nil || v.Status != vm.Running || len(v.Mounts) != 1 || v.Mounts[0].Location != se.proj || se.fake.VMs[here] != nil {
+		t.Fatalf("VM: %+v\n%s", v, se.fake.CallLog())
+	}
+	if got := se.state.Known("agent2").Bound; got != se.proj {
+		t.Errorf("bound to %q, want %q", got, se.proj)
+	}
+	// The folder's own VM is another; the two run side by side.
+	if se.run("run", "true") != 0 || se.fake.VMs[here] == nil || se.fake.VMs["agent2"] == nil {
+		t.Errorf("the folder's VM: %s", se.out())
+	}
+	se.run("list")
+	marked := map[string]bool{}
+	for _, l := range strings.Split(se.stdout.String(), "\n") {
+		if rest, ok := strings.CutPrefix(l, "> "); ok {
+			marked[strings.Fields(rest)[0]] = true
+		}
+	}
+	if !marked[here] || !marked["agent2"] || marked["base"] || len(marked) != 2 {
+		t.Errorf("list marks %v:\n%s", marked, se.stdout.String())
+	}
+
+	// From another folder it stops, naming the folder.
+	other := filepath.Join(se.home, "other")
+	os.MkdirAll(other, 0o755)
+	t.Chdir(other)
+	t.Setenv("PWD", other)
+	se.fake.Calls = nil
+	if se.run("--name", "agent2", "run", "true") != 1 || !strings.Contains(se.out(), "VM 'agent2' belongs to "+se.proj+". Run it from there, or 'agent-vm rm agent2'.") ||
+		strings.Contains(se.fake.CallLog(), "start") || strings.Contains(se.fake.CallLog(), "shell") {
+		t.Errorf("another folder: %s\n%s", se.out(), se.fake.CallLog())
+	}
+	// And it never loses its shares.
+	t.Chdir(se.proj)
+	t.Setenv("PWD", se.proj)
+	if se.run("--name", "agent2", "--no-shares", "run", "true") != 1 || !strings.Contains(se.out(), "shares "+se.proj+", and keeps doing so") {
+		t.Errorf("--no-shares on a VM that shares: %s", se.out())
+	}
+	// --reset makes it again, bound anew.
+	se.g.local = map[string]bool{"agent2": true}
+	if se.run("--name", "agent2", "--no-shares", "--reset", "run", "true") != 0 || len(se.fake.VMs["agent2"].Mounts) != 0 || se.state.Known("agent2").Bound != "-" {
+		t.Errorf("--reset: %s\n%s", se.out(), se.fake.CallLog())
+	}
+	// No record of what it belongs to: refused, and told how to give it up.
+	se.state.UpdateMeta("agent2", func(m *state.Metadata) { m.Bound = "" })
+	if se.run("--name", "agent2", "run", "true") != 1 || !strings.Contains(se.out(), "has no record of the folder it belongs to. 'agent-vm rm agent2' deletes it.") {
+		t.Errorf("no record: %s", se.out())
+	}
+	// The VM keeps its place on rm, like any.
+	if se.run("rm", "agent2") != 0 || se.fake.VMs["agent2"] != nil {
+		t.Errorf("rm: %s", se.out())
+	}
+}
+
+// --no-shares: a VM that shares nothing, kept, usable from any folder.
+func TestStartNoShares(t *testing.T) {
+	se := newStartEnv(t)
+	se.base()
+	os.WriteFile(filepath.Join(se.proj, ".agent-vm.env"), []byte("P=1\n"), 0o600)
+	os.WriteFile(se.state.Path("env"), []byte("S=1\n"), 0o600)
+	se.g.local = map[string]bool{"sandbox": true}
+	if se.run("--name", "sandbox", "--no-shares", "run", "true") != 0 {
+		t.Fatalf("run: %s", se.out())
+	}
+	v := se.fake.VMs["sandbox"]
+	if v == nil || v.Status != vm.Running || len(v.Mounts) != 0 || se.state.Known("sandbox").Bound != "-" {
+		t.Fatalf("VM: %+v %+v", v, se.state.Known("sandbox"))
+	}
+	if len(se.g.payloads) != 1 || se.g.payloads[0] != "S=1\n" {
+		t.Errorf("only the shared env goes in: %q", se.g.payloads)
+	}
+	if last := se.g.ran[len(se.g.ran)-1]; last[0] != paths.Guest(se.proj) {
+		t.Errorf("working folder %q", last[0])
+	}
+	// From another folder, without saying --no-shares again: it still has
+	// none, and that folder's path is made in the VM.
+	other := filepath.Join(se.home, "other")
+	os.MkdirAll(other, 0o755)
+	t.Chdir(other)
+	t.Setenv("PWD", other)
+	if se.run("--name", "sandbox", "run", "true") != 0 || len(se.fake.VMs["sandbox"].Mounts) != 0 {
+		t.Errorf("another folder: %s\n%s", se.out(), se.fake.CallLog())
+	}
+	if !strings.Contains(se.fake.CallLog(), "install -d") || !strings.Contains(se.fake.CallLog(), paths.Guest(other)) {
+		t.Errorf("the folder is not made in the VM:\n%s", se.fake.CallLog())
+	}
+	// The project's checks do not apply: no question, whatever it holds.
+	exec.Command("git", "-C", other, "init", "-q").Run()
+	exec.Command("git", "-C", other, "config", "core.hooksPath", ".").Run()
+	if se.run("--name", "sandbox", "run", "true") != 0 || strings.Contains(se.out(), "core.hooksPath") {
+		t.Errorf("checks on a VM with no shares: %s", se.out())
+	}
+}
+
+func TestStartNamedUsage(t *testing.T) {
+	se := newStartEnv(t)
+	se.base()
+	for args, want := range map[string]string{
+		"--scratch --name x run true":              "--scratch and --name do not go together: --no-shares --rm --name x",
+		"--no-shares run true":                     "--no-shares needs --name",
+		"--name x --no-shares --readonly run true": "--no-shares and --readonly do not go together",
+		"--name Agent run true":                    "--name: a name is lowercase letters",
+		"--name base run true":                     "'base' is reserved",
+		"--name base-x run true":                   "'base-x' is reserved",
+		"--name proj-1a2b3c4d run true":            "--name: a name does not end with a dash and 8 hexadecimal digits",
+		"--name run true":                          "",
+	} {
+		code := se.run(strings.Fields(args)...)
+		if want == "" {
+			// "run" is the name here: the command is true.
+			continue
+		}
+		if code != exitUsage || !strings.Contains(se.out(), want) || se.fake.CallLog() != "" {
+			t.Errorf("%s: %d %s\n%s", args, code, se.out(), se.fake.CallLog())
+		}
+	}
+	// The options mean nothing to the commands that do not start a VM.
+	if se.run("--name", "x", "list") != exitUsage || !strings.Contains(se.out(), "--name is an option for the commands that start a VM") {
+		t.Errorf("--name list: %s", se.out())
+	}
+	if se.run("--name") != exitUsage || !strings.Contains(se.out(), "--name needs a value.") {
+		t.Errorf("--name: %s", se.out())
+	}
+	if se.run("--name=", "run", "true") != exitUsage || !strings.Contains(se.out(), "--name needs a name.") {
+		t.Errorf("--name=: %s", se.out())
 	}
 }
 

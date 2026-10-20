@@ -7,9 +7,9 @@ import (
 	"os/exec"
 	"strconv"
 
-	"github.com/lima-vm/sshocker/pkg/mount"
-	"github.com/lima-vm/sshocker/pkg/reversesshfs"
-	"github.com/lima-vm/sshocker/pkg/ssh"
+	"github.com/sylvinus/agent-vm/third_party/sshocker/pkg/mount"
+	"github.com/sylvinus/agent-vm/third_party/sshocker/pkg/reversesshfs"
+	"github.com/sylvinus/agent-vm/third_party/sshocker/pkg/ssh"
 	"github.com/sirupsen/logrus"
 )
 

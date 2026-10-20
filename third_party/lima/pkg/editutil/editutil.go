@@ -14,9 +14,9 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	"github.com/lima-vm/lima/v2/pkg/editutil/editorcmd"
-	"github.com/lima-vm/lima/v2/pkg/limatype/dirnames"
-	"github.com/lima-vm/lima/v2/pkg/limatype/filenames"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/editutil/editorcmd"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype/dirnames"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype/filenames"
 )
 
 func fileWarning(filename string) string {

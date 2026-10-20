@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lima-vm/sshocker/pkg/ssh"
+	"github.com/sylvinus/agent-vm/third_party/sshocker/pkg/ssh"
 	"gotest.tools/v3/assert"
 )
 

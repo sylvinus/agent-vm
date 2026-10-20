@@ -33,16 +33,17 @@ func CacheOn() bool { return os.Getenv("AGENT_VM_SSHFS_CACHE") == "1" }
 
 // Shares is what Build is given.
 type Shares struct {
-	VM       string
 	Dir      string // the project
 	Writable bool   // false for --readonly, every share
 	// Names are read-only on every share (none with .git left writable).
 	// Every share is served by the builtin SFTP server: the one confined to
 	// its folder (vm.Confined).
-	Names    []string
-	Entries  []Entry // see Entries
-	StateDir string  // where single files are staged
-	Warn     io.Writer
+	Names      []string
+	Entries    []Entry // see Entries
+	FileMounts string  // where this VM's single files are staged
+	// Cache turns sshfs's attribute cache on (see CacheOn).
+	Cache bool
+	Warn  io.Writer
 }
 
 // Build is the shares of the project's VM: the project first, then the
@@ -52,7 +53,7 @@ func Build(s Shares) ([]vm.Mount, []FileMount) {
 	w := func(format string, a ...any) { fmt.Fprintf(s.Warn, format+"\n", a...) }
 	opts := func(writable bool) *vm.SSHFS {
 		o := &vm.SSHFS{SFTPDriver: "builtin", ReadonlyNames: append([]string(nil), s.Names...)}
-		if writable && !CacheOn() {
+		if writable && !s.Cache {
 			off := false
 			o.Cache = &off
 		}
@@ -75,7 +76,7 @@ func Build(s Shares) ([]vm.Mount, []FileMount) {
 				w("Warning: Mount entry '%s' (from ~/.agent-vm/volumes) requests rw on a file; only directories support rw. Mount the parent directory instead. Skipping.", e.Line)
 				continue
 			}
-			dir := paths.Host(filepath.Join(s.StateDir, "file-mounts", s.VM, strconv.Itoa(idx)))
+			dir := paths.Host(filepath.Join(s.FileMounts, strconv.Itoa(idx)))
 			staged := dir + "/" + filepath.Base(e.Src)
 			if !Stage(e.Src, staged, s.Warn) {
 				w("Warning: Failed to stage '%s', skipping.", e.Src)

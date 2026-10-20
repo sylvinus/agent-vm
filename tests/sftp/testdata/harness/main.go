@@ -16,8 +16,8 @@ import (
 	"os"
 	"os/exec"
 
-	"github.com/lima-vm/sshocker/pkg/reversesshfs"
-	"github.com/lima-vm/sshocker/pkg/util"
+	"github.com/sylvinus/agent-vm/third_party/sshocker/pkg/reversesshfs"
+	"github.com/sylvinus/agent-vm/third_party/sshocker/pkg/util"
 )
 
 var readonlyNames = []string{".git", ".hg"}

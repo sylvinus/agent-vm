@@ -15,11 +15,11 @@ import (
 
 	continuityfs "github.com/containerd/continuity/fs"
 
-	"github.com/lima-vm/lima/v2/pkg/limatype"
-	"github.com/lima-vm/lima/v2/pkg/limatype/dirnames"
-	"github.com/lima-vm/lima/v2/pkg/limatype/filenames"
-	"github.com/lima-vm/lima/v2/pkg/osutil"
-	"github.com/lima-vm/lima/v2/pkg/store"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype/dirnames"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype/filenames"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/osutil"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/store"
 )
 
 func CloneOrRename(ctx context.Context, oldInst *limatype.Instance, newInstName string, rename bool) (*limatype.Instance, error) {
@@ -53,6 +53,10 @@ func CloneOrRename(ctx context.Context, oldInst *limatype.Instance, newInstName 
 			newInstName, maxSockName, osutil.UnixPathMax, len(maxSockName))
 	}
 
+	// Not LimaDir's own subfolder when $LIMA_INSTANCES_DIR is set.
+	if err = os.MkdirAll(filepath.Dir(newInstDir), 0o700); err != nil {
+		return nil, err
+	}
 	if err = os.Mkdir(newInstDir, 0o700); err != nil {
 		return nil, err
 	}

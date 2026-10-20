@@ -12,9 +12,9 @@ import (
 
 	"gotest.tools/v3/assert"
 
-	"github.com/lima-vm/lima/v2/pkg/limatype"
-	"github.com/lima-vm/lima/v2/pkg/limatype/filenames"
-	"github.com/lima-vm/lima/v2/pkg/osutil"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype/filenames"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/osutil"
 )
 
 // fakeBootSessionID replaces the source of the boot session ID for the duration of the test.

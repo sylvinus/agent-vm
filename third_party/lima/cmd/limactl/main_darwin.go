@@ -6,4 +6,4 @@
 package main
 
 // Import vz driver to register it in the registry on darwin.
-import _ "github.com/lima-vm/lima/v2/pkg/driver/vz"
+import _ "github.com/sylvinus/agent-vm/third_party/lima/pkg/driver/vz"

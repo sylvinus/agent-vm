@@ -9,12 +9,12 @@ import (
 	"os/exec"
 	"runtime"
 	"slices"
-	"strconv"
 	"strings"
 	"time"
 
-	limaversion "github.com/lima-vm/lima/v2/pkg/version"
+	limaversion "github.com/sylvinus/agent-vm/third_party/lima/pkg/version"
 
+	"github.com/sylvinus/agent-vm/internal/engine"
 	"github.com/sylvinus/agent-vm/internal/env"
 	"github.com/sylvinus/agent-vm/internal/gitguard"
 	"github.com/sylvinus/agent-vm/internal/guard"
@@ -22,7 +22,6 @@ import (
 	"github.com/sylvinus/agent-vm/internal/mounts"
 	"github.com/sylvinus/agent-vm/internal/netguard"
 	"github.com/sylvinus/agent-vm/internal/runscript"
-	"github.com/sylvinus/agent-vm/internal/state"
 	"github.com/sylvinus/agent-vm/internal/version"
 	"github.com/sylvinus/agent-vm/internal/vm"
 	"github.com/sylvinus/agent-vm/internal/vmname"
@@ -86,7 +85,7 @@ func (e *app) doctorCmd(ctx context.Context, args []string) int {
 	} else {
 		d.line("warn", "could not read the host's CPU or RAM: --cpus and --memory are not clamped")
 	}
-	dir := LimaHome(e.state)
+	dir := e.state.VMs()
 	if _, err := os.Stat(dir); err != nil {
 		dir, _ = os.UserHomeDir()
 	}
@@ -100,7 +99,7 @@ func (e *app) doctorCmd(ctx context.Context, args []string) int {
 	}
 
 	d.section("Lima")
-	d.line("info", fmt.Sprintf("Lima %s, built in; its VMs in %s", strings.TrimPrefix(limaversion.Version, "v"), LimaHome(e.state)))
+	d.line("info", fmt.Sprintf("Lima %s, built in; its VMs in %s", strings.TrimPrefix(limaversion.Version, "v"), e.state.VMs()))
 	for _, f := range vm.LimaOverrides(LimaHome(e.state)) {
 		d.line("fail", f+" adds to every VM's config: agent-vm makes and starts no VM while it is there", "Move it out of the way.")
 	}
@@ -152,6 +151,10 @@ func (e *app) doctorCmd(ctx context.Context, args []string) int {
 		d.line("info", fmt.Sprintf("%d VM(s) of agent-vm 0.2 in %s, not moved yet", len(vms), old),
 			"The next agent-vm command that starts or removes a VM offers to move them.")
 	}
+	if left := e.layoutPending(); len(left) > 0 {
+		d.line("info", fmt.Sprintf("%d VM(s) of agent-vm 0.3.0 in %s, not moved to %s yet", len(left), LimaHome(e.state), e.state.VMs()),
+			"The next agent-vm command that starts or removes a VM moves them.")
+	}
 	getVM := func(name string) (*vm.Instance, error) {
 		if berr != nil {
 			return nil, berr
@@ -163,20 +166,16 @@ func (e *app) doctorCmd(ctx context.Context, args []string) int {
 		return inst, err
 	}
 	base, err := getVM(vmname.Template)
-	_, merr := os.Stat(e.state.Path(state.BaseVersion))
 	switch {
 	case err != nil:
 		d.line("warn", "could not query Lima")
-	case base != nil && merr == nil:
-		if built, perr := strconv.ParseInt(e.state.Read(state.BaseVersion), 10, 64); perr == nil {
-			d.line("ok", fmt.Sprintf("%s is ready, built %s", vmname.Template, time.Unix(built, 0).Format("2006-01-02")))
-			if time.Since(time.Unix(built, 0)) > 90*24*time.Hour {
-				d.line("warn", "the base template is over 90 days old", "Its agents and packages are as old. 'agent-vm setup' rebuilds it.")
-			}
-		} else {
-			d.line("ok", vmname.Template+" is ready")
+	case base != nil && e.state.BaseReady(vmname.Template):
+		built := e.state.Known(vmname.Template).Base.Built
+		d.line("ok", fmt.Sprintf("%s is ready, built %s", vmname.Template, time.Unix(built, 0).Format("2006-01-02")))
+		if time.Since(time.Unix(built, 0)) > 90*24*time.Hour {
+			d.line("warn", "the base template is over 90 days old", "Its agents and packages are as old. 'agent-vm setup' rebuilds it.")
 		}
-		if _, err := os.Stat(e.state.Path(state.BaseBuiltBy)); err != nil {
+		if !engine.BuiltWithSSHFS(e.state.Known(vmname.Template).Base) {
 			d.line("warn", "the base template was built by agent-vm 0.1.0, without what the shares that keep .git read-only need",
 				"'agent-vm setup' rebuilds it, then '--reset' the VMs made from it.")
 		}
@@ -240,12 +239,20 @@ func (e *app) doctorCmd(ctx context.Context, args []string) int {
 			d.line("info", fmt.Sprintf("%d running, %d CPUs and %d GiB in total", n, c, m))
 		}
 	}
-	dead, unknown := e.scratchLeftovers()
+	var dead, unknown []string
+	if eng, err := e.engine(); err == nil {
+		dead, unknown = eng.ScratchLeftovers()
+	}
 	for _, left := range dead {
 		d.line("warn", "scratch VM "+left+" was left by a run that did not finish", "The next --scratch run deletes it, or: agent-vm rm "+left)
 	}
 	for _, left := range unknown {
 		d.line("warn", "scratch VM "+left+" has a record without a process number: not known whether a run still uses it", "agent-vm rm "+left+" deletes it.")
+	}
+	for _, n := range e.state.Names() {
+		if _, err := e.state.Meta(n); err != nil {
+			d.line("warn", "cannot read what agent-vm knows of "+n+": "+err.Error(), "It is treated as knowing nothing; 'agent-vm rm "+n+"' deletes the VM.")
+		}
 	}
 
 	fmt.Fprintln(w)
@@ -301,11 +308,15 @@ func (d *doctor) directory(ctx context.Context, dir string, protects bool, getVM
 		case inst.Status == vm.Running:
 			d.line("warn", "running with a share the host does not confine: "+confined.Error(),
 				"The next start (after 'agent-vm stop') sets its shares back.")
+		case inst.Orphaned:
+			d.line("warn", "running without Lima's host agent, cut off", "'agent-vm stop' stops it, and so does the next agent-vm command here.")
+		case inst.Status == vm.Broken:
+			d.line("warn", "Broken: Lima cannot say whether it runs")
 		default:
 			d.line("info", "stopped")
 		}
-		protected := len(inst.Mounts) > 0 && unprotected(inst, nil) == ""
-		current := unprotected(inst, names) == ""
+		protected := len(inst.Mounts) > 0 && engine.Unprotected(inst, nil) == ""
+		current := engine.Unprotected(inst, names) == ""
 		switch {
 		case protected && !current:
 			d.line("warn", "its shares keep .git read-only, but not all of "+strings.Join(names, ", "),
@@ -333,7 +344,7 @@ func (d *doctor) directory(ctx context.Context, dir string, protects bool, getVM
 		hn, ok := gitguard.HooksName(inRepo)
 		current := false
 		if inst != nil {
-			current = unprotected(inst, names) == ""
+			current = engine.Unprotected(inst, names) == ""
 		}
 		switch {
 		case !ok:

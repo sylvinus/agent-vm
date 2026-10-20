@@ -5,7 +5,7 @@ import (
 	"runtime"
 	"testing"
 
-	limaversion "github.com/lima-vm/lima/v2/pkg/version"
+	limaversion "github.com/sylvinus/agent-vm/third_party/lima/pkg/version"
 
 	"github.com/sylvinus/agent-vm/internal/limaembed"
 )

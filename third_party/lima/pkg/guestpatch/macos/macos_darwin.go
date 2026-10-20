@@ -13,10 +13,10 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	"github.com/lima-vm/lima/v2/pkg/apfs"
-	"github.com/lima-vm/lima/v2/pkg/imgutil/nativeimgutil/asifutil"
-	"github.com/lima-vm/lima/v2/pkg/limatype/filenames"
-	"github.com/lima-vm/lima/v2/pkg/osutil"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/apfs"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/imgutil/nativeimgutil/asifutil"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype/filenames"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/osutil"
 )
 
 // attachImageWithRetry retries `diskutil image attach` because the

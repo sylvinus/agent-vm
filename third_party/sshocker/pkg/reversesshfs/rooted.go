@@ -14,7 +14,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/pkg/sftp"
+	"github.com/sylvinus/agent-vm/third_party/sftp"
 )
 
 // rootedHandlers serves only the files under rootPath.

@@ -14,8 +14,8 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	"github.com/lima-vm/lima/v2/pkg/limatype"
-	"github.com/lima-vm/lima/v2/pkg/registry"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/registry"
 )
 
 // ResolveVMType sets y.VMType to the appropriate default if it is nil.

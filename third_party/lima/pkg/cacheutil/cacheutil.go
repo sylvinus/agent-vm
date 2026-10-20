@@ -8,9 +8,9 @@ import (
 	"fmt"
 	"path"
 
-	"github.com/lima-vm/lima/v2/pkg/downloader"
-	"github.com/lima-vm/lima/v2/pkg/fileutils"
-	"github.com/lima-vm/lima/v2/pkg/limatype"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/downloader"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/fileutils"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype"
 )
 
 // NerdctlArchive returns the basename of the archive.

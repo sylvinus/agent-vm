@@ -12,8 +12,8 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 	"gotest.tools/v3/assert"
 
-	"github.com/lima-vm/lima/v2/pkg/guestagent/api"
-	guestagentclient "github.com/lima-vm/lima/v2/pkg/guestagent/api/client"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/guestagent/api"
+	guestagentclient "github.com/sylvinus/agent-vm/third_party/lima/pkg/guestagent/api/client"
 )
 
 // invalidIPGuestService streams one port event whose IP is not an IP address.

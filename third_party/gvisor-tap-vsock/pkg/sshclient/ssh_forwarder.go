@@ -12,8 +12,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/containers/gvisor-tap-vsock/pkg/fs"
-	"github.com/containers/gvisor-tap-vsock/pkg/utils"
+	"github.com/sylvinus/agent-vm/third_party/gvisor-tap-vsock/pkg/fs"
+	"github.com/sylvinus/agent-vm/third_party/gvisor-tap-vsock/pkg/utils"
 	"github.com/sirupsen/logrus"
 )
 

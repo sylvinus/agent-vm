@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -22,40 +23,49 @@ import (
 	"github.com/mattn/go-isatty"
 	"github.com/sirupsen/logrus"
 
-	"github.com/lima-vm/lima/v2/pkg/driver/external/server"
-	"github.com/lima-vm/lima/v2/pkg/driverutil"
-	"github.com/lima-vm/lima/v2/pkg/instance"
-	"github.com/lima-vm/lima/v2/pkg/limatmpl"
-	"github.com/lima-vm/lima/v2/pkg/limatype"
-	"github.com/lima-vm/lima/v2/pkg/limatype/dirnames"
-	"github.com/lima-vm/lima/v2/pkg/limatype/filenames"
-	"github.com/lima-vm/lima/v2/pkg/limayaml"
-	"github.com/lima-vm/lima/v2/pkg/networks/reconcile"
-	"github.com/lima-vm/lima/v2/pkg/osutil"
-	"github.com/lima-vm/lima/v2/pkg/sshutil"
-	"github.com/lima-vm/lima/v2/pkg/store"
-	"github.com/lima-vm/lima/v2/pkg/yqutil"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/driver/external/server"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/driverutil"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/instance"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatmpl"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype/dirnames"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype/filenames"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limayaml"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/networks/reconcile"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/osutil"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/sshutil"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/store"
+	limaversion "github.com/sylvinus/agent-vm/third_party/lima/pkg/version"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/yqutil"
 
 	"github.com/sylvinus/agent-vm/internal/limaembed"
 	"github.com/sylvinus/agent-vm/internal/paths"
 )
+
+// limaPatches is the patch level of the Lima this is written for
+// (patches/lima): a tree without the patches has no such constant, and does
+// not compile here. A new patch changes it, and TestPatchLevel.
+const limaPatches = limaversion.AgentVMPatches
 
 // Lima runs VMs with the Lima built into agent-vm, as limactl's commands
 // do, in this process; its hostagent is this executable again (see
 // limaembed.Run).
 type Lima struct {
 	stateDir string
+	// assets are the guest agent and the templates; the binary's own when
+	// nil.
+	assets fs.FS
 
 	once  sync.Once
 	share *limaembed.Share
 	err   error
 }
 
-// MaxName is the longest VM name whose sockets fit under the Lima home
-// home (UNIX_PATH_MAX: 104 bytes on macOS), and Lima's 76 at most. Lima
-// resolves the home's symlinks: so does this, as far as it exists.
-func MaxName(home string) int {
-	real, rest := home, ""
+// MaxName is the longest VM name whose sockets fit under the folder of the
+// VMs, vms (UNIX_PATH_MAX: 104 bytes on macOS), and Lima's 76 at most. Lima
+// resolves the folder's symlinks: so does this, as far as it exists.
+func MaxName(vms string) int {
+	real, rest := vms, ""
 	for {
 		if p, err := filepath.EvalSymlinks(real); err == nil {
 			real = filepath.Join(p, rest)
@@ -63,22 +73,35 @@ func MaxName(home string) int {
 		}
 		parent := filepath.Dir(real)
 		if parent == real {
-			real = home
+			real = vms
 			break
 		}
 		rest = filepath.Join(filepath.Base(real), rest)
 		real = parent
 	}
-	// <home>/<name>/<socket>, shorter than UnixPathMax (its NUL).
-	n := osutil.UnixPathMax - 1 - len(real) - len("/") - len("/"+filenames.LongestSock)
+	// <vms>/<name>/lima/<socket>, shorter than UnixPathMax (its NUL).
+	n := osutil.UnixPathMax - 1 - len(real) - len("/") - len("/"+dirnames.InstanceSubdir+"/"+filenames.LongestSock)
 	return min(n, 76)
 }
 
-// NewLima keeps its VMs in home (LIMA_HOME), and writes Lima's guest agent
-// and templates under stateDir.
-func NewLima(home, stateDir string) (*Lima, error) {
+// WithAssets gives l the guest agent and templates to write under its state
+// folder, in place of those embedded in this binary.
+func (l *Lima) WithAssets(assets fs.FS) *Lima {
+	l.assets = assets
+	return l
+}
+
+// NewLima keeps Lima's own files in home (LIMA_HOME), its VMs in
+// vms/<name>/lima (LIMA_INSTANCES_DIR; in home, as Lima does, when vms is
+// empty), and writes Lima's guest agent and templates under stateDir.
+func NewLima(home, vms, stateDir string) (*Lima, error) {
 	limaHomeMu.Lock()
 	defer limaHomeMu.Unlock()
+	// A program not stamped with Lima's version at build time (-X) has the
+	// one its tree is made from, not "<unknown>", which Lima warns about.
+	if limaversion.Version == "<unknown>" {
+		limaversion.Version = limaversion.AgentVMUpstream
+	}
 	// A value other than the one set earlier here is the user's.
 	if cur := os.Getenv("LIMA_HOME"); cur != limaHomeSet {
 		userLimaHome = cur
@@ -87,6 +110,11 @@ func NewLima(home, stateDir string) (*Lima, error) {
 		return nil, err
 	}
 	limaHomeSet = home
+	if vms == "" {
+		os.Unsetenv(dirnames.InstancesEnv)
+	} else if err := os.Setenv(dirnames.InstancesEnv, vms); err != nil {
+		return nil, err
+	}
 	return &Lima{stateDir: stateDir}, nil
 }
 
@@ -115,7 +143,7 @@ func UserLimaHome() string {
 // agent-vm sets, nothing else.
 func (l *Lima) prepare() (*limaembed.Share, error) {
 	l.once.Do(func() {
-		l.share, l.err = limaembed.WriteShare(l.stateDir)
+		l.share, l.err = limaembed.WriteShare(l.stateDir, l.assets)
 		if l.err == nil {
 			l.err = os.Setenv("LIMA_TEMPLATES_PATH", l.share.Templates())
 		}
@@ -222,6 +250,9 @@ func fromLima(inst *limatype.Instance) *Instance {
 		out.Status = Broken
 		out.ConfigErr = errors.Join(inst.Errors...)
 	}
+	// "driver is running but host agent is not". Not the other way around: a
+	// hostagent without its driver is also one booting the VM.
+	out.Orphaned = out.Status == Broken && inst.Config != nil && inst.HostAgentPID == 0 && inst.DriverPID > 0
 	if c := inst.Config; c != nil {
 		if c.SSH.LocalPort != nil {
 			out.SSHPortConfig = *c.SSH.LocalPort
@@ -505,12 +536,18 @@ func (l *Lima) Stop(ctx context.Context, name string) error {
 	if err != nil {
 		return err
 	}
-	if inst.Status != limatype.StatusRunning {
-		return nil
+	switch {
+	case inst.Status == limatype.StatusRunning:
+		return withLog(io.Discard, func() error {
+			return errors.Join(instance.StopGracefully(ctx, inst, false), reconcile.Reconcile(ctx, ""))
+		})
+	case fromLima(inst).Orphaned:
+		return withLog(io.Discard, func() error {
+			instance.StopForcibly(inst)
+			return reconcile.Reconcile(ctx, "")
+		})
 	}
-	return withLog(io.Discard, func() error {
-		return errors.Join(instance.StopGracefully(ctx, inst, false), reconcile.Reconcile(ctx, ""))
-	})
+	return nil
 }
 
 func (l *Lima) Delete(ctx context.Context, name string) error {

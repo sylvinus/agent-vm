@@ -55,6 +55,19 @@ func share(total, floor int, warn io.Writer) int {
 // (nothing asked) and a host that cannot be read leave it alone: guessing
 // low would hand a 1-CPU VM to a 64-core host.
 func Cap(kind string, val int, warn io.Writer) int {
+	return capWith(func(total, floor int) int { return share(total, floor, warn) }, kind, val, warn)
+}
+
+// CapShare is Cap with the divisor given (0: 2): for a program that reads no
+// environment variable.
+func CapShare(div int, kind string, val int, warn io.Writer) int {
+	if div <= 0 {
+		div = 2
+	}
+	return capWith(func(total, floor int) int { return max(total/div, floor) }, kind, val, warn)
+}
+
+func capWith(share func(total, floor int) int, kind string, val int, warn io.Writer) int {
 	if val == 0 {
 		return 0
 	}
@@ -70,7 +83,7 @@ func Cap(kind string, val int, warn io.Writer) int {
 	if total <= 0 {
 		return val
 	}
-	if s := share(total, floor, warn); val > s {
+	if s := share(total, floor); val > s {
 		fmt.Fprintf(warn, "Note: --%s %d exceeds this host's share (%d detected); using %d.\n", kind, val, total, s)
 		return s
 	}

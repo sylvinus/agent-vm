@@ -5,28 +5,50 @@ import (
 	"errors"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
+	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
-	"github.com/lima-vm/lima/v2/pkg/guestagent/api"
-	"github.com/lima-vm/lima/v2/pkg/hostagent/events"
-	"github.com/lima-vm/lima/v2/pkg/limatype"
-	"github.com/lima-vm/lima/v2/pkg/limayaml"
-	"github.com/lima-vm/lima/v2/pkg/portfwd"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/guestagent/api"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/hostagent/events"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype/dirnames"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype/filenames"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limayaml"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/portfwd"
+	limaversion "github.com/sylvinus/agent-vm/third_party/lima/pkg/version"
 
 	"github.com/sylvinus/agent-vm/internal/limaembed"
 	"github.com/sylvinus/agent-vm/internal/paths"
 )
 
+// newTestLima is a Lima with its VMs in vms/<name>/lima, as agent-vm keeps
+// them: in dirnames.InstancesEnv.
 func newTestLima(t *testing.T) *Lima {
+	t.Helper()
+	return newLima(t, t.TempDir())
+}
+
+// newLegacyLima keeps its VMs in its Lima home, as 0.2 and 0.3.0 did.
+func newLegacyLima(t *testing.T) *Lima {
+	t.Helper()
+	return newLima(t, "")
+}
+
+func newLima(t *testing.T, vms string) *Lima {
 	t.Helper()
 	home := t.TempDir()
 	t.Setenv("LIMA_HOME", home)
 	t.Setenv("LIMA_TEMPLATES_PATH", "")
-	l, err := NewLima(home, t.TempDir())
+	// NewLima sets the VMs' folder for Lima's packages: put it back.
+	t.Setenv(dirnames.InstancesEnv, "")
+	l, err := NewLima(home, vms, t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,7 +78,7 @@ func TestLimaLifecycle(t *testing.T) {
 		t.Fatalf("created: %+v", base)
 	}
 	// Lima's containerd stays out: Docker brings its own when chosen.
-	if y, _ := os.ReadFile(filepath.Join(os.Getenv("LIMA_HOME"), "base", "lima.yaml")); !strings.Contains(string(y), "containerd:\n  user: false\n  system: false") {
+	if y, _ := os.ReadFile(filepath.Join(os.Getenv(dirnames.InstancesEnv), "base", "lima", "lima.yaml")); !strings.Contains(string(y), "containerd:\n  user: false\n  system: false") {
 		t.Errorf("containerd in lima.yaml:\n%s", y)
 	}
 
@@ -76,7 +98,7 @@ func TestLimaLifecycle(t *testing.T) {
 		t.Errorf("name over 76: %v", err)
 	}
 	// MaxName is exactly what fits here.
-	if m := MaxName(os.Getenv("LIMA_HOME")); m < 76 {
+	if m := MaxName(os.Getenv(dirnames.InstancesEnv)); m < 76 {
 		fits := strings.Repeat("n", m-9) + "-12345678"
 		if err := l.Clone(ctx, "base", fits); err != nil {
 			t.Errorf("a name of MaxName (%d): %v", m, err)
@@ -86,7 +108,7 @@ func TestLimaLifecycle(t *testing.T) {
 			t.Errorf("a name of MaxName+1: %v", err)
 		}
 	} else {
-		t.Errorf("MaxName = %d: the test's Lima home is long, it should be less than 76", m)
+		t.Errorf("MaxName = %d: the test's folder for VMs is long, it should be less than 76", m)
 	}
 
 	proj := t.TempDir()
@@ -223,7 +245,7 @@ func TestLimaEphemeralPorts(t *testing.T) {
 		t.Fatal(err)
 	}
 	// A forward of the VM's own, which Start keeps.
-	yamlPath := filepath.Join(os.Getenv("LIMA_HOME"), "p-12345678", "lima.yaml")
+	yamlPath := filepath.Join(os.Getenv(dirnames.InstancesEnv), "p-12345678", "lima", "lima.yaml")
 	orig, _ := os.ReadFile(yamlPath)
 	custom := "\nportForwards:\n- guestPort: 40000\n  hostPort: 40001\n"
 	if err := os.WriteFile(yamlPath, append(orig, custom...), 0o644); err != nil {
@@ -291,6 +313,61 @@ func TestSharesKeptWindows(t *testing.T) {
 	}
 }
 
+// A driver running without its hostagent: orphaned, and Stop kills it. A
+// hostagent without its driver is not: it may be booting the VM.
+func TestLimaStopOrphaned(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("no sleep to stand for the driver")
+	}
+	ctx := context.Background()
+	l := newTestLima(t)
+	none := []Mount{}
+	if err := l.Create(ctx, "o", "template:debian-13", Settings{Mounts: &none}, io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	inst, err := l.Get(ctx, "o")
+	if err != nil {
+		t.Fatal(err)
+	}
+	driver := exec.Command("sleep", "60")
+	if err := driver.Start(); err != nil {
+		t.Fatal(err)
+	}
+	exited := make(chan struct{})
+	go func() { driver.Wait(); close(exited) }()
+	t.Cleanup(func() { driver.Process.Kill(); <-exited })
+	pid := []byte(strconv.Itoa(driver.Process.Pid))
+
+	ha := filepath.Join(inst.Dir, filenames.HostAgentPID)
+	os.WriteFile(ha, pid, 0o644)
+	if got, _ := l.Get(ctx, "o"); got.Status != Broken || got.Orphaned {
+		t.Fatalf("a hostagent without its driver: %+v", got)
+	}
+	l.Stop(ctx, "o")
+	select {
+	case <-exited:
+		t.Fatal("Stop killed a hostagent without its driver")
+	case <-time.After(200 * time.Millisecond):
+	}
+	os.Remove(ha)
+
+	os.WriteFile(filepath.Join(inst.Dir, filenames.PIDFile(inst.VMType)), pid, 0o644)
+	if got, _ := l.Get(ctx, "o"); got.Status != Broken || !got.Orphaned {
+		t.Fatalf("a driver without its hostagent: %+v", got)
+	}
+	if err := l.Stop(ctx, "o"); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-exited:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the driver still runs")
+	}
+	if got, _ := l.Get(ctx, "o"); got.Status != Stopped || got.Orphaned {
+		t.Errorf("after Stop: %+v", got)
+	}
+}
+
 func TestConfined(t *testing.T) {
 	b := &SSHFS{SFTPDriver: "builtin"}
 	for _, c := range []struct {
@@ -310,6 +387,35 @@ func TestConfined(t *testing.T) {
 	}
 }
 
+// The engine is written for Lima as patches/lima makes it: its patch level is
+// named here, and a patch changes it with what the engine does of it.
+func TestPatchLevel(t *testing.T) {
+	if limaPatches != "lima-7" {
+		t.Errorf("patch level %q", limaPatches)
+	}
+}
+
+// A program not stamped with Lima's version gets the one its tree is made
+// from, not "<unknown>".
+func TestLimaVersionDefault(t *testing.T) {
+	saved := limaversion.Version
+	t.Cleanup(func() { limaversion.Version = saved })
+	limaversion.Version = "<unknown>"
+	if _, err := NewLima(t.TempDir(), "", t.TempDir()); err != nil {
+		t.Fatal(err)
+	}
+	if limaversion.Version != limaversion.AgentVMUpstream || limaversion.Version == "<unknown>" {
+		t.Errorf("version %q", limaversion.Version)
+	}
+	limaversion.Version = "v9.9.9"
+	if _, err := NewLima(t.TempDir(), "", t.TempDir()); err != nil {
+		t.Fatal(err)
+	}
+	if limaversion.Version != "v9.9.9" {
+		t.Errorf("a stamped version replaced: %q", limaversion.Version)
+	}
+}
+
 // The user's own LIMA_HOME is what NewLima found, not the one it sets.
 func TestUserLimaHome(t *testing.T) {
 	oldSet, oldUser := limaHomeSet, userLimaHome
@@ -321,14 +427,14 @@ func TestUserLimaHome(t *testing.T) {
 		t.Errorf("before NewLima: %q", got)
 	}
 	ours := t.TempDir()
-	if _, err := NewLima(ours, t.TempDir()); err != nil {
+	if _, err := NewLima(ours, "", t.TempDir()); err != nil {
 		t.Fatal(err)
 	}
 	if got := UserLimaHome(); got != user {
 		t.Errorf("after NewLima: %q, want %q", got, user)
 	}
 	// A second one, as tests and migrations make, keeps it.
-	if _, err := NewLima(ours, t.TempDir()); err != nil {
+	if _, err := NewLima(ours, "", t.TempDir()); err != nil {
 		t.Fatal(err)
 	}
 	if got := UserLimaHome(); got != user {
@@ -337,7 +443,7 @@ func TestUserLimaHome(t *testing.T) {
 
 	limaHomeSet, userLimaHome = "", ""
 	os.Unsetenv("LIMA_HOME")
-	if _, err := NewLima(ours, t.TempDir()); err != nil {
+	if _, err := NewLima(ours, "", t.TempDir()); err != nil {
 		t.Fatal(err)
 	}
 	if got := UserLimaHome(); got != "" {

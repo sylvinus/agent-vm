@@ -34,7 +34,7 @@ func (e *app) target(ctx context.Context, verb string, args []string) (name stri
 		fmt.Fprintf(e.io.Stderr, "Usage: agent-vm %s [vm-name]\n", verb)
 		return "", exitUsage
 	}
-	b, err := e.backend()
+	b, err := e.backend(ctx)
 	if err == nil {
 		_, err = b.Get(ctx, name)
 	}
@@ -69,13 +69,8 @@ func (e *app) stopCmd(ctx context.Context, args []string) int {
 
 // stopVM stops name, and reports whether it is known to be stopped.
 func (e *app) stopVM(ctx context.Context, name string) bool {
-	b, err := e.backend()
-	if err != nil {
-		return false
-	}
-	_ = b.Stop(ctx, name)
-	inst, err := b.Get(ctx, name)
-	return err == nil && inst.Status != vm.Running
+	eng, err := e.engine()
+	return err == nil && eng.Stop(ctx, name)
 }
 
 func (e *app) rmCmd(ctx context.Context, args []string) int {
@@ -89,33 +84,16 @@ func (e *app) rmCmd(ctx context.Context, args []string) int {
 	return 0
 }
 
-// removeVM stops and deletes name, saying so, and reports whether it is gone.
-func (e *app) removeVM(ctx context.Context, name string) bool {
-	fmt.Fprintf(e.io.Stdout, "Stopping and deleting VM '%s'...\n", name)
-	if !e.deleteVM(ctx, name) {
-		return false
-	}
-	fmt.Fprintln(e.io.Stdout, "VM destroyed.")
-	return true
-}
-
 // deleteVM stops and deletes name, then forgets what agent-vm knew of it.
 // Fails, saying so, when it is still there (or cannot be asked): --reset
 // would otherwise go on with the old VM and its shares.
 func (e *app) deleteVM(ctx context.Context, name string) bool {
-	b, err := e.backend()
-	if err == nil {
-		_ = b.Delete(ctx, name)
-		_, err = b.Get(ctx, name)
-	}
-	if !errors.Is(err, vm.ErrNotFound) {
+	eng, err := e.engine()
+	if err != nil {
 		fmt.Fprintf(e.io.Stderr, "Error: could not delete VM '%s'. See 'agent-vm list', then retry.\n", name)
 		return false
 	}
-	if err := e.state.Forget(name, vmname.Template); err != nil {
-		fmt.Fprintf(e.io.Stderr, "Warning: %v\n", err)
-	}
-	return true
+	return eng.Delete(ctx, name)
 }
 
 // `destroy-all`: every agent-vm VM, the base template included: the command
@@ -168,7 +146,7 @@ func (e *app) destroyAllCmd(ctx context.Context, args []string) int {
 // agentVMs lists the VMs, after moving 0.2's: for the commands that change
 // them.
 func (e *app) agentVMs(ctx context.Context) ([]*vm.Instance, error) {
-	b, err := e.backend()
+	b, err := e.backend(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -185,16 +163,17 @@ func (e *app) lookVMs(ctx context.Context) ([]*vm.Instance, error) {
 }
 
 // `list`, `status`: the agent-vm VMs as Lima's table shows them, the
-// current directory's marked with >, and the base each was cloned from in a
-// last column. Read-only: 0.2's VMs are said to wait, not moved.
+// current directory's marked with > (its own, and the named ones that share
+// it), and the base each was cloned from in a last column. Read-only: 0.2's
+// VMs are said to wait, not moved.
 func (e *app) listCmd(ctx context.Context, args []string) int {
 	if len(args) > 0 {
 		fmt.Fprintln(e.io.Stderr, "Usage: agent-vm list")
 		return exitUsage
 	}
-	current := ""
-	if wd, err := vmname.AbsDir(""); err == nil {
-		current = vmname.Name(wd)
+	current, wd := "", ""
+	if d, err := vmname.AbsDir(""); err == nil {
+		current, wd = vmname.Name(d), d
 	}
 	vms, err := e.lookVMs(ctx)
 	if err != nil {
@@ -203,6 +182,9 @@ func (e *app) listCmd(ctx context.Context, args []string) int {
 	}
 	if old, from := e.unmovedOld(); len(old) > 0 {
 		fmt.Fprintf(e.io.Stderr, "%d VM(s) of agent-vm 0.2 in %s are not listed: the next command that starts a VM offers to move them.\n", len(old), from)
+	}
+	if left := e.layoutPending(); len(left) > 0 {
+		fmt.Fprintf(e.io.Stderr, "%d VM(s) of agent-vm 0.3.0 in %s are not listed: the next command that starts a VM moves them.\n", len(left), LimaHome(e.state))
 	}
 	if len(vms) == 0 {
 		fmt.Fprintln(e.io.Stdout, "  (no VMs)")
@@ -216,10 +198,10 @@ func (e *app) listCmd(ctx context.Context, args []string) int {
 	fmt.Fprintf(e.io.Stdout, "  %-*s   %s\n", w, lines[0], "BASE")
 	for i, l := range lines[1:] {
 		mark := " "
-		if vms[i].Name == current {
+		if vms[i].Name == current || wd != "" && e.state.Known(vms[i].Name).Bound == wd {
 			mark = ">"
 		}
-		fmt.Fprintf(e.io.Stdout, "%s %-*s   %s\n", mark, w, l, e.state.BaseLabel(vms[i].Name, vmname.Template))
+		fmt.Fprintf(e.io.Stdout, "%s %-*s   %s\n", mark, w, l, e.state.BaseLabel(vms[i].Name))
 	}
 	return 0
 }

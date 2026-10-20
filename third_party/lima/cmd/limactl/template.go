@@ -13,12 +13,12 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 
-	"github.com/lima-vm/lima/v2/pkg/driverutil"
-	"github.com/lima-vm/lima/v2/pkg/limatmpl"
-	"github.com/lima-vm/lima/v2/pkg/limatype/dirnames"
-	"github.com/lima-vm/lima/v2/pkg/limayaml"
-	"github.com/lima-vm/lima/v2/pkg/uiutil"
-	"github.com/lima-vm/lima/v2/pkg/yqutil"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/driverutil"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatmpl"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype/dirnames"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limayaml"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/uiutil"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/yqutil"
 )
 
 func newTemplateCommand() *cobra.Command {

@@ -11,12 +11,12 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/containers/gvisor-tap-vsock/pkg/services/forwarder"
+	"github.com/sylvinus/agent-vm/third_party/gvisor-tap-vsock/pkg/services/forwarder"
 	"github.com/inetaf/tcpproxy"
 	"github.com/sirupsen/logrus"
 
-	"github.com/lima-vm/lima/v2/pkg/guestagent/api"
-	guestagentclient "github.com/lima-vm/lima/v2/pkg/guestagent/api/client"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/guestagent/api"
+	guestagentclient "github.com/sylvinus/agent-vm/third_party/lima/pkg/guestagent/api/client"
 )
 
 func HandleTCPConnection(_ context.Context, dialContext func(ctx context.Context, network string, addr string) (net.Conn, error), conn net.Conn, guestAddr string) {

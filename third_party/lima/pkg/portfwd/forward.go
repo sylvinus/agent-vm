@@ -10,10 +10,10 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	"github.com/lima-vm/lima/v2/pkg/guestagent/api"
-	"github.com/lima-vm/lima/v2/pkg/hostagent/events"
-	"github.com/lima-vm/lima/v2/pkg/limatype"
-	"github.com/lima-vm/lima/v2/pkg/limayaml"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/guestagent/api"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/hostagent/events"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limayaml"
 )
 
 var IPv4loopback1 = limayaml.IPv4loopback1

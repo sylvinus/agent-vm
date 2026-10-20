@@ -9,7 +9,7 @@ import (
 	"os"
 	"sync"
 
-	"github.com/lima-vm/lima/v2/pkg/hostagent/events"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/hostagent/events"
 
 	"github.com/sylvinus/agent-vm/internal/desktop"
 )
@@ -20,6 +20,7 @@ import (
 // surprise one should not go unseen.
 type eventWatch struct {
 	w      io.Writer
+	app    string // the program, named in what the user is shown
 	vm     string
 	notify func(title, msg string)
 
@@ -27,12 +28,15 @@ type eventWatch struct {
 	partial []byte
 }
 
-func newEventWatch(w io.Writer, vm string) *eventWatch {
+func newEventWatch(w io.Writer, app, vm string) *eventWatch {
 	n := desktop.Notify
 	if os.Getenv("AGENT_VM_NOTIFY") == "0" {
 		n = func(string, string) {}
 	}
-	return &eventWatch{w: w, vm: vm, notify: n}
+	if app == "" {
+		app = "agent-vm"
+	}
+	return &eventWatch{w: w, app: app, vm: vm, notify: n}
 }
 
 func (e *eventWatch) Write(p []byte) (int, error) {
@@ -62,8 +66,8 @@ func (e *eventWatch) event(line []byte) {
 	}
 	switch pf.Type {
 	case events.PortForwardEventForwarding:
-		e.notify("agent-vm: "+e.vm, fmt.Sprintf("The VM now serves %s on this machine.", pf.HostAddr))
+		e.notify(e.app+": "+e.vm, fmt.Sprintf("The VM now serves %s on this machine.", pf.HostAddr))
 	case events.PortForwardEventFailed:
-		e.notify("agent-vm: "+e.vm, fmt.Sprintf("Not forwarded: %s is in use on this machine.", pf.HostAddr))
+		e.notify(e.app+": "+e.vm, fmt.Sprintf("Not forwarded: %s is in use on this machine.", pf.HostAddr))
 	}
 }

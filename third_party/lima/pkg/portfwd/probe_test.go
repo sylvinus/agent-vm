@@ -11,10 +11,10 @@ import (
 
 	"gotest.tools/v3/assert"
 
-	"github.com/lima-vm/lima/v2/pkg/guestagent/api"
-	"github.com/lima-vm/lima/v2/pkg/hostagent/events"
-	"github.com/lima-vm/lima/v2/pkg/limatype"
-	"github.com/lima-vm/lima/v2/pkg/limayaml"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/guestagent/api"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/hostagent/events"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limayaml"
 )
 
 // A port a program of the host serves, on any address its loopback clients

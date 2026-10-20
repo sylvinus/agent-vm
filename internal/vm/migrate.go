@@ -14,11 +14,12 @@ import (
 
 	continuityfs "github.com/containerd/continuity/fs"
 
-	"github.com/lima-vm/lima/v2/pkg/instance"
-	"github.com/lima-vm/lima/v2/pkg/limatype"
-	"github.com/lima-vm/lima/v2/pkg/limatype/filenames"
-	"github.com/lima-vm/lima/v2/pkg/osutil"
-	"github.com/lima-vm/lima/v2/pkg/store"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/instance"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype/dirnames"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype/filenames"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/osutil"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/store"
 )
 
 // OldVM is a VM agent-vm 0.2 left in another Lima home.
@@ -53,21 +54,58 @@ func FindOld(old, prefix string) ([]OldVM, error) {
 	return out, nil
 }
 
-// withLimaHome runs fn with LIMA_HOME set to home, as Lima's packages read
-// it, and puts it back.
+// withLimaHome runs fn with LIMA_HOME set to home and the VMs in it, as
+// Lima's packages read them in the layout of 0.2 and 0.3.0, and puts the
+// environment back.
 func withLimaHome(home string, fn func() error) error {
 	saved, had := os.LookupEnv("LIMA_HOME")
+	savedVMs, hadVMs := os.LookupEnv(dirnames.InstancesEnv)
 	if err := os.Setenv("LIMA_HOME", home); err != nil {
 		return err
 	}
+	os.Unsetenv(dirnames.InstancesEnv)
 	defer func() {
 		if had {
 			os.Setenv("LIMA_HOME", saved)
 		} else {
 			os.Unsetenv("LIMA_HOME")
 		}
+		if hadVMs {
+			os.Setenv(dirnames.InstancesEnv, savedVMs)
+		} else {
+			os.Unsetenv(dirnames.InstancesEnv)
+		}
 	}()
 	return fn()
+}
+
+// LegacyRunning reports whether the VM name, kept in the Lima home home as
+// 0.3.0 did, is running or half there: either way it cannot move.
+func LegacyRunning(ctx context.Context, home, name string) bool {
+	running := true
+	_ = withLimaHome(home, func() error {
+		inst, err := store.Inspect(ctx, name)
+		running = err != nil || inst.Status != limatype.StatusStopped && inst.Config != nil
+		return nil
+	})
+	return running
+}
+
+// StopLegacy stops the VM name kept in the Lima home home as 0.3.0 did,
+// through its hostagent, whichever Lima started it; by force when the
+// hostagent is gone.
+func StopLegacy(ctx context.Context, home, name string) error {
+	return withLimaHome(home, func() error {
+		inst, err := store.Inspect(ctx, name)
+		if err != nil {
+			return err
+		}
+		if inst.HostAgentPID == 0 {
+			instance.StopForcibly(inst)
+			return nil
+		}
+		return instance.StopGracefully(ctx, inst, false)
+	})
 }
 
 // MoveOld moves the VM name from the Lima home old to the Lima home now, as

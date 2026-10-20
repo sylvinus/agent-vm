@@ -17,10 +17,10 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	"github.com/lima-vm/lima/v2/pkg/executil"
-	"github.com/lima-vm/lima/v2/pkg/limatype"
-	"github.com/lima-vm/lima/v2/pkg/limatype/filenames"
-	"github.com/lima-vm/lima/v2/pkg/textutil"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/executil"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype/filenames"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/textutil"
 )
 
 // startVM calls WSL to start a VM.

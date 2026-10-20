@@ -5,17 +5,48 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
-	"strconv"
-	"strings"
 	"syscall"
 	"time"
 
-	"github.com/sylvinus/agent-vm/internal/paths"
-	"github.com/sylvinus/agent-vm/internal/state"
+	agentvm "github.com/sylvinus/agent-vm"
+	"github.com/sylvinus/agent-vm/agents"
+	"github.com/sylvinus/agent-vm/internal/engine"
 	"github.com/sylvinus/agent-vm/internal/ui"
-	"github.com/sylvinus/agent-vm/internal/vm"
 	"github.com/sylvinus/agent-vm/internal/vmname"
 )
+
+// start is one run of a command in a project's VM.
+type start struct {
+	*app
+	ctx  context.Context
+	opts VMOpts
+	vm   *agentvm.VM
+	name string // the VM
+	dir  string // the project, as the shell spells it
+}
+
+func (s *start) warnf(format string, a ...any) {
+	fmt.Fprintf(s.io.Stderr, format+"\n", a...)
+}
+
+// spec is what the options ask of the VM.
+func (o VMOpts) spec() agentvm.Spec {
+	sp := agentvm.Spec{
+		CPUs: o.CPUs, MemoryGiB: o.Memory, DiskGiB: o.Disk,
+		Reset: o.Reset, ReadOnly: o.ReadOnly, NoShares: o.NoShares || o.Scratch, UnsafeWritableGit: o.UnsafeWritableGit,
+	}
+	if o.SSHPort >= 0 {
+		p := o.SSHPort
+		sp.SSHPort = &p
+	}
+	switch {
+	case o.UnsafeNoPrompts:
+		sp.UnsafeNoPrompts = "--unsafe-disable-security-prompts"
+	case os.Getenv("AGENT_VM_UNSAFE_DISABLE_SECURITY_PROMPTS") == "1":
+		sp.UnsafeNoPrompts = "AGENT_VM_UNSAFE_DISABLE_SECURITY_PROMPTS=1"
+	}
+	return sp
+}
 
 // session is what runs in the VM once it is up: an agent, a shell, a
 // command. It returns the exit status.
@@ -48,6 +79,17 @@ func endedBySignal(parent context.Context) (ctx context.Context, stop func()) {
 	}
 }
 
+// removeVM stops and deletes name, saying so, and reports whether it is gone.
+func (e *app) removeVM(ctx context.Context, name string) bool {
+	fmt.Fprintf(e.io.Stdout, "Stopping and deleting VM '%s'...\n", name)
+	eng, err := e.engine()
+	if err != nil || !eng.Delete(ctx, name) {
+		return false
+	}
+	fmt.Fprintln(e.io.Stdout, "VM destroyed.")
+	return true
+}
+
 // inVM starts this directory's VM with opts, runs fn, then deletes the VM
 // when --rm asked: after fn whatever it returns, and after a start that
 // failed when this run made the VM (a VM that was there before is not
@@ -55,6 +97,10 @@ func endedBySignal(parent context.Context) (ctx context.Context, stop func()) {
 // (SIGTERM, SIGHUP) ends the command and still deletes. --scratch: see
 // scratch.
 func (e *app) inVM(ctx context.Context, opts VMOpts, fn session) int {
+	if err := opts.check(); err != nil {
+		fmt.Fprintf(e.io.Stderr, "Error: %v\n", err)
+		return exitUsage
+	}
 	dir, err := vmname.AbsDir("")
 	if err != nil {
 		fmt.Fprintf(e.io.Stderr, "Error: %v\n", err)
@@ -66,9 +112,24 @@ func (e *app) inVM(ctx context.Context, opts VMOpts, fn session) int {
 	if opts.Scratch {
 		return e.scratch(ctx, cleanup, opts, dir, fn)
 	}
-	s := &start{app: e, ctx: ctx, opts: opts, dir: dir, name: vmname.Name(dir)}
+	eng, err := e.engine()
+	if err != nil {
+		fmt.Fprintf(e.io.Stderr, "Error: %v\n", err)
+		return 1
+	}
+	var v *agentvm.VM
+	if opts.Name != "" {
+		v, err = eng.NamedVM(opts.Name, dir)
+	} else {
+		v, err = eng.ProjectVM(dir)
+	}
+	if err != nil {
+		fmt.Fprintf(e.io.Stderr, "Error: %v\n", err)
+		return 1
+	}
+	s := &start{app: e, ctx: ctx, opts: opts, vm: v, dir: dir, name: v.Name}
 	st := 1
-	started := s.ensureRunning() == nil
+	started := v.Ensure(ctx, opts.spec()) == nil
 	if started {
 		s.printResources()
 		// A Ctrl-C is the command's, in the VM, as a shell leaves it to the job
@@ -79,7 +140,7 @@ func (e *app) inVM(ctx context.Context, opts VMOpts, fn session) int {
 		signal.Stop(sig)
 		ui.ResetTermModes(os.Stdout)
 	}
-	if opts.RM && (started || s.created) && !e.removeVM(cleanup, s.name) && st == 0 {
+	if opts.RM && (started || v.Created()) && !e.removeVM(cleanup, s.name) && st == 0 {
 		st = 1
 	}
 	return st
@@ -88,33 +149,22 @@ func (e *app) inVM(ctx context.Context, opts VMOpts, fn session) int {
 // printResources says what the VM has, and when the base it was cloned
 // from was built: its agents and packages are that old.
 func (s *start) printResources() {
-	if inst, err := s.get(s.name); err == nil && inst != nil {
-		fmt.Fprintf(s.io.Stdout, "  Resources: CPUs: %d, Memory: %d GiB, Disk: %d GiB\n", inst.CPUs, inst.Memory>>30, inst.Disk>>30)
+	d, err := s.vm.Details(s.ctx)
+	if err != nil || d == nil {
+		return
 	}
-	if built, err := strconv.ParseInt(s.state.ReadMarker(state.VersionOf, s.name), 10, 64); err == nil && built >= 0 {
-		fmt.Fprintf(s.io.Stdout, "  Base VM: built %s\n", time.Unix(built, 0).Format("2006-01-02"))
+	if inst := d.Instance; inst != nil {
+		fmt.Fprintln(s.io.Stdout, engine.ResourcesLine(inst))
+	}
+	if b := d.Base; b != nil && b.Built > 0 {
+		fmt.Fprintf(s.io.Stdout, "  Base VM: built %s\n", time.Unix(b.Built, 0).Format("2006-01-02"))
 	}
 }
 
-// lima runs args in the VM through a login zsh, from the project: agent PATH
-// entries and ~/.agent-vm.env are in ~/.zshenv. The command and its
-// arguments are positional parameters, never re-parsed; `env --` runs it,
-// leading VAR=value assignments working and a command starting with - not
-// taken for env's option. A command that is not there is said so, with
-// env's status (an agent installed only as an editor extension has none);
-// a path is env's to run, and to say why it cannot (126).
+// lima runs args in the VM through a login zsh, from the project (see
+// engine.VM.Exec).
 func (s *start) lima(tty bool, args ...string) int {
-	b, err := s.backend()
-	if err != nil {
-		return 1
-	}
-	code, err := b.Shell(s.ctx, s.name, vm.ShellOpts{
-		Workdir: paths.Guest(s.dir),
-		Args: append([]string{"zsh", "-l", "-c",
-			`case "$1" in *=*|*/*) ;; *) command -v -- "$1" >/dev/null || { print -r -- "agent-vm: $1 is not installed in this VM." >&2; exit 127; } ;; esac; exec env -- "$@"`,
-			"agent-vm"}, args...),
-		Stdin: s.io.Stdin, Stdout: s.io.Stdout, Stderr: s.io.Stderr, Interactive: tty,
-	})
+	code, err := s.vm.Exec(s.ctx, agentvm.Exec{Args: args, TTY: tty, Stdin: s.io.Stdin, Stdout: s.io.Stdout, Stderr: s.io.Stderr})
 	if err != nil {
 		s.warnf("Error: %v", err)
 		return 1
@@ -122,32 +172,16 @@ func (s *start) lima(tty bool, args ...string) int {
 	return code
 }
 
-// The agents, with the flag that lets each work unattended (safe in the
-// VM), and a terminal for the full-screen ones.
-var agents = map[string]struct {
-	cmd []string
-	tty bool
-}{
-	// The VM also enforces bypass mode with managed settings: Claude Code
-	// drops the flag when it relaunches itself.
-	"claude": {[]string{"claude", "--dangerously-skip-permissions"}, false},
-	// Approves every prompt that is not explicitly denied.
-	"opencode": {[]string{"opencode", "--auto"}, true},
-	"codex":    {[]string{"codex", "--dangerously-bypass-approvals-and-sandbox"}, false},
-	"vibe":     {[]string{"vibe", "--agent", "auto-approve"}, true},
-	// No permission prompts: it runs every tool as asked.
-	"pi": {[]string{"pi"}, true},
-}
-
-func (e *app) agentCmd(ctx context.Context, agent string, opts VMOpts, args []string) int {
-	a := agents[agent]
+// agentCmd runs one of the agents (see package agents), with the flag that
+// lets it work unattended, and a terminal for the full-screen ones.
+func (e *app) agentCmd(ctx context.Context, a agents.Agent, opts VMOpts, args []string) int {
 	rest, tty, err := opts.split(args)
 	if err != nil {
 		fmt.Fprintf(e.io.Stderr, "Error: %v\n", err)
 		return exitUsage
 	}
-	cmd := append(append([]string(nil), a.cmd...), rest...)
-	return e.inVM(ctx, opts, func(s *start) int { return s.lima(a.tty || tty, cmd...) })
+	cmd := append(append([]string(nil), a.Command...), rest...)
+	return e.inVM(ctx, opts, func(s *start) int { return s.lima(a.TTY || tty, cmd...) })
 }
 
 // `run [--tty] <command> [args]`: --tty gives the command a terminal, which
@@ -205,21 +239,12 @@ func (e *app) shellCmd(ctx context.Context, opts VMOpts, args []string) int {
 	})
 }
 
-// shellTo runs args in the VM from the project, on the terminal.
-func (s *start) shellTo(tty bool, args ...string) (int, error) {
-	b, err := s.backend()
-	if err != nil {
-		return 1, err
-	}
-	return b.Shell(s.ctx, s.name, vm.ShellOpts{Workdir: paths.Guest(s.dir), Args: args,
-		Stdin: s.io.Stdin, Stdout: s.io.Stdout, Stderr: s.io.Stderr, Interactive: tty})
-}
-
-// shell is shellTo's exit status. When the shell could not run at all (the
-// VM is not running, ssh fails), the reason is said and the status is 1: a
-// caller must not read that as the command's success.
+// shell runs args in the VM from the project, on the terminal, and returns
+// the exit status. When the shell could not run at all (the VM is not
+// running, ssh fails), the reason is said and the status is 1: a caller must
+// not read that as the command's success.
 func (s *start) shell(tty bool, args ...string) int {
-	code, err := s.shellTo(tty, args...)
+	code, err := s.vm.Shell(s.ctx, agentvm.Exec{Args: args, TTY: tty, Stdin: s.io.Stdin, Stdout: s.io.Stdout, Stderr: s.io.Stderr})
 	if err != nil {
 		s.warnf("Error: %v", err)
 		return 1
@@ -234,27 +259,29 @@ func (s *start) shell(tty bool, args ...string) int {
 // the next scratch run deletes it. cleanup is the context of the deletions,
 // which a kill of this run (ctx) does not end.
 func (e *app) scratch(ctx, cleanup context.Context, opts VMOpts, dir string, fn session) int {
-	dead, unknown := e.scratchLeftovers()
-	for _, left := range dead {
-		fmt.Fprintf(e.io.Stdout, "Deleting scratch VM '%s', left by a run that did not finish...\n", left)
-		e.deleteVM(cleanup, left)
-	}
-	for _, left := range unknown {
-		fmt.Fprintf(e.io.Stderr, "Note: scratch VM '%s' has a record without a process number, so it is not known whether a run still uses it: left alone. 'agent-vm rm %s' deletes it.\n", left, left)
-	}
-	name, err := vmname.Scratch(dir)
+	eng, err := e.engine()
 	if err != nil {
 		fmt.Fprintf(e.io.Stderr, "Error: %v\n", err)
 		return 1
 	}
-	if err := e.state.Write(state.ScratchOf+name, []byte(strconv.Itoa(os.Getpid())+"\n")); err != nil {
-		fmt.Fprintf(e.io.Stderr, "Error: could not record scratch VM '%s': %v\n", name, err)
+	dead, unknown := eng.ScratchLeftovers()
+	for _, left := range dead {
+		fmt.Fprintf(e.io.Stdout, "Deleting scratch VM '%s', left by a run that did not finish...\n", left)
+		eng.Delete(cleanup, left)
+	}
+	for _, left := range unknown {
+		fmt.Fprintf(e.io.Stderr, "Note: scratch VM '%s' has a record without a process number, so it is not known whether a run still uses it: left alone. 'agent-vm rm %s' deletes it.\n", left, left)
+	}
+	v, err := eng.NewScratchVM(dir)
+	if err != nil {
+		fmt.Fprintf(e.io.Stderr, "Error: %v\n", err)
 		return 1
 	}
+	name := v.Name
 	opts.RM = true
-	s := &start{app: e, ctx: ctx, opts: opts, dir: dir, name: name}
+	s := &start{app: e, ctx: ctx, opts: opts, vm: v, dir: dir, name: name}
 	st := 1
-	if s.ensureRunning() == nil {
+	if v.Ensure(ctx, opts.spec()) == nil {
 		s.printResources()
 		sig := make(chan os.Signal, 1)
 		signal.Notify(sig, os.Interrupt)
@@ -272,31 +299,8 @@ func (e *app) scratch(ctx, cleanup context.Context, opts VMOpts, dir string, fn 
 		}
 	}
 	fmt.Fprintf(e.io.Stdout, "Deleting scratch VM '%s'...\n", name)
-	if !e.deleteVM(cleanup, name) {
+	if !eng.Delete(cleanup, name) {
 		st = 1
 	}
 	return st
-}
-
-// scratchLeftovers are the scratch VMs a run could not delete (killed, its
-// terminal closed), by their record: dead are those recorded by a run whose
-// pid is gone (a reused pid only delays the cleanup), unknown those whose
-// record holds no pid, which is no proof that no run uses them. Only names
-// Scratch makes.
-func (e *app) scratchLeftovers() (dead, unknown []string) {
-	ents, _ := os.ReadDir(string(e.state))
-	for _, f := range ents {
-		name, ok := strings.CutPrefix(f.Name(), state.ScratchOf)
-		if !ok || !vmname.IsScratch(name) {
-			continue
-		}
-		pid, err := strconv.Atoi(strings.TrimSpace(e.state.Read(f.Name())))
-		switch {
-		case err != nil || pid <= 0:
-			unknown = append(unknown, name)
-		case !alive(pid):
-			dead = append(dead, name)
-		}
-	}
-	return dead, unknown
 }

@@ -5,6 +5,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/sylvinus/agent-vm/internal/vmname"
 )
 
 // VMOpts are agent-vm's own options, for the commands that start a VM.
@@ -16,7 +18,26 @@ type VMOpts struct {
 	Scratch            bool
 	UnsafeWritableGit  bool
 	UnsafeNoPrompts    bool
-	RM                 bool // --rm: delete the VM after the command
+	RM                 bool   // --rm: delete the VM after the command
+	Name               string // --name: the VM of that name, not the folder's
+	NoShares           bool   // --no-shares: nothing of the host is shared
+}
+
+// check says why the options do not go together, "" when they do.
+func (o VMOpts) check() error {
+	switch {
+	case o.Scratch && o.Name != "":
+		return fmt.Errorf("--scratch and --name do not go together: --no-shares --rm --name %s makes a named VM that is deleted after.", o.Name)
+	case o.NoShares && o.Name == "" && !o.Scratch:
+		return fmt.Errorf("--no-shares needs --name: --scratch is a VM with no shares that is deleted after, any other is called something.")
+	case o.NoShares && o.ReadOnly:
+		return fmt.Errorf("--no-shares and --readonly do not go together: nothing is shared.")
+	case o.Name != "":
+		if err := vmname.ValidateCustom(o.Name); err != nil {
+			return fmt.Errorf("--name: %v.", err)
+		}
+	}
+	return nil
 }
 
 func newVMOpts() VMOpts {
@@ -34,13 +55,16 @@ func (o *VMOpts) take(args []string) (int, error) {
 	}
 	opt, val, n := args[0], "", 0
 	switch opt {
-	case "--disk", "--memory", "--ram", "--cpus", "--ssh-port":
+	case "--disk", "--memory", "--ram", "--cpus", "--ssh-port", "--name":
 		if len(args) < 2 {
 			return 0, fmt.Errorf("%s needs a value.", opt)
 		}
 		val, n = args[1], 2
 	case "--reset":
 		o.Reset = true
+		return 1, nil
+	case "--no-shares":
+		o.NoShares = true
 		return 1, nil
 	case "--readonly":
 		o.ReadOnly = true
@@ -62,7 +86,7 @@ func (o *VMOpts) take(args []string) (int, error) {
 		switch {
 		case !ok:
 			return 0, nil
-		case name == "--disk", name == "--memory", name == "--ram", name == "--cpus", name == "--ssh-port":
+		case name == "--disk", name == "--memory", name == "--ram", name == "--cpus", name == "--ssh-port", name == "--name":
 			opt, val, n = name, v, 1
 		default:
 			return 0, nil
@@ -70,6 +94,13 @@ func (o *VMOpts) take(args []string) (int, error) {
 	}
 	if opt == "--ram" {
 		opt = "--memory"
+	}
+	if opt == "--name" {
+		if val == "" {
+			return 0, fmt.Errorf("--name needs a name.")
+		}
+		o.Name = val
+		return n, nil
 	}
 	if opt == "--ssh-port" {
 		p, err := strconv.Atoi(val)

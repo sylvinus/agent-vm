@@ -28,15 +28,15 @@ import (
 	"github.com/lima-vm/go-qcow2reader/image/raw"
 	"github.com/sirupsen/logrus"
 
-	"github.com/lima-vm/lima/v2/pkg/hostagent/events"
-	"github.com/lima-vm/lima/v2/pkg/imgutil/proxyimgutil"
-	"github.com/lima-vm/lima/v2/pkg/limatype"
-	"github.com/lima-vm/lima/v2/pkg/limatype/filenames"
-	"github.com/lima-vm/lima/v2/pkg/limayaml"
-	"github.com/lima-vm/lima/v2/pkg/networks"
-	"github.com/lima-vm/lima/v2/pkg/networks/usernet"
-	"github.com/lima-vm/lima/v2/pkg/osutil"
-	"github.com/lima-vm/lima/v2/pkg/store"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/hostagent/events"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/imgutil/proxyimgutil"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype/filenames"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limayaml"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/networks"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/networks/usernet"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/osutil"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/store"
 )
 
 // diskImageCachingMode is set to DiskImageCachingModeCached so as to avoid disk corruption on ARM:

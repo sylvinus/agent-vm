@@ -86,7 +86,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/lima-vm/lima/v2/pkg/driver"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/driver"
 )
 
 // CaptureScreenshot captures the VM display window.

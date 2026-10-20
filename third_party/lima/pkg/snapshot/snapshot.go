@@ -7,10 +7,10 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/lima-vm/lima/v2/pkg/driver"
-	"github.com/lima-vm/lima/v2/pkg/driverutil"
-	"github.com/lima-vm/lima/v2/pkg/limatype"
-	"github.com/lima-vm/lima/v2/pkg/limayaml"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/driver"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/driverutil"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limayaml"
 )
 
 func Del(ctx context.Context, inst *limatype.Instance, tag string) error {

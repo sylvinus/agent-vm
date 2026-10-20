@@ -28,16 +28,16 @@ import (
 	"github.com/mattn/go-shellwords"
 	"github.com/sirupsen/logrus"
 
-	"github.com/lima-vm/lima/v2/pkg/fileutils"
-	"github.com/lima-vm/lima/v2/pkg/iso9660util"
-	"github.com/lima-vm/lima/v2/pkg/limatype"
-	"github.com/lima-vm/lima/v2/pkg/limatype/filenames"
-	"github.com/lima-vm/lima/v2/pkg/limayaml"
-	"github.com/lima-vm/lima/v2/pkg/networks"
-	"github.com/lima-vm/lima/v2/pkg/networks/usernet"
-	"github.com/lima-vm/lima/v2/pkg/osutil"
-	"github.com/lima-vm/lima/v2/pkg/qemuimgutil"
-	"github.com/lima-vm/lima/v2/pkg/store"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/fileutils"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/iso9660util"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype/filenames"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limayaml"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/networks"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/networks/usernet"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/osutil"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/qemuimgutil"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/store"
 )
 
 type Config struct {

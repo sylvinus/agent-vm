@@ -11,6 +11,7 @@ import (
 
 	"github.com/sylvinus/agent-vm/internal/paths"
 	"github.com/sylvinus/agent-vm/internal/state"
+	"github.com/sylvinus/agent-vm/internal/vm"
 	"github.com/sylvinus/agent-vm/internal/vmname"
 )
 
@@ -55,7 +56,7 @@ func TestDoctor(t *testing.T) {
 	// An env others can read; a leftover scratch VM; a config risk.
 	os.WriteFile(se.state.Path("env"), []byte("A=1\nB=2\nA=3\n"), 0o644)
 	os.Chmod(se.state.Path("env"), 0o644)
-	os.WriteFile(se.state.Marker(state.ScratchOf, "x-scratch-0000aaaa"), []byte("999999999\n"), 0o644)
+	se.state.UpdateMeta("x-scratch-0000aaaa", func(m *state.Metadata) { m.ScratchPID = 999999999 })
 	exec.Command("git", "-C", se.proj, "config", "core.fsmonitor", "./mon.sh").Run()
 	o = out()
 	// Permission bits mean little on Windows (see doctor.go): only the
@@ -83,6 +84,16 @@ func TestDoctor(t *testing.T) {
 	if o = out(); !strings.Contains(o, "  warn  running with a share the host does not confine: ") || !strings.Contains(o, `the mount type is "9p"`) {
 		t.Errorf("9p:\n%s", o)
 	}
+	// Broken, orphaned or not: never "stopped".
+	v.Status = vm.Broken
+	if o = out(); !strings.Contains(o, "  warn  Broken: Lima cannot say whether it runs") {
+		t.Errorf("Broken:\n%s", o)
+	}
+	v.Orphaned = true
+	if o = out(); !strings.Contains(o, "  warn  running without Lima's host agent, cut off") {
+		t.Errorf("orphaned:\n%s", o)
+	}
+	v.Status, v.Orphaned = vm.Running, false
 	if strings.Contains(se.fake.CallLog(), "edit") || strings.Contains(se.fake.CallLog(), "start") || strings.Contains(se.fake.CallLog(), "stop") {
 		t.Errorf("doctor changed the VM:\n%s", se.fake.CallLog())
 	}

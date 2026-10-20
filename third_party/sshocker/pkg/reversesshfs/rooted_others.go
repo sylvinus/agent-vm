@@ -6,7 +6,7 @@ import (
 	"errors"
 	"io"
 
-	"github.com/pkg/sftp"
+	"github.com/sylvinus/agent-vm/third_party/sftp"
 )
 
 type rootedHandlers struct{}

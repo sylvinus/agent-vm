@@ -19,9 +19,9 @@ import (
 	"time"
 
 	"github.com/balajiv113/fd"
-	"github.com/containers/gvisor-tap-vsock/pkg/transport"
-	"github.com/containers/gvisor-tap-vsock/pkg/types"
-	"github.com/containers/gvisor-tap-vsock/pkg/virtualnetwork"
+	"github.com/sylvinus/agent-vm/third_party/gvisor-tap-vsock/pkg/transport"
+	"github.com/sylvinus/agent-vm/third_party/gvisor-tap-vsock/pkg/types"
+	"github.com/sylvinus/agent-vm/third_party/gvisor-tap-vsock/pkg/virtualnetwork"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/sync/errgroup"
 )

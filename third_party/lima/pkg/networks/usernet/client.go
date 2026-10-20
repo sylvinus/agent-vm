@@ -14,13 +14,13 @@ import (
 	"strconv"
 	"time"
 
-	gvproxyclient "github.com/containers/gvisor-tap-vsock/pkg/client"
-	"github.com/containers/gvisor-tap-vsock/pkg/types"
+	gvproxyclient "github.com/sylvinus/agent-vm/third_party/gvisor-tap-vsock/pkg/client"
+	"github.com/sylvinus/agent-vm/third_party/gvisor-tap-vsock/pkg/types"
 
-	"github.com/lima-vm/lima/v2/pkg/httpclientutil"
-	"github.com/lima-vm/lima/v2/pkg/limatype"
-	"github.com/lima-vm/lima/v2/pkg/limayaml"
-	"github.com/lima-vm/lima/v2/pkg/networks/usernet/dnshosts"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/httpclientutil"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limayaml"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/networks/usernet/dnshosts"
 )
 
 type Client struct {

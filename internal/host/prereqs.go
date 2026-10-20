@@ -13,15 +13,26 @@ import (
 )
 
 // qemuBinary is QEMU's emulator for this host's architecture, and the
-// Debian package that has it.
-func qemuBinary() (bin, pkg string) {
-	switch runtime.GOARCH {
+// command that installs it: dnf's package where there is dnf and no apt-get,
+// else Debian's.
+func qemuBinary() (bin, install string) {
+	_, aptErr := exec.LookPath("apt-get")
+	_, dnfErr := exec.LookPath("dnf")
+	return qemuBinaryFor(runtime.GOARCH, aptErr != nil && dnfErr == nil)
+}
+
+func qemuBinaryFor(goarch string, dnf bool) (bin, install string) {
+	bin, deb, rpm := "qemu-system-"+goarch, "qemu-system", "qemu-system-"+goarch+"-core"
+	switch goarch {
 	case "amd64":
-		return "qemu-system-x86_64", "qemu-system-x86"
+		bin, deb, rpm = "qemu-system-x86_64", "qemu-system-x86", "qemu-system-x86-core"
 	case "arm64":
-		return "qemu-system-aarch64", "qemu-system-arm"
+		bin, deb, rpm = "qemu-system-aarch64", "qemu-system-arm", "qemu-system-aarch64-core"
 	}
-	return "qemu-system-" + runtime.GOARCH, "qemu-system"
+	if dnf {
+		return bin, "sudo dnf install " + rpm
+	}
+	return bin, "sudo apt-get install " + deb
 }
 
 // WSLVersion is 2 or 1 under WSL, from the kernel release, 0 elsewhere.
@@ -47,9 +58,9 @@ func LinuxPrereqs(w io.Writer) bool {
 		return true
 	}
 	ok := true
-	bin, pkg := qemuBinary()
+	bin, install := qemuBinary()
 	if _, err := exec.LookPath(bin); err != nil {
-		fmt.Fprintf(w, "Error: Lima needs '%s' on PATH (not found).\n  Install with: sudo apt-get install %s\n", bin, pkg)
+		fmt.Fprintf(w, "Error: Lima needs '%s' on PATH (not found).\n  Install with: %s\n", bin, install)
 		ok = false
 	}
 	_, err := os.Stat("/dev/kvm")

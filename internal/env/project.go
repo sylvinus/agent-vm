@@ -114,13 +114,21 @@ func StripCR(content string) string {
 // it). The project's file is only in here when AGENT_VM_PROJECT_ENV puts it
 // outside the project; inside, the VM reads it itself (see ProjectRel).
 func Payload(shared, dir string) string {
+	return PayloadFor(shared, dir, ProjectEnvFile(dir))
+}
+
+// PayloadFor is Payload with the project's env file given, "" for none: a
+// program that has no AGENT_VM_PROJECT_ENV to read gives it.
+func PayloadFor(shared, dir, projectFile string) string {
 	var b strings.Builder
-	if s, ok := readRegular(shared); ok {
-		// The newline keeps a shared file without one from gluing its last
-		// line to the project's first.
-		b.WriteString(StripCR(s) + "\n")
+	if shared != "" {
+		if s, ok := readRegular(shared); ok {
+			// The newline keeps a shared file without one from gluing its last
+			// line to the project's first.
+			b.WriteString(StripCR(s) + "\n")
+		}
 	}
-	if pf := ProjectEnvFile(dir); !InProject(dir, pf) {
+	if pf := projectFile; pf != "" && !InProject(dir, pf) {
 		if p, ok := readRegular(pf); ok {
 			b.WriteString(StripCR(p))
 		}

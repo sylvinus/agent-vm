@@ -1,0 +1,2 @@
+Filled by `go generate`: Lima's guest agent and templates, from agent-vm
+(cmd/agent-vm-assets). Embedded in the program, given to agentvm.Options.Assets.

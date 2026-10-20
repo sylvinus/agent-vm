@@ -12,11 +12,11 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/lima-vm/sshocker/pkg/ssh"
+	"github.com/sylvinus/agent-vm/third_party/sshocker/pkg/ssh"
 	"github.com/sirupsen/logrus"
 
-	"github.com/lima-vm/lima/v2/pkg/bicopy"
-	"github.com/lima-vm/lima/v2/pkg/portfwd"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/bicopy"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/portfwd"
 )
 
 // forwardTCP is not thread-safe.

@@ -1,0 +1,278 @@
+Subject: [PATCH] dirnames: keep the instances in $LIMA_INSTANCES_DIR/<name>/lima
+
+A program that embeds Lima keeps its own files for each instance (its
+settings, markers, staged files). With every instance at $LIMA_HOME/<name>
+they sit in another folder, and deleting an instance has to remove them
+apart, so that one can outlive its instance.
+
+When $LIMA_INSTANCES_DIR is set, the instance <name> is kept in
+$LIMA_INSTANCES_DIR/<name>/lima, and the program owns the rest of
+$LIMA_INSTANCES_DIR/<name>. $LIMA_HOME keeps what is shared (_config,
+_networks, _disks, _templates). Unset, nothing changes.
+
+A $LIMA_HOME per instance would do the same, but every instance would
+then be named by the same folder: the guest hostnames and the SSH aliases
+come from the instance name, and the Windows drivers name their WSL2
+distro and HCS system after it. Naming the home after the instance
+instead puts its name twice in the path of every socket, which the
+sockets' length limit cannot afford (104 characters on macOS).
+
+- dirnames.InstanceDir returns the new path, and dirnames.InstanceName is
+  the name of an instance dir: the name is no longer the dir's base.
+  Templates' {{.Name}} read it.
+- store.Instances lists the folders that hold an instance folder, and
+  store.Validate follows.
+- Clone makes the parent folder of the new instance.
+
+Tests TestInstancesDir, TestInstancesDirRelative, TestInstancesDirUnset.
+
+---
+diff -ruN a/pkg/instance/clone.go b/pkg/instance/clone.go
+--- a/pkg/instance/clone.go	2026-10-20 00:21:33.801616607 +0200
++++ b/pkg/instance/clone.go	2026-10-20 00:22:24.894177976 +0200
+@@ -53,6 +53,10 @@
+ 			newInstName, maxSockName, osutil.UnixPathMax, len(maxSockName))
+ 	}
+ 
++	// Not LimaDir's own subfolder when $LIMA_INSTANCES_DIR is set.
++	if err = os.MkdirAll(filepath.Dir(newInstDir), 0o700); err != nil {
++		return nil, err
++	}
+ 	if err = os.Mkdir(newInstDir, 0o700); err != nil {
+ 		return nil, err
+ 	}
+diff -ruN a/pkg/limatype/dirnames/dirnames.go b/pkg/limatype/dirnames/dirnames.go
+--- a/pkg/limatype/dirnames/dirnames.go	2026-10-20 00:21:33.801616607 +0200
++++ b/pkg/limatype/dirnames/dirnames.go	2026-10-20 00:21:49.238043200 +0200
+@@ -77,12 +77,49 @@
+ 	return filepath.Join(limaDir, filenames.TemplatesDir), nil
+ }
+ 
++// InstancesEnv is the environment variable that moves the instances out of
++// $LIMA_HOME. When it is set, the instance NAME is in
++// $LIMA_INSTANCES_DIR/NAME/InstanceSubdir, and a program embedding Lima can
++// keep its own files for NAME in $LIMA_INSTANCES_DIR/NAME. $LIMA_HOME keeps
++// the rest (_config, _networks, _disks, _templates).
++const InstancesEnv = "LIMA_INSTANCES_DIR"
++
++// InstanceSubdir is the instance's folder in $LIMA_INSTANCES_DIR/NAME.
++const InstanceSubdir = "lima"
++
++// InstancesDir returns the absolute path of $LIMA_INSTANCES_DIR, or "" when
++// it is not set and the instances are in LimaDir.
++func InstancesDir() (string, error) {
++	dir := os.Getenv(InstancesEnv)
++	if dir == "" {
++		return "", nil
++	}
++	if !filepath.IsAbs(dir) {
++		return "", fmt.Errorf("$%s must be an absolute path, got %#q", InstancesEnv, dir)
++	}
++	if _, err := os.Stat(dir); errors.Is(err, os.ErrNotExist) {
++		return dir, nil
++	}
++	realdir, err := filepath.EvalSymlinks(dir)
++	if err != nil {
++		return "", fmt.Errorf("cannot evaluate symlinks in %#q: %w", dir, err)
++	}
++	return realdir, nil
++}
++
+ // InstanceDir returns the instance dir.
+ // InstanceDir does not check whether the instance exists.
+ func InstanceDir(name string) (string, error) {
+ 	if err := ValidateInstName(name); err != nil {
+ 		return "", err
+ 	}
++	instances, err := InstancesDir()
++	if err != nil {
++		return "", err
++	}
++	if instances != "" {
++		return filepath.Join(instances, name, InstanceSubdir), nil
++	}
+ 	limaDir, err := LimaDir()
+ 	if err != nil {
+ 		return "", err
+@@ -91,6 +128,14 @@
+ 	return dir, nil
+ }
+ 
++// InstanceName returns the name of the instance whose dir is instDir.
++func InstanceName(instDir string) string {
++	if os.Getenv(InstancesEnv) != "" {
++		return filepath.Base(filepath.Dir(instDir))
++	}
++	return filepath.Base(instDir)
++}
++
+ // ValidateInstName checks if the name is a valid instance name. For this it needs to
+ // be a valid identifier, and not end in .yml or .yaml (case insensitively).
+ func ValidateInstName(name string) error {
+diff -ruN a/pkg/limayaml/defaults.go b/pkg/limayaml/defaults.go
+--- a/pkg/limayaml/defaults.go	2026-10-20 00:21:33.936930219 +0200
++++ b/pkg/limayaml/defaults.go	2026-10-20 00:22:17.833097176 +0200
+@@ -955,7 +955,7 @@
+ func executeGuestTemplate(format, instDir string, user limatype.User, param map[string]string) (bytes.Buffer, error) {
+ 	tmpl, err := template.New("").Parse(format)
+ 	if err == nil {
+-		name := filepath.Base(instDir)
++		name := dirnames.InstanceName(instDir)
+ 		data := map[string]any{
+ 			"Name":     name,
+ 			"Hostname": hostname.FromInstName(name), // TODO: support customization
+@@ -985,7 +985,7 @@
+ 		}
+ 		data := map[string]any{
+ 			"Dir":  instDir,
+-			"Name": filepath.Base(instDir),
++			"Name": dirnames.InstanceName(instDir),
+ 			// TODO: add hostname fields for the host and the guest
+ 			"UID":           currentUser.Uid,
+ 			"User":          currentUser.Username,
+@@ -994,8 +994,8 @@
+ 			"GlobalTempDir": globalTempDir,
+ 			"TempDir":       os.TempDir(),
+ 
+-			"Instance": filepath.Base(instDir), // DEPRECATED, use `{{.Name}}`
+-			"LimaHome": limaHome,               // DEPRECATED, use `{{.Dir}}` instead of `{{.LimaHome}}/{{.Instance}}`
++			"Instance": dirnames.InstanceName(instDir), // DEPRECATED, use `{{.Name}}`
++			"LimaHome": limaHome,                       // DEPRECATED, use `{{.Dir}}` instead of `{{.LimaHome}}/{{.Instance}}`
+ 		}
+ 		var out bytes.Buffer
+ 		err = tmpl.Execute(&out, data)
+diff -ruN a/pkg/store/instances_dir_test.go b/pkg/store/instances_dir_test.go
+--- a/pkg/store/instances_dir_test.go	1970-01-01 01:00:00.000000000 +0100
++++ b/pkg/store/instances_dir_test.go	2026-10-20 00:22:42.400466431 +0200
+@@ -0,0 +1,71 @@
++// SPDX-FileCopyrightText: Copyright The Lima Authors
++// SPDX-License-Identifier: Apache-2.0
++
++package store
++
++import (
++	"os"
++	"path/filepath"
++	"testing"
++
++	"gotest.tools/v3/assert"
++
++	"github.com/lima-vm/lima/v2/pkg/limatype/dirnames"
++	"github.com/lima-vm/lima/v2/pkg/limatype/filenames"
++)
++
++func TestInstancesDir(t *testing.T) {
++	home := t.TempDir()
++	instances := t.TempDir()
++	t.Setenv("LIMA_HOME", home)
++	t.Setenv(dirnames.InstancesEnv, instances)
++	realInstances, err := filepath.EvalSymlinks(instances)
++	assert.NilError(t, err)
++
++	dir, err := dirnames.InstanceDir("vm1")
++	assert.NilError(t, err)
++	assert.Equal(t, dir, filepath.Join(realInstances, "vm1", dirnames.InstanceSubdir))
++	assert.Equal(t, dirnames.InstanceName(dir), "vm1")
++
++	// A folder of the caller's without an instance folder is not an instance.
++	assert.NilError(t, os.MkdirAll(filepath.Join(instances, "unfinished"), 0o755))
++	assert.NilError(t, os.MkdirAll(filepath.Join(instances, "vm1", dirnames.InstanceSubdir), 0o755))
++	assert.NilError(t, os.MkdirAll(filepath.Join(instances, "vm2", dirnames.InstanceSubdir), 0o755))
++	// An instance in LIMA_HOME is not seen.
++	assert.NilError(t, os.MkdirAll(filepath.Join(home, "vm3"), 0o755))
++
++	names, err := Instances()
++	assert.NilError(t, err)
++	assert.DeepEqual(t, names, []string{"vm1", "vm2"})
++
++	// Validate looks for lima.yaml in the instance folder.
++	assert.ErrorContains(t, Validate(), filenames.LimaYAML)
++	for _, n := range names {
++		assert.NilError(t, os.WriteFile(filepath.Join(instances, n, dirnames.InstanceSubdir, filenames.LimaYAML), nil, 0o644))
++	}
++	assert.NilError(t, Validate())
++
++	// LIMA_HOME keeps the rest.
++	cfg, err := dirnames.LimaConfigDir()
++	assert.NilError(t, err)
++	assert.Equal(t, filepath.Dir(cfg), func() string { r, _ := filepath.EvalSymlinks(home); return r }())
++}
++
++func TestInstancesDirRelative(t *testing.T) {
++	t.Setenv(dirnames.InstancesEnv, "relative/path")
++	_, err := dirnames.InstanceDir("vm1")
++	assert.ErrorContains(t, err, "absolute")
++}
++
++func TestInstancesDirUnset(t *testing.T) {
++	home := t.TempDir()
++	t.Setenv("LIMA_HOME", home)
++	t.Setenv(dirnames.InstancesEnv, "")
++	realHome, err := filepath.EvalSymlinks(home)
++	assert.NilError(t, err)
++
++	dir, err := dirnames.InstanceDir("vm1")
++	assert.NilError(t, err)
++	assert.Equal(t, dir, filepath.Join(realHome, "vm1"))
++	assert.Equal(t, dirnames.InstanceName(dir), "vm1")
++}
+diff -ruN a/pkg/store/store.go b/pkg/store/store.go
+--- a/pkg/store/store.go	2026-10-20 00:21:33.813917845 +0200
++++ b/pkg/store/store.go	2026-10-20 00:22:01.926530032 +0200
+@@ -29,17 +29,16 @@
+ 
+ // Validate checks the LimaDir.
+ func Validate() error {
+-	limaDir, err := dirnames.LimaDir()
+-	if err != nil {
+-		return err
+-	}
+ 	names, err := Instances()
+ 	if err != nil {
+ 		return err
+ 	}
+ 	for _, name := range names {
+ 		// Each instance directory needs to have limayaml
+-		instDir := filepath.Join(limaDir, name)
++		instDir, err := dirnames.InstanceDir(name)
++		if err != nil {
++			return err
++		}
+ 		yamlPath := filepath.Join(instDir, filenames.LimaYAML)
+ 		if _, err := os.Stat(yamlPath); err != nil {
+ 			return err
+@@ -48,12 +47,20 @@
+ 	return nil
+ }
+ 
+-// Instances returns the names of the instances under LimaDir.
++// Instances returns the names of the instances under LimaDir, or under
++// $LIMA_INSTANCES_DIR when it is set (see dirnames.InstancesEnv): there, a
++// folder without an instance folder in it is not one.
+ func Instances() ([]string, error) {
+-	limaDir, err := dirnames.LimaDir()
++	instancesDir, err := dirnames.InstancesDir()
+ 	if err != nil {
+ 		return nil, err
+ 	}
++	limaDir := instancesDir
++	if limaDir == "" {
++		if limaDir, err = dirnames.LimaDir(); err != nil {
++			return nil, err
++		}
++	}
+ 	limaDirList, err := os.ReadDir(limaDir)
+ 	if err != nil {
+ 		if errors.Is(err, os.ErrNotExist) {
+@@ -69,6 +76,11 @@
+ 		if !f.IsDir() {
+ 			continue
+ 		}
++		if instancesDir != "" {
++			if st, err := os.Stat(filepath.Join(limaDir, f.Name(), dirnames.InstanceSubdir)); err != nil || !st.IsDir() {
++				continue
++			}
++		}
+ 		names = append(names, f.Name())
+ 	}
+ 	return names, nil

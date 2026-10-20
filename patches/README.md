@@ -1,7 +1,11 @@
 # Patches to Lima, sshocker, pkg/sftp and gvisor-tap-vsock
 
 agent-vm builds Lima, sshocker, pkg/sftp and gvisor-tap-vsock from `third_party/`: each one is its upstream commit
-(`third_party/SOURCES`) with the patches of this folder applied, in name order. Every patch is a
+(`third_party/SOURCES`) with the patches of this folder applied, in name order. The result is a set of packages
+of agent-vm's module: the sync drops each tree's `go.mod` and `go.sum`, rewrites the import paths to
+`github.com/sylvinus/agent-vm/third_party/<name>` (patches stay written against upstream's paths), and adds an
+`agentvm_patches.go` with `AgentVMPatches`, the number of the last patch (`"lima-7"`), which agent-vm refers to.
+Because they are packages and not replaced modules, a program importing agent-vm builds them patched. Every patch is a
 change meant for upstream, kept small enough to be sent as a PR on its own. Never edit
 `third_party/` by hand: change a patch, then `scripts/third-party-sync <name>`. CI runs
 `scripts/third-party-sync all --check`.
@@ -34,6 +38,7 @@ It runs inside the Lima hostagent, which with vz also runs the VM: a panic there
 | 18 | When the first sshfs mount fails, Lima retries with `-o nonempty` in place of the share's options. | The share is mounted again without `cache=no` (sshfs's attribute cache back on). | lima 0003 |
 | 19 | The host's event for a removal the guest asked for is relayed back as a host deletion. | The guest's next removal of a file it created again is taken for the relayed one and not done: the file stays on the host. | sshocker 0009 |
 | 20 | The client sets any mode bit, setuid, setgid and sticky included. | A file the host runs carries the privileges of its owner. | sshocker 0006 |
+| 21 | `instance.StartWithPaths` starts the hostagent with `exec.CommandContext`: os/exec kills it when the caller's context ends, also after Start returned. | The end of the agent-vm command that started a VM kills its hostagent: QEMU runs on without it (Broken, every later start fails), vz VMs die. | lima 0006 |
 
 ## The patches
 
@@ -44,6 +49,8 @@ It runs inside the Lima hostagent, which with vz also runs the VM: a panic there
 | `lima/0003-hostagent-keep-sshfs-options-on-retry` | lima-vm/lima | not sent | Bug 18: the retry adds `nonempty` to the options. No test: it needs a guest whose first mount fails. |
 | `lima/0004-portfwd-not-next-to-a-host-program` | lima-vm/lima | not sent | A guest port is forwarded only when no host program uses it: with `SO_REUSEADDR`, a listener on 127.0.0.1:P is allowed next to a host program's 0.0.0.0:P on macOS and BSD, and takes its local connections. The port is tried on 127.0.0.1, ::1, 0.0.0.0 and :: first (with `SO_EXCLUSIVEADDRUSE` on Windows); one in use gives a `failed` port-forward event. Tests `TestForwardNotNextToHostProgram`, `TestForwardFreePort`. |
 | `lima/0005-network-isolation-hooks` | lima-vm/lima | not sent | Hooks for agent-vm's network policy: `usernet.Outbound` and `usernet.AllowHostService` (the hostagent's DNS ports), `dns.Names`/`dns.Answered` (a name refused is NXDOMAIN, never looked up). QEMU gets its own netstack per instance, as vz has, so the policy applies to both, and its guest's DNS is the gateway's. QEMU is handed the connected socket, or on Windows, which cannot pass it, connects itself (`stream` netdev, QEMU 7.2 or later). `usernet.Names` and `usernet.Answered` reach the gateway's DNS server through gvisor-tap-vsock 0002, and a host service is allowed for its network and port on 127.0.0.1 only. Tests `TestNamesAnswered`, `TestOutboundHostServices`; the rest is covered by agent-vm's e2e (`internal/vm/lima_e2e_test.go`). |
+| `lima/0006-instance-hostagent-outlives-start-context` | lima-vm/lima | not sent; the issue to open is the patch's header | Bug 21: `exec.Command`. No Lima test (its unit tests start no hostagent): agent-vm's e2e (`internal/cli/e2e_test.go`) fails without it. The header also reports the QEMU driver's "send on closed channel" panic that follows, not fixed here. |
+| `lima/0007-instances-dir` | lima-vm/lima | not sent | `$LIMA_INSTANCES_DIR`: when set, the instance NAME is in `$LIMA_INSTANCES_DIR/NAME/lima`, and the embedding program keeps its own files for NAME beside it (agent-vm: `metadata.json`, `policy.json`). `dirnames.InstanceName` is the name of an instance dir, which templates' `{{.Name}}` read (it is no longer the base of the dir); `store.Instances` lists the folders holding an instance folder; Clone makes the parent folder. A `$LIMA_HOME` per VM would name every instance alike (hostnames, SSH aliases, the Windows drivers' distro and system names) and put the name twice in each socket path. Tests `TestInstancesDir`, `TestInstancesDirRelative`, `TestInstancesDirUnset`. |
 | `sshocker/0001-rooted-server-readonly-names` | lima-vm/sshocker | fork branch `readonly-names` | The builtin server serves only the mounted directory, and `ReadonlyNames`. |
 | `sshocker/0002-expect-remove` | lima-vm/sshocker | fork branch `expect-remove` | `ExpectRemove`, for 0002 of Lima. |
 | `sshocker/0003-append-fix` | lima-vm/sshocker | not sent | Bug 1. Tests `TestRootedOpenAppend`, `TestRootedOpenMode`. No pkg/sftp dependency: send first. |
@@ -61,8 +68,8 @@ It runs inside the Lima hostagent, which with vz also runs the VM: a panic there
 | `gvisor-tap-vsock/0001-outbound-policy` | containers/gvisor-tap-vsock | not sent | `Configuration.Outbound`: the TCP and UDP forwarders refuse a destination it denies, checked after NAT (the gateway's address is the host's loopback by then). No test of its own: agent-vm's e2e connects to denied and allowed addresses. |
 | `gvisor-tap-vsock/0002-dns-policy` | containers/gvisor-tap-vsock | not sent | `Configuration.DNSNames` and `DNSAnswered`: the gateway's DNS server answers NXDOMAIN, over UDP and TCP, for a name `DNSNames` refuses, without asking the host's resolver, and tells `DNSAnswered` the IPv4 addresses it gave, so that `Outbound` can allow those only. Test `TestPolicy`. |
 
-Lima's `0b63ae0` of the fork (`replace` of sshocker) is gone: agent-vm's `go.mod` replaces all
-three modules. FSETSTAT through a read handle keeps the path checks (0004): a read handle can be
+Lima's `0b63ae0` of the fork (`replace` of sshocker) is gone: the four trees are packages of
+agent-vm's module. FSETSTAT through a read handle keeps the path checks (0004): a read handle can be
 opened through a symlink into `.git` (`TestRootedFsetstatReadHandle`).
 
 Every test was checked to fail with its fix removed. Keep that property when rebasing: revert the
@@ -80,24 +87,23 @@ To change a patch: clone upstream at the commit of `SOURCES`, `git am` (or `git 
 patches before it, make the change, and write the patch back with `git format-patch` or `git diff`.
 Rebasing on a new upstream: the same, from the new commit, then `--ref`.
 
-Tests run from agent-vm's module root, so that each library is built with the others patched (run
-inside `third_party/<name>`, Go would use the unpatched dependencies of its own `go.mod`):
+Tests run from agent-vm's module root (`make test-third-party`):
 
 ```bash
-go test -vet=off -race github.com/pkg/sftp/...    # pkg/sftp's vet fails on upstream code
-go test -race github.com/lima-vm/sshocker/pkg/...
-go test $(go list github.com/lima-vm/lima/v2/pkg/... | grep -v /mcp)
-go test github.com/containers/gvisor-tap-vsock/pkg/...
-tests/sftp/run                                    # through real sshfs, see tests/sftp/run
+go test -vet=off -race ./third_party/sftp/...    # pkg/sftp's vet fails on upstream code
+go test -race ./third_party/sshocker/pkg/...
+go test ./third_party/lima/pkg/...
+go test ./third_party/gvisor-tap-vsock/pkg/...
+tests/sftp/run                                   # through real sshfs, see tests/sftp/run
 ```
 
-Lima's MCP packages and sshocker's command are not part of agent-vm's build, so their
-dependencies are not in its `go.sum`: they are left out above. gvisor-tap-vsock is synced
-without its `vendor` and `tools` folders.
+The folders that would add requirements nothing in agent-vm uses are left out (the last column of
+`SOURCES`): Lima's MCP server, sshocker's command, and gvisor-tap-vsock's commands, `vendor`,
+`tools` and test suites. Lima's `gomodjail` annotations went with its `go.mod`, and with them
+`make gomodjail`, which agent-vm did not run.
 
-`go test -fuzz` only fuzzes the main modules: `tests/fuzz/go.work` makes the vendored sshocker and
-pkg/sftp ones (not Lima: its MCP server's requirements would take part in the build). `make fuzz`
-runs every fuzzer of both and of agent-vm, `FUZZTIME` each.
+A sync raises agent-vm's `go.mod` to the requirements of the upstream `go.mod` it drops, then runs
+`go mod tidy`. `make fuzz` runs every fuzzer of the four trees and of agent-vm, `FUZZTIME` each.
 
 ### Through real sshfs
 
@@ -131,7 +137,7 @@ pkg/sftp merges rarely and some of these patches add API, so split what needs no
   another's code.
 - **sshocker, after a pkg/sftp release:** the rest of 0004 and 0005. `O_APPEND` waits too: without
   sequential processing two appends can land in either order.
-- **Lima:** once sshocker has released, #5531 needs no `replace`.
+- **Lima:** once sshocker has released, #5531 needs no vendored sshocker.
 
 Each patch merged upstream is dropped from here when `SOURCES` moves past it. Never push, tag or
 open a PR without the owner's go-ahead.

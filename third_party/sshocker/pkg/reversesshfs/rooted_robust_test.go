@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/pkg/sftp"
+	"github.com/sylvinus/agent-vm/third_party/sftp"
 )
 
 // An opened directory renamed, with a symlink to a folder outside the root put in its place,

@@ -8,8 +8,8 @@ import (
 	"errors"
 	"net"
 
-	"github.com/lima-vm/lima/v2/pkg/hostagent/events"
-	"github.com/lima-vm/lima/v2/pkg/limatype"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/hostagent/events"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype"
 )
 
 // ErrDriverNotScreenshotter is returned when the active driver does not implement Screenshotter.

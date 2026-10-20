@@ -22,9 +22,9 @@ import (
 	"github.com/lima-vm/go-qcow2reader/image/vhdx"
 	"github.com/sirupsen/logrus"
 
-	"github.com/lima-vm/lima/v2/pkg/imgutil/nativeimgutil"
-	"github.com/lima-vm/lima/v2/pkg/limatype/filenames"
-	"github.com/lima-vm/lima/v2/pkg/limayaml"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/imgutil/nativeimgutil"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype/filenames"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limayaml"
 )
 
 const (

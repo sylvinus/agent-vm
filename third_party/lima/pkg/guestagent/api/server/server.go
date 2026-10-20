@@ -13,10 +13,10 @@ import (
 	"google.golang.org/grpc/keepalive"
 	"google.golang.org/protobuf/types/known/emptypb"
 
-	"github.com/lima-vm/lima/v2/pkg/guestagent"
-	"github.com/lima-vm/lima/v2/pkg/guestagent/api"
-	"github.com/lima-vm/lima/v2/pkg/guestagent/timesync"
-	"github.com/lima-vm/lima/v2/pkg/portfwdserver"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/guestagent"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/guestagent/api"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/guestagent/timesync"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/portfwdserver"
 )
 
 func StartServer(ctx context.Context, lis net.Listener, guest *GuestServer) error {

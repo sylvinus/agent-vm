@@ -11,7 +11,7 @@ import (
 	"github.com/goccy/go-yaml"
 	"gotest.tools/v3/assert"
 
-	"github.com/lima-vm/lima/v2/pkg/limatype"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype"
 )
 
 func dumpYAML(t *testing.T, d any) string {

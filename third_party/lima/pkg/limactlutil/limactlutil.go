@@ -12,7 +12,7 @@ import (
 	"os"
 	"os/exec"
 
-	"github.com/lima-vm/lima/v2/pkg/limatype"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype"
 )
 
 // Path returns the path to the `limactl` executable.

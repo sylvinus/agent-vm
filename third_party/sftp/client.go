@@ -18,7 +18,7 @@ import (
 	"github.com/kr/fs"
 	"golang.org/x/crypto/ssh"
 
-	"github.com/pkg/sftp/internal/encoding/ssh/filexfer/openssh"
+	"github.com/sylvinus/agent-vm/third_party/sftp/internal/encoding/ssh/filexfer/openssh"
 )
 
 var (

@@ -61,6 +61,10 @@ type Instance struct {
 	Mounts    []Mount
 	// ConfigErr is why the backend cannot read the VM's config (Broken).
 	ConfigErr error
+	// Orphaned: Broken, the VM still running without the backend's process
+	// that serves it (Lima's hostagent). Nothing reaches it; Stop ends it by
+	// force.
+	Orphaned bool
 }
 
 // Mount is a host folder shared with the guest.
@@ -140,7 +144,8 @@ type Backend interface {
 	// gets the backend's progress. It refuses a VM whose shares are not
 	// confined to their folders (see Confined).
 	Start(ctx context.Context, name string, log io.Writer) error
-	// Stop shuts down the running VM name.
+	// Stop shuts down the running VM name, and kills an orphaned one. Any
+	// other VM is left as it is.
 	Stop(ctx context.Context, name string) error
 	// Delete removes the VM name, running or not.
 	Delete(ctx context.Context, name string) error

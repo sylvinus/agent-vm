@@ -17,8 +17,8 @@ import (
 
 	"github.com/opencontainers/go-digest"
 
-	"github.com/lima-vm/lima/v2/pkg/limatype/dirnames"
-	"github.com/lima-vm/lima/v2/pkg/osutil"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype/dirnames"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/osutil"
 )
 
 const (

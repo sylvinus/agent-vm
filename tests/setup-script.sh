@@ -9,7 +9,7 @@
 set -uo pipefail
 
 SELF_DIR="$(CDPATH= cd -- "$(dirname "${BASH_SOURCE[0]:-$0}")/.." >/dev/null && pwd)"
-SETUP_SH="${SETUP_SH:-$SELF_DIR/agent-vm.setup.sh}"
+SETUP_SH="${SETUP_SH:-$SELF_DIR/provision/agent-vm.setup.sh}"
 
 FAIL=0
 PASSED=0

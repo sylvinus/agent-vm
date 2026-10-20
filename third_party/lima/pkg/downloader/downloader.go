@@ -27,13 +27,13 @@ import (
 	"github.com/opencontainers/go-digest"
 	"github.com/sirupsen/logrus"
 
-	"github.com/lima-vm/lima/v2/pkg/httpclientutil"
-	"github.com/lima-vm/lima/v2/pkg/imgutil/nativeimgutil"
-	"github.com/lima-vm/lima/v2/pkg/imgutil/proxyimgutil"
-	"github.com/lima-vm/lima/v2/pkg/iso9660util"
-	"github.com/lima-vm/lima/v2/pkg/localpathutil"
-	"github.com/lima-vm/lima/v2/pkg/lockutil"
-	"github.com/lima-vm/lima/v2/pkg/progressbar"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/httpclientutil"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/imgutil/nativeimgutil"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/imgutil/proxyimgutil"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/iso9660util"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/localpathutil"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/lockutil"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/progressbar"
 )
 
 // HideProgress is used only for testing.

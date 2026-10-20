@@ -8,7 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/lima-vm/lima/v2/pkg/networks"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/networks"
 )
 
 const socketVMNetURL = "https://lima-vm.io/docs/config/network/vmnet/#socket_vmnet"

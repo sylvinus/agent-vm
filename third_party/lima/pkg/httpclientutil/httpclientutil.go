@@ -15,7 +15,7 @@ import (
 	"net"
 	"net/http"
 
-	"github.com/lima-vm/lima/v2/pkg/httputil"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/httputil"
 )
 
 // Get calls HTTP GET and verifies that the status code is 2XX .

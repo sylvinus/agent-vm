@@ -8,7 +8,7 @@ package hostagent
 import (
 	"context"
 
-	"github.com/lima-vm/sshocker/pkg/ssh"
+	"github.com/sylvinus/agent-vm/third_party/sshocker/pkg/ssh"
 )
 
 func forwardTCP(ctx context.Context, sshConfig *ssh.SSHConfig, sshAddress string, sshPort int, local, remote, verb string) error {

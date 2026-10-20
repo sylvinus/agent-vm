@@ -9,14 +9,23 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"strings"
 )
 
 // What Lima finds in <prefix>/share/lima next to limactl: the guest agent and
 // the templates. Put in by the Makefile; see assets/README.
 //
 //go:embed all:assets
-var assets embed.FS
+var embedded embed.FS
+
+// Embedded is what agent-vm's own build embeds: the guest agent for this
+// architecture, gzipped, and the templates, at the root.
+func Embedded() fs.FS {
+	sub, err := fs.Sub(embedded, "assets")
+	if err != nil {
+		return embedded
+	}
+	return sub
+}
 
 // Share is Lima's share/lima, written out of the binary.
 type Share struct {
@@ -32,24 +41,32 @@ func (s *Share) Templates() string {
 	return filepath.Join(s.Dir, "templates")
 }
 
-// ErrNoAssets is returned by WriteShare when agent-vm was built without
-// the guest agent (`go build` instead of `make`).
-var ErrNoAssets = errors.New("this agent-vm was built without Lima's guest agent: build it with make")
+// ErrNoAssets is returned by WriteShare when there is no guest agent: agent-vm
+// was built without it (`go build` instead of `make`), or the program that
+// embeds the library gave none (Options.Assets).
+var ErrNoAssets = errors.New("no Lima guest agent in the assets: build agent-vm with make, or give Options.Assets the output of cmd/agent-vm-assets")
 
-// WriteShare writes the embedded files into dir/share/lima, each one that is
-// missing or differs from the embedded copy, and returns where they are. The
-// files are checked on every call: a damaged guest agent never reaches a VM.
-func WriteShare(dir string) (*Share, error) {
+// WriteShare writes the files of assets (Embedded when nil) into
+// dir/share/lima, each one that is missing or differs from the copy, and
+// returns where they are. The files are checked on every call: a damaged
+// guest agent never reaches a VM.
+func WriteShare(dir string, assets fs.FS) (*Share, error) {
+	if assets == nil {
+		assets = Embedded()
+	}
 	agent := "lima-guestagent.Linux-" + guestArch() + ".gz"
-	if _, err := fs.Stat(assets, "assets/"+agent); err != nil {
+	if _, err := fs.Stat(assets, agent); err != nil {
 		return nil, ErrNoAssets
 	}
 	share := filepath.Join(dir, "share", "lima")
-	err := fs.WalkDir(assets, "assets", func(p string, d fs.DirEntry, err error) error {
+	err := fs.WalkDir(assets, ".", func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
-		rel := strings.TrimPrefix(strings.TrimPrefix(p, "assets"), "/")
+		rel := p
+		if p == "." {
+			rel = ""
+		}
 		if rel == "README" {
 			return nil
 		}
@@ -57,7 +74,7 @@ func WriteShare(dir string) (*Share, error) {
 		if d.IsDir() {
 			return os.MkdirAll(dst, 0o700)
 		}
-		want, err := assets.ReadFile(p)
+		want, err := fs.ReadFile(assets, p)
 		if err != nil {
 			return err
 		}

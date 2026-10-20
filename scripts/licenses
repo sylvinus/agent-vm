@@ -46,8 +46,14 @@ trap 'rm -f "$list"' EXIT
   modules darwin amd64 1 ./cmd/agent-vm
   modules windows amd64 0 ./cmd/agent-vm
   modules windows arm64 0 ./cmd/agent-vm
-  modules linux arm64 0 github.com/lima-vm/lima/v2/cmd/lima-guestagent
-  modules linux amd64 0 github.com/lima-vm/lima/v2/cmd/lima-guestagent
+  modules linux arm64 0 ./third_party/lima/cmd/lima-guestagent
+  modules linux amd64 0 ./third_party/lima/cmd/lima-guestagent
+  # Packages of the main module, with licenses of their own: listed under
+  # their upstream names.
+  echo "github.com/lima-vm/lima/v2 ./third_party/lima $ROOT/third_party/lima"
+  echo "github.com/lima-vm/sshocker ./third_party/sshocker $ROOT/third_party/sshocker"
+  echo "github.com/pkg/sftp ./third_party/sftp $ROOT/third_party/sftp"
+  echo "github.com/containers/gvisor-tap-vsock ./third_party/gvisor-tap-vsock $ROOT/third_party/gvisor-tap-vsock"
 } | awk 'NF == 3 && !seen[$1]++' | LC_ALL=C sort > "$list"
 
 [ -s "$list" ] || { echo "licenses: go list found no module" >&2; exit 1; }

@@ -13,7 +13,7 @@ import (
 
 	"gotest.tools/v3/assert"
 
-	"github.com/lima-vm/lima/v2/pkg/freeport"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/freeport"
 )
 
 func hasUDPListener(p *ClosableListeners, k string) bool {

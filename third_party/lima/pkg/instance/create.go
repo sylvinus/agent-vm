@@ -10,16 +10,16 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/lima-vm/lima/v2/pkg/cidata"
-	"github.com/lima-vm/lima/v2/pkg/driver/external/server"
-	"github.com/lima-vm/lima/v2/pkg/driverutil"
-	"github.com/lima-vm/lima/v2/pkg/limatype"
-	"github.com/lima-vm/lima/v2/pkg/limatype/dirnames"
-	"github.com/lima-vm/lima/v2/pkg/limatype/filenames"
-	"github.com/lima-vm/lima/v2/pkg/limayaml"
-	"github.com/lima-vm/lima/v2/pkg/osutil"
-	"github.com/lima-vm/lima/v2/pkg/store"
-	"github.com/lima-vm/lima/v2/pkg/version"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/cidata"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/driver/external/server"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/driverutil"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype/dirnames"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype/filenames"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limayaml"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/osutil"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/store"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/version"
 )
 
 func Create(ctx context.Context, instName string, instConfig []byte, saveBrokenYAML bool) (*limatype.Instance, error) {

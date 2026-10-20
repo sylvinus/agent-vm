@@ -273,13 +273,15 @@ export const en = {
       ['--unsafe-disable-security-prompts', 'Go on where a start would stop on a security question (see [Protecting .git](#git)). The warnings are still printed. Same as `AGENT_VM_UNSAFE_DISABLE_SECURITY_PROMPTS=1`.', 'off'],
       ['--rm', 'Destroy the VM once the command exits.', 'off'],
       ['--scratch', 'A new VM with nothing of yours mounted, deleted when the command ends (asked first on a terminal). `~/.agent-vm/env` and `runtime.sh` go in, the project’s files do not. Several can run at once.', 'off'],
+      ['--name NAME', 'The VM called `NAME`, not the folder’s own, so that a folder can have several (`agent-vm --name agent2 claude`). It belongs to the folder it is made in and runs from there only: from another it stops, naming the folder. `--reset` makes it again, the only way to change that. Lowercase letters, digits and dashes, at most 40 characters; not `base` nor `base-…`, nor ending in a dash and 8 hex digits. `stop NAME` and `rm NAME` reach it.', 'the folder’s VM'],
+      ['--no-shares', 'With `--name`, when the VM is made: it shares nothing, like `--scratch`, but is kept and runs from any folder (`agent-vm --name sandbox --no-shares claude`). It never gets shares. The folder’s path is made in the VM as an empty working folder. `~/.agent-vm/env` and `runtime.sh` go in, the project’s files do not.', 'off'],
     ],
     envTitle: 'Environment variables',
     envNote: 'Read from your shell, never from a file of the project.',
     envHeaders: ['Variable', 'What it does', 'Default'],
     env: [
       ['AGENT_VM_STATE_DIR', 'Moves `~/.agent-vm`, VMs included, for tests, CI or a second install, without moving `HOME`.', '~/.agent-vm'],
-      ['AGENT_VM_LIMA_HOME', 'Where the VMs live. Not your own Lima’s home: agent-vm keeps its VMs apart.', '~/.agent-vm/lima'],
+      ['AGENT_VM_LIMA_HOME', 'Where Lima keeps what the VMs share (SSH key, networks). Not your own Lima’s home: agent-vm keeps its own apart. The VMs are in `~/.agent-vm/vms/<name>/`.', '~/.agent-vm/lima'],
       ['AGENT_VM_PROJECT_ENV', 'The project’s env file, relative to the project or absolute.', '.agent-vm.env'],
       ['AGENT_VM_PROJECT_RUNTIME', 'The project’s runtime script, relative to the project or absolute. Outside the project, the host reads it.', '.agent-vm.runtime.sh'],
       ['AGENT_VM_HOST_SHARE', 'CPU and memory per VM are capped at the host’s divided by this. `1`: the whole host.', '2'],
@@ -352,7 +354,7 @@ export const en = {
           {
             title: 'From 0.2',
             paras: [
-              'Lima is built in: Homebrew’s Lima, or the Lima build 0.2 installed, can go, unless you use it for VMs of your own. agent-vm keeps its VMs in `~/.agent-vm/lima`, apart from yours, and names them without the `agent-vm-` prefix: `your-project-1a2b3c4d`, and `base` for the template.',
+              'Lima is built in: Homebrew’s Lima, or the Lima build 0.2 installed, can go, unless you use it for VMs of your own. agent-vm keeps each VM in a folder of its own, `~/.agent-vm/vms/<name>/`, apart from yours, and names them without the `agent-vm-` prefix: `your-project-1a2b3c4d`, and `base` for the template. The folder holds Lima’s files for the VM and what agent-vm knows of it: removing the VM removes the folder.',
               'The first command that needs the VMs offers to move 0.2’s from `~/.lima` (or `$LIMA_HOME`), stopping the running ones first: they keep their disks, shares and settings. Declined, it asks again next time; with no terminal to ask on, it moves them. `doctor` and `info` only look, and say when some are still to move.',
               'To update, run the curl installer again, or `git pull && ./agent-vm.sh install` in a clone (Go needed): the link on your `PATH` then leads to the binary. Until then, 0.2’s link to `agent-vm.sh` keeps working (in a clone, after a `git pull`, it builds agent-vm first), and so does a shell rc line sourcing it, which `install` says can go. A VM from a base 0.1.0 built no longer starts: run `agent-vm setup`, then `--reset`.',
             ],
@@ -422,7 +424,7 @@ export const en = {
             title: 'Extra mounts, in detail',
             paras: [
               'A destination is used as written, with no `~`: the VM home is `/home/<you>.guest` (`.linux` before Lima 2.1). A missing source is skipped with a warning.',
-              'A single file is hardlinked into `~/.agent-vm/file-mounts/<vm>/` and bind-mounted. Across filesystems it is copied, and host edits wait for the next start.',
+              'A single file is hardlinked into `~/.agent-vm/vms/<vm>/file-mounts/` and bind-mounted. Across filesystems it is copied, and host edits wait for the next start.',
             ],
             list: [],
             code: '# ~/.agent-vm/volumes: your Claude instructions and skills,\n# not the whole ~/.claude, which holds your login on Linux\n~/.claude/CLAUDE.md:/home/you.guest/.claude/CLAUDE.md\n~/.claude/skills:/home/you.guest/.claude/skills',
@@ -547,7 +549,7 @@ export const en = {
               'For scripts, `scp` or `rsync`, `agent-vm info` prints the SSH alias as `ssh_host`. Put these lines at the top of `~/.ssh/config`: a `ForwardAgent yes` found before them would hand the VM your SSH keys. `lima-*` also matches the VMs of your own Lima, if you have one. `--ssh-port` pins the port for tools that save it.',
             ],
             list: [],
-            code: '# top of ~/.ssh/config\nInclude ~/.agent-vm/lima/*/ssh.config\nHost lima-*\n  ForwardAgent no\n  ForwardX11 no\n\nagent-vm info | grep ^ssh_host   # the alias to use\nagent-vm --ssh-port 2222 shell   # a fixed port',
+            code: '# top of ~/.ssh/config\nInclude ~/.agent-vm/vms/*/lima/ssh.config\nHost lima-*\n  ForwardAgent no\n  ForwardX11 no\n\nagent-vm info | grep ^ssh_host   # the alias to use\nagent-vm --ssh-port 2222 shell   # a fixed port',
           },
           {
             title: 'Shell, commands, hooks',

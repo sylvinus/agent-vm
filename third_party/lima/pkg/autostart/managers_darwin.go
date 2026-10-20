@@ -3,7 +3,7 @@
 
 package autostart
 
-import "github.com/lima-vm/lima/v2/pkg/autostart/launchd"
+import "github.com/sylvinus/agent-vm/third_party/lima/pkg/autostart/launchd"
 
 // Manager returns the autostart manager for Darwin.
 func Manager() autoStartManager {

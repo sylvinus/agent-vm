@@ -40,15 +40,22 @@ The agent is root in its VM and has the network. What it can reach on your machi
 - The agent writes the project folder: on your machine, open it in your editor and use git there, and run everything else in the VM. Open agent-vm projects in VS Code's Restricted Mode, and never connect an editor to the VM over SSH (Remote-SSH trusts the VM with your machine: [SSH from your machine](https://www.agent-vm.org/#ssh-from-your-machine)). Editors, agents, commit hooks and commands you run on the host can run code the agent wrote: [What else reads the project](https://www.agent-vm.org/#what-else-on-your-machine-reads-the-project).
 - The VM reaches the internet, not your machine nor your local network: what it may reach there, or the only domains it may reach, go in `~/.agent-vm/network`. A port the VM listens on is forwarded to your machine's loopback, unless something there uses it already or it is in 32768-60999, the range the guest picks random ports from.
 
+## As a library
+
+`github.com/sylvinus/agent-vm` is the engine of the command, for programs that run their own agent in a VM per project: `agentvm.Open`, `Setup`, `ProjectVM`, `Ensure`, `Exec`, with `provision`, `policy` and `agents` beside it. It writes to no terminal and reads no `AGENT_VM_*` variable. Experimental until a program other than agent-vm uses it; [`examples/consumer`](examples/consumer) is one, and the package documentation says what a build needs (cgo and a signature on macOS, the guest agent from `cmd/agent-vm-assets`).
+
 ## Development
 
 ```bash
 make                                       # _output/bin/agent-vm
 make test-go                               # no VM; 0.2's recorded behavior where it is compared
 go test -tags e2e ./internal/vm/ ./internal/cli/   # real VMs
+make test-example                          # the example program that embeds the library
 make check-third-party test-third-party    # Lima, sshocker, pkg/sftp, gvisor-tap-vsock: upstream + patches/
 make fuzz FUZZTIME=5m                      # each fuzzer; their seeds run with the tests
 ```
+
+`third_party/` is part of this module, so a program importing it builds Lima, sshocker, pkg/sftp and gvisor-tap-vsock patched.
 
 Releases: [RELEASING.md](RELEASING.md). The website is in [`www/`](www/README.md). Changes: [CHANGELOG.md](CHANGELOG.md).
 

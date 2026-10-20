@@ -20,11 +20,11 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 
-	"github.com/lima-vm/lima/v2/pkg/limatype"
-	"github.com/lima-vm/lima/v2/pkg/limatype/dirnames"
-	"github.com/lima-vm/lima/v2/pkg/store"
-	"github.com/lima-vm/lima/v2/pkg/uiutil"
-	"github.com/lima-vm/lima/v2/pkg/yqutil"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype/dirnames"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/store"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/uiutil"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/yqutil"
 )
 
 func fieldNames() []string {

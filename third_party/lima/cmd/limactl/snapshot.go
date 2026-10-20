@@ -11,8 +11,8 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 
-	"github.com/lima-vm/lima/v2/pkg/snapshot"
-	"github.com/lima-vm/lima/v2/pkg/store"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/snapshot"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/store"
 )
 
 func newSnapshotCommand() *cobra.Command {

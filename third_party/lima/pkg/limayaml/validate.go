@@ -21,13 +21,13 @@ import (
 	"github.com/docker/go-units"
 	"github.com/sirupsen/logrus"
 
-	"github.com/lima-vm/lima/v2/pkg/identifiers"
-	"github.com/lima-vm/lima/v2/pkg/limatype"
-	"github.com/lima-vm/lima/v2/pkg/localpathutil"
-	"github.com/lima-vm/lima/v2/pkg/networks"
-	"github.com/lima-vm/lima/v2/pkg/osutil"
-	"github.com/lima-vm/lima/v2/pkg/version"
-	"github.com/lima-vm/lima/v2/pkg/version/versionutil"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/identifiers"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/localpathutil"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/networks"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/osutil"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/version"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/version/versionutil"
 )
 
 func Validate(y *limatype.LimaYAML, warn bool) error {

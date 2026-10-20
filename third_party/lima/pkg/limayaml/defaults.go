@@ -26,16 +26,16 @@ import (
 	"github.com/pbnjay/memory"
 	"github.com/sirupsen/logrus"
 
-	"github.com/lima-vm/lima/v2/pkg/fsutil"
-	"github.com/lima-vm/lima/v2/pkg/instance/hostname"
-	"github.com/lima-vm/lima/v2/pkg/limatype"
-	"github.com/lima-vm/lima/v2/pkg/limatype/dirnames"
-	"github.com/lima-vm/lima/v2/pkg/limatype/filenames"
-	"github.com/lima-vm/lima/v2/pkg/localpathutil"
-	. "github.com/lima-vm/lima/v2/pkg/must"
-	"github.com/lima-vm/lima/v2/pkg/networks"
-	"github.com/lima-vm/lima/v2/pkg/osutil"
-	"github.com/lima-vm/lima/v2/pkg/version"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/fsutil"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/instance/hostname"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype/dirnames"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype/filenames"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/localpathutil"
+	. "github.com/sylvinus/agent-vm/third_party/lima/pkg/must"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/networks"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/osutil"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/version"
 )
 
 const (
@@ -955,7 +955,7 @@ func deleteNonStaticPortForwards(portForwards *[]limatype.PortForward) {
 func executeGuestTemplate(format, instDir string, user limatype.User, param map[string]string) (bytes.Buffer, error) {
 	tmpl, err := template.New("").Parse(format)
 	if err == nil {
-		name := filepath.Base(instDir)
+		name := dirnames.InstanceName(instDir)
 		data := map[string]any{
 			"Name":     name,
 			"Hostname": hostname.FromInstName(name), // TODO: support customization
@@ -985,7 +985,7 @@ func executeHostTemplate(format, instDir string, param map[string]string) (bytes
 		}
 		data := map[string]any{
 			"Dir":  instDir,
-			"Name": filepath.Base(instDir),
+			"Name": dirnames.InstanceName(instDir),
 			// TODO: add hostname fields for the host and the guest
 			"UID":           currentUser.Uid,
 			"User":          currentUser.Username,
@@ -994,8 +994,8 @@ func executeHostTemplate(format, instDir string, param map[string]string) (bytes
 			"GlobalTempDir": globalTempDir,
 			"TempDir":       os.TempDir(),
 
-			"Instance": filepath.Base(instDir), // DEPRECATED, use `{{.Name}}`
-			"LimaHome": limaHome,               // DEPRECATED, use `{{.Dir}}` instead of `{{.LimaHome}}/{{.Instance}}`
+			"Instance": dirnames.InstanceName(instDir), // DEPRECATED, use `{{.Name}}`
+			"LimaHome": limaHome,                       // DEPRECATED, use `{{.Dir}}` instead of `{{.LimaHome}}/{{.Instance}}`
 		}
 		var out bytes.Buffer
 		err = tmpl.Execute(&out, data)

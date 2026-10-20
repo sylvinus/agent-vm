@@ -73,13 +73,13 @@ func TestInfo(t *testing.T) {
 	if infoMap(t, te)["base_exists"] != "0" {
 		t.Error("a base without its marker counted")
 	}
-	os.WriteFile(te.state.Path(state.BaseVersion), []byte("2\n"), 0o644)
-	os.WriteFile(te.state.Marker(state.VersionOf, name), []byte("1\n"), 0o644)
+	te.state.UpdateMeta(vmname.Template, func(m *state.Metadata) { m.Base = &state.Base{Name: vmname.Template, Built: 2, BuiltBy: "0.4.0"} })
+	te.state.UpdateMeta(name, func(m *state.Metadata) { m.Base = &state.Base{Name: vmname.Template, Built: 1, BuiltBy: "0.4.0"} })
 	m = infoMap(t, te)
 	if m["base_exists"] != "1" || m["vm_exists"] != "1" || m["vm_running"] != "1" || m["vm_stale"] != "1" || m["ssh_config"] != "/x/ssh.config" {
 		t.Errorf("with VMs: %v", m)
 	}
-	os.WriteFile(te.state.Marker(state.VersionOf, name), []byte("2\n"), 0o644)
+	te.state.UpdateMeta(name, func(m *state.Metadata) { m.Base.Built = 2 })
 	if infoMap(t, te)["vm_stale"] != "0" {
 		t.Error("an up to date VM said stale")
 	}

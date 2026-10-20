@@ -11,8 +11,8 @@ import (
 
 	"github.com/coreos/go-semver/semver"
 
-	"github.com/lima-vm/lima/v2/pkg/limatype"
-	"github.com/lima-vm/lima/v2/pkg/sshutil"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/sshutil"
 )
 
 type scpTool struct {

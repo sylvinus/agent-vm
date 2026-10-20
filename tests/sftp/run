@@ -6,8 +6,8 @@
 #   tests/sftp/run [case-substring...]            the server agent-vm ships
 #   tests/sftp/run --openssh [case-substring...]  OpenSSH's sftp-server, the control
 #
-# Needs Go, sshfs, fusermount (user_allow_other in /etc/fuse.conf), python3,
-# git, tar and patch. WORK (default /tmp/sftp-work) must be on this machine's
+# Needs Go, sshfs, fusermount (user_allow_other in /etc/fuse.conf) and
+# python3. WORK (default /tmp/sftp-work) must be on this machine's
 # own disk, never on a share served by the code under test.
 
 set -euo pipefail
@@ -21,18 +21,16 @@ if [ "${1:-}" = --openssh ]; then
   harness="$HERE/openssh_harness.sh"
   run="$WORK/run-openssh"
 else
-  # A copy of third_party/sshocker with the harness added, built against
-  # third_party/sftp as agent-vm's module builds it.
-  src="$WORK/src"
-  rm -rf "$src"
+  # The harness is added to agent-vm's module by an overlay, never written
+  # into third_party/.
   mkdir -p "$WORK"
-  cp -R "$ROOT/third_party/sshocker" "$src"
-  cp "$HERE/testdata/harness/harness_export.go" "$src/pkg/reversesshfs/"
-  mkdir -p "$src/cmd/harness"
-  cp "$HERE/testdata/harness/main.go" "$src/cmd/harness/"
-  ( cd "$src" \
-    && go mod edit -replace "github.com/pkg/sftp=$ROOT/third_party/sftp" \
-    && GOFLAGS=-mod=mod go build -o "$WORK/harness" ./cmd/harness )
+  cat > "$WORK/overlay.json" <<EOF
+{"Replace": {
+  "$ROOT/third_party/sshocker/pkg/reversesshfs/harness_export.go": "$HERE/testdata/harness/harness_export.go",
+  "$ROOT/third_party/sshocker/cmd/harness/main.go": "$HERE/testdata/harness/main.go"
+}}
+EOF
+  ( cd "$ROOT" && go build -overlay "$WORK/overlay.json" -o "$WORK/harness" ./third_party/sshocker/cmd/harness )
   harness="$WORK/harness"
   run="$WORK/run"
 fi

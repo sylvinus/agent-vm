@@ -14,11 +14,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lima-vm/sshocker/pkg/ssh"
+	"github.com/sylvinus/agent-vm/third_party/sshocker/pkg/ssh"
 	"github.com/sirupsen/logrus"
 
-	"github.com/lima-vm/lima/v2/pkg/limatype"
-	"github.com/lima-vm/lima/v2/pkg/sshutil"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/sshutil"
 )
 
 func (a *HostAgent) waitForRequirements(label string, requirements []requirement) error {

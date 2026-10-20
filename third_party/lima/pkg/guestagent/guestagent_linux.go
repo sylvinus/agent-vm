@@ -14,10 +14,10 @@ import (
 	"github.com/sirupsen/logrus"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	"github.com/lima-vm/lima/v2/pkg/guestagent/api"
-	"github.com/lima-vm/lima/v2/pkg/guestagent/kubernetesservice"
-	"github.com/lima-vm/lima/v2/pkg/guestagent/sockets"
-	"github.com/lima-vm/lima/v2/pkg/guestagent/ticker"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/guestagent/api"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/guestagent/kubernetesservice"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/guestagent/sockets"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/guestagent/ticker"
 )
 
 func New(ctx context.Context, ticker ticker.Ticker, runtimeDir string) (Agent, error) {

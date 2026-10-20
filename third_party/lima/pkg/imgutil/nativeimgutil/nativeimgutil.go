@@ -25,8 +25,8 @@ import (
 	"github.com/lima-vm/go-qcow2reader/image/raw"
 	"github.com/sirupsen/logrus"
 
-	"github.com/lima-vm/lima/v2/pkg/imgutil/nativeimgutil/asifutil"
-	"github.com/lima-vm/lima/v2/pkg/progressbar"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/imgutil/nativeimgutil/asifutil"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/progressbar"
 )
 
 // Disk image size must be aligned to sector size. Qemu block layer is rounding

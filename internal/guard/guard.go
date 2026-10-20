@@ -10,6 +10,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path"
@@ -19,8 +20,8 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/lima-vm/sshocker/pkg/reversesshfs"
 	"github.com/sylvinus/agent-vm/internal/desktop"
+	"github.com/sylvinus/agent-vm/third_party/sshocker/pkg/reversesshfs"
 )
 
 // FileName is the list's file in agent-vm's state folder: one path a line,
@@ -119,6 +120,8 @@ var maxScan = 20000
 
 // Guard asks about the writes to guarded paths.
 type Guard struct {
+	// App names the program in the question; "agent-vm" when empty.
+	App string
 	// VM is named in the question.
 	VM string
 	// Paths, relative, matched anywhere in a written path as whole names,
@@ -151,30 +154,52 @@ type rule struct {
 	ext   string
 }
 
-// Load is the guard of the VM vm: Defaults and the user's list.
-func Load(stateDir, vm string) (*Guard, error) {
-	g := &Guard{VM: vm, Paths: map[string]string{}, Ask: desktop.Ask, Tell: desktop.Notify}
-	// No one to ask (a server, CI): refused without a dialog.
-	if os.Getenv("AGENT_VM_GUARDED_WRITES") == "deny" {
-		g.Ask = func(context.Context, string, string) (bool, bool) { return false, true }
-	}
+// Config is what a Guard is made of: the policy file of a VM holds it.
+type Config struct {
+	// Paths are the guarded paths, see Guard.Paths.
+	Paths map[string]string `json:"paths"`
+	// Deny refuses what is guarded without a dialog: no one to ask (a
+	// server, CI).
+	Deny bool `json:"deny,omitempty"`
+}
+
+// DefaultConfig guards Defaults, and WindowsDefaults on a Windows host.
+func DefaultConfig() Config {
+	c := Config{Paths: map[string]string{}}
 	for p, why := range Defaults {
-		g.Paths[p] = why
+		c.Paths[p] = why
 	}
 	if windowsHost {
 		for p, why := range WindowsDefaults {
-			g.Paths[p] = why
+			c.Paths[p] = why
 		}
 	}
+	return c
+}
+
+// LoadConfig is Defaults with the user's list on top, and
+// AGENT_VM_GUARDED_WRITES.
+func LoadConfig(stateDir string) (Config, error) {
+	c := DefaultConfig()
+	c.Deny = os.Getenv("AGENT_VM_GUARDED_WRITES") == "deny"
 	f, err := os.Open(stateDir + "/" + FileName)
 	if errors.Is(err, os.ErrNotExist) {
-		return g, nil
+		return c, nil
 	}
 	if err != nil {
-		return nil, err
+		return Config{}, err
 	}
 	defer f.Close()
-	sc := bufio.NewScanner(f)
+	return c, c.ParseList(f)
+}
+
+// ParseList adds the lines of a guarded file to c: one path a line, "!path"
+// removes one of the paths already there.
+func (c *Config) ParseList(r io.Reader) error {
+	if c.Paths == nil {
+		c.Paths = map[string]string{}
+	}
+	sc := bufio.NewScanner(r)
 	for sc.Scan() {
 		line, _, _ := strings.Cut(sc.Text(), "#")
 		line = strings.TrimSpace(line)
@@ -182,18 +207,39 @@ func Load(stateDir, vm string) (*Guard, error) {
 			continue
 		}
 		if p, ok := strings.CutPrefix(line, "!"); ok {
-			for k := range g.Paths {
+			for k := range c.Paths {
 				if strings.EqualFold(k, clean(p)) {
-					delete(g.Paths, k)
+					delete(c.Paths, k)
 				}
 			}
 			continue
 		}
-		if _, ok := g.Paths[clean(line)]; !ok {
-			g.Paths[clean(line)] = ""
+		if _, ok := c.Paths[clean(line)]; !ok {
+			c.Paths[clean(line)] = ""
 		}
 	}
-	return g, sc.Err()
+	return sc.Err()
+}
+
+// New is the guard of the VM vm for c.
+func New(c Config, vm string) *Guard {
+	g := &Guard{VM: vm, Paths: c.Paths, Ask: desktop.Ask, Tell: desktop.Notify}
+	if g.Paths == nil {
+		g.Paths = map[string]string{}
+	}
+	if c.Deny {
+		g.Ask = func(context.Context, string, string) (bool, bool) { return false, true }
+	}
+	return g
+}
+
+// Load is the guard of the VM vm: Defaults and the user's list.
+func Load(stateDir, vm string) (*Guard, error) {
+	c, err := LoadConfig(stateDir)
+	if err != nil {
+		return nil, err
+	}
+	return New(c, vm), nil
 }
 
 func clean(p string) string { return strings.Trim(path.Clean("/"+strings.TrimSpace(p)), "/") }
@@ -345,13 +391,20 @@ func (g *Guard) Allow(root, rel string, entry bool) bool {
 		return allow
 	}
 
+	app := g.App
+	if app == "" {
+		app = "agent-vm"
+	}
 	why := g.Paths[h.rule]
 	if h.kind == kindTooBig {
-		why = "It may hold a file agent-vm guards."
+		why = "It may hold a file " + app + " guards."
 	} else if why == "" {
-		why = "You asked agent-vm to guard it (~/.agent-vm/" + FileName + ")."
+		why = "You asked " + app + " to guard it."
+		if app == "agent-vm" {
+			why = "You asked agent-vm to guard it (~/.agent-vm/" + FileName + ")."
+		}
 	}
-	title := "agent-vm: " + g.VM
+	title := app + ": " + g.VM
 	msg := question(root, rel, h, why)
 	ctx, cancel := context.WithTimeout(context.Background(), answerWithin)
 	defer cancel()

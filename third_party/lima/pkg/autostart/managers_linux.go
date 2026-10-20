@@ -3,7 +3,7 @@
 
 package autostart
 
-import "github.com/lima-vm/lima/v2/pkg/autostart/systemd"
+import "github.com/sylvinus/agent-vm/third_party/lima/pkg/autostart/systemd"
 
 // DaemonManager is not supported on Linux; use systemd user services instead.
 func DaemonManager(_ string) autoStartManager {

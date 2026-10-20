@@ -11,7 +11,7 @@ import (
 func TestEventWatch(t *testing.T) {
 	var out bytes.Buffer
 	var told []string
-	e := newEventWatch(&out, "proj-1a2b3c4d")
+	e := newEventWatch(&out, "", "proj-1a2b3c4d")
 	e.notify = func(title, msg string) { told = append(told, title+": "+msg) }
 	in := `{"status":{"running":true}}
 {"status":{"portForward":{"type":"forwarding","protocol":"tcp","guestAddr":"127.0.0.1:5173","hostAddr":"127.0.0.1:5173"}}}

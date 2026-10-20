@@ -14,8 +14,8 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 
-	"github.com/lima-vm/lima/v2/pkg/jsonschemautil"
-	"github.com/lima-vm/lima/v2/pkg/limatype"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/jsonschemautil"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype"
 )
 
 func newGenSchemaCommand() *cobra.Command {
@@ -53,7 +53,7 @@ func genschemaAction(cmd *cobra.Command, args []string) error {
 	}
 
 	reflector := new(jsonschema.Reflector)
-	err = reflector.AddGoComments("github.com/lima-vm/lima/v2", "./")
+	err = reflector.AddGoComments("github.com/sylvinus/agent-vm/third_party/lima", "./")
 	if err != nil {
 		return err
 	}

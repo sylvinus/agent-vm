@@ -14,7 +14,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lima-vm/lima/v2/pkg/instance"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/instance"
+
+	"github.com/sylvinus/agent-vm/internal/policy"
 )
 
 // A real VM, with a protected share: go test -tags e2e ./internal/vm/
@@ -66,6 +68,14 @@ func TestLimaBoot(t *testing.T) {
 	}
 	defer allowed.Close()
 	os.WriteFile(filepath.Join(stateDir, "network"), []byte("allow "+allowed.Addr().String()+"\n"), 0o644)
+	pf, err := policy.Current(stateDir, "agent-vm")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Where the host agent looks: the VM's folder, in the folder of the VMs.
+	if err := policy.Write(filepath.Join(os.Getenv("LIMA_INSTANCES_DIR"), name, "policy.json"), pf); err != nil {
+		t.Fatal(err)
+	}
 
 	var log bytes.Buffer
 	start := time.Now()
@@ -124,32 +134,20 @@ func TestLimaBoot(t *testing.T) {
 	if !connect("1.1.1.1:443") {
 		t.Error("the VM did not reach the internet")
 	}
-	// 0.2's migration, the VM running: stopped through its hostagent, moved.
-	old := os.Getenv("LIMA_HOME")
-	// Next to it: no longer, for the sockets.
-	now := filepath.Join(filepath.Dir(old), "n")
-	if err := MoveOld(ctx, old, now, name, "e2e-00000000"); err != nil {
+	// Stopped, then started again with the same policy file.
+	if err := l.Stop(ctx, name); err != nil {
 		t.Fatal(err)
 	}
-	name = "e2e-00000000"
-	l2, err := NewLima(now, t.TempDir())
-	if err != nil {
-		t.Fatal(err)
+	if inst, _ := l.Get(ctx, name); inst.Status != Stopped {
+		t.Errorf("after stop: %s", inst.Status)
 	}
-	t.Cleanup(func() { _ = l2.Delete(context.Background(), name) })
-	if inst, err := l2.Get(ctx, name); err != nil || inst.Status != Stopped || len(inst.Mounts) != 1 {
-		t.Errorf("moved: %v %+v", err, inst)
-	}
-	if err := l2.Start(ctx, name, &log); err != nil {
-		t.Fatalf("start in the new home: %v\n%s", err, log.String())
+	if err := l.Start(ctx, name, &log); err != nil {
+		t.Fatalf("second start: %v\n%s", err, log.String())
 	}
 	if code, out := run("cat from-vm"); code != 0 || out != "hi\na\nb\n" {
-		t.Errorf("after the move: %d %q", code, out)
+		t.Errorf("after the restart: %d %q", code, out)
 	}
-	if err := l2.Stop(ctx, name); err != nil {
+	if err := l.Stop(ctx, name); err != nil {
 		t.Fatal(err)
-	}
-	if inst, _ := l2.Get(ctx, name); inst.Status != Stopped {
-		t.Errorf("after stop: %s", inst.Status)
 	}
 }

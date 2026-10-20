@@ -6,7 +6,7 @@ package cidata
 import (
 	"testing"
 
-	"github.com/lima-vm/lima/v2/pkg/networks"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/networks"
 )
 
 func FuzzSetupEnv(f *testing.F) {

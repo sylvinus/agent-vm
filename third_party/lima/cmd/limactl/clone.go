@@ -11,15 +11,15 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/lima-vm/lima/v2/cmd/limactl/editflags"
-	"github.com/lima-vm/lima/v2/pkg/driver/external/server"
-	"github.com/lima-vm/lima/v2/pkg/driverutil"
-	"github.com/lima-vm/lima/v2/pkg/instance"
-	"github.com/lima-vm/lima/v2/pkg/limatype/filenames"
-	"github.com/lima-vm/lima/v2/pkg/limayaml"
-	"github.com/lima-vm/lima/v2/pkg/networks/reconcile"
-	"github.com/lima-vm/lima/v2/pkg/store"
-	"github.com/lima-vm/lima/v2/pkg/yqutil"
+	"github.com/sylvinus/agent-vm/third_party/lima/cmd/limactl/editflags"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/driver/external/server"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/driverutil"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/instance"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype/filenames"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limayaml"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/networks/reconcile"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/store"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/yqutil"
 )
 
 func newCloneCommand() *cobra.Command {

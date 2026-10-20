@@ -11,7 +11,8 @@ import (
 
 	agentvm "github.com/sylvinus/agent-vm"
 	"github.com/sylvinus/agent-vm/internal/host"
-	"github.com/sylvinus/agent-vm/internal/state"
+	"github.com/sylvinus/agent-vm/internal/policy"
+	"github.com/sylvinus/agent-vm/internal/version"
 	"github.com/sylvinus/agent-vm/internal/vm"
 	"github.com/sylvinus/agent-vm/internal/vm/vmtest"
 	"github.com/sylvinus/agent-vm/internal/vmname"
@@ -28,6 +29,11 @@ func setupRun(t *testing.T, args ...string) (*testEnv, int, []string) {
 	te.fake.ShellFunc = func(name string, o vm.ShellOpts) int {
 		b, _ := io.ReadAll(o.Stdin)
 		stdin = append(stdin, string(b))
+		// The build booted with the policies of now, as every VM does: its
+		// hostagent reads them from its folder.
+		if _, err := policy.Read(te.state.Policy(name)); err != nil {
+			t.Errorf("no policy for %s to boot with: %v", name, err)
+		}
 		return 0
 	}
 	code := te.setupBase(append([]string{"setup"}, args...))
@@ -199,8 +205,8 @@ func TestSetupFailures(t *testing.T) {
 		if log, _ := os.ReadFile(te.state.Path("setup.log")); !strings.Contains(string(log), "boom") {
 			t.Errorf("%s: log %q", c.op, log)
 		}
-		if _, err := os.Stat(te.state.Path(state.BaseVersion)); err == nil {
-			t.Errorf("%s: ready marker", c.op)
+		if te.state.BaseReady(vmname.Template) {
+			t.Errorf("%s: marked ready", c.op)
 		}
 	}
 	// A base that does not stop is not marked ready: Lima clones only a
@@ -210,7 +216,7 @@ func TestSetupFailures(t *testing.T) {
 	if te.setupBase([]string{"setup", "--preinstall=none"}) != 1 || !strings.Contains(te.out(), "the new base VM is set up but did not stop") {
 		t.Errorf("running base: %s", te.out())
 	}
-	if _, err := os.Stat(te.state.Path(state.BaseVersion)); err == nil {
+	if te.state.BaseReady(vmname.Template) {
 		t.Error("a running base was marked ready")
 	}
 }
@@ -243,8 +249,8 @@ func TestSetupBase(t *testing.T) {
 	if len(stdin) != 1 {
 		t.Errorf("guest stdin: %q", stdin)
 	}
-	if te.state.Read(state.BaseBuiltBy) == "" || te.state.Read(state.BaseVersion) == "" {
-		t.Error("markers not written")
+	if b := te.state.Known(vmname.Template).Base; b == nil || b.Built <= 0 || b.BuiltBy != version.Version || b.Name != vmname.Template {
+		t.Errorf("the base is not recorded: %+v", b)
 	}
 	if !strings.Contains(te.out(), "Base VM ready.") || strings.Contains(te.out(), "agent-vm claude") {
 		t.Errorf("output: %s", te.out())
@@ -268,7 +274,7 @@ func TestSetupBase(t *testing.T) {
 		t.Errorf("setup.sh: %q", got)
 	}
 	// The base from before is untouched.
-	if _, err := os.Stat(te.state.Path(state.BaseVersion)); err != nil || te.fake.VMs[vmname.Template] == nil {
+	if !te.state.BaseReady(vmname.Template) || te.fake.VMs[vmname.Template] == nil {
 		t.Error("a failed setup took the base from before")
 	}
 	// Lima's override.yaml: nothing made.

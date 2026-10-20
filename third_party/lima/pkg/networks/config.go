@@ -15,10 +15,10 @@ import (
 	"github.com/goccy/go-yaml"
 	"github.com/sirupsen/logrus"
 
-	"github.com/lima-vm/lima/v2/pkg/limatype/dirnames"
-	"github.com/lima-vm/lima/v2/pkg/limatype/filenames"
-	"github.com/lima-vm/lima/v2/pkg/textutil"
-	"github.com/lima-vm/lima/v2/pkg/usrlocal"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype/dirnames"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype/filenames"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/textutil"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/usrlocal"
 )
 
 //go:embed networks.TEMPLATE.yaml

@@ -11,11 +11,11 @@ import (
 	"path/filepath"
 	"runtime"
 
-	"github.com/lima-vm/sshocker/pkg/reversesshfs"
+	"github.com/sylvinus/agent-vm/third_party/sshocker/pkg/reversesshfs"
 	"github.com/sirupsen/logrus"
 
-	"github.com/lima-vm/lima/v2/pkg/limatype"
-	"github.com/lima-vm/lima/v2/pkg/sshutil"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/sshutil"
 )
 
 type mount struct {

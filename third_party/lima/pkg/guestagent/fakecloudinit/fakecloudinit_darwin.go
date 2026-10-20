@@ -22,8 +22,8 @@ import (
 	"github.com/sethvargo/go-password/password"
 	"github.com/sirupsen/logrus"
 
-	"github.com/lima-vm/lima/v2/pkg/cidata/cloudinittypes"
-	"github.com/lima-vm/lima/v2/pkg/osutil"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/cidata/cloudinittypes"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/osutil"
 )
 
 func Run(ctx context.Context) error {

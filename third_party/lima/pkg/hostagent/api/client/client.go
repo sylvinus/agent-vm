@@ -15,8 +15,8 @@ import (
 	"net/http"
 	"net/url"
 
-	"github.com/lima-vm/lima/v2/pkg/hostagent/api"
-	"github.com/lima-vm/lima/v2/pkg/httpclientutil"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/hostagent/api"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/httpclientutil"
 )
 
 type HostAgentClient interface {

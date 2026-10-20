@@ -15,8 +15,8 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	"github.com/lima-vm/lima/v2/pkg/debugutil"
-	"github.com/lima-vm/lima/v2/pkg/limatype"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/debugutil"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype"
 )
 
 // ExecutableViaArgs0 returns the absolute path to the executable used to start this process.

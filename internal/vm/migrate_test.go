@@ -9,9 +9,35 @@ import (
 	"testing"
 )
 
+// 0.3.0's VMs, in the Lima home: stopped ones may move, and a hostagent that
+// died is stopped by force.
+func TestLegacyRunning(t *testing.T) {
+	ctx := context.Background()
+	l := newLegacyLima(t)
+	home := os.Getenv("LIMA_HOME")
+	none := []Mount{}
+	if err := l.Create(ctx, "p-12345678", "template:debian-13", Settings{CPUs: 1, Mounts: &none}, io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	if LegacyRunning(ctx, home, "p-12345678") {
+		t.Error("a stopped VM is running")
+	}
+	if !LegacyRunning(ctx, home, "missing") {
+		t.Error("a VM that cannot be read is not known to be stopped")
+	}
+	// No hostagent: stopped by force, which cleans up what a crash leaves.
+	if err := StopLegacy(ctx, home, "p-12345678"); err != nil {
+		t.Errorf("stop of a stopped VM: %v", err)
+	}
+	// The environment is as it was.
+	if os.Getenv("LIMA_HOME") != home {
+		t.Error("LIMA_HOME changed")
+	}
+}
+
 func TestMoveOld(t *testing.T) {
 	ctx := context.Background()
-	l := newTestLima(t)
+	l := newLegacyLima(t)
 	old := os.Getenv("LIMA_HOME")
 	off := false
 	proj := t.TempDir()
@@ -54,7 +80,7 @@ func TestMoveOld(t *testing.T) {
 		t.Error("a VM that is not agent-vm's was touched")
 	}
 
-	l2, err := NewLima(now, t.TempDir())
+	l2, err := NewLima(now, "", t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}

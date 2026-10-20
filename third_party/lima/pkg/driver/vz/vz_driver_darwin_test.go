@@ -14,8 +14,8 @@ import (
 
 	"gotest.tools/v3/assert"
 
-	"github.com/lima-vm/lima/v2/pkg/limatype"
-	"github.com/lima-vm/lima/v2/pkg/limatype/filenames"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype/filenames"
 )
 
 func TestWaitForStopped(t *testing.T) {

@@ -13,9 +13,9 @@ import (
 
 	"gotest.tools/v3/assert"
 
-	"github.com/lima-vm/lima/v2/pkg/iso9660util"
-	"github.com/lima-vm/lima/v2/pkg/limatype"
-	"github.com/lima-vm/lima/v2/pkg/networks"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/iso9660util"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/networks"
 )
 
 func fakeLookupIP(_ string) []net.IP {

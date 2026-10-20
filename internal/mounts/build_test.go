@@ -30,8 +30,8 @@ func TestBuildBash(t *testing.T) {
 			t.Setenv("AGENT_VM_SSHFS_CACHE", cache)
 			var warn bytes.Buffer
 			mounts, files := Build(Shares{
-				VM: "t-00000000", Dir: gs.proj, Writable: writable, Names: []string{".git", ".hg"},
-				Entries: Entries(filepath.Join(gs.state, "volumes"), gs.proj, gs.home, gs.refs(), &warn), StateDir: gs.state, Warn: &warn,
+				Dir: gs.proj, Writable: writable, Names: []string{".git", ".hg"},
+				Entries: Entries(filepath.Join(gs.state, "volumes"), gs.proj, gs.home, gs.refs(), &warn), FileMounts: filepath.Join(gs.state, "vms", "t-00000000", "file-mounts"), Cache: CacheOn(), Warn: &warn,
 			})
 			w := "true"
 			if !writable {
@@ -44,10 +44,14 @@ func TestBuildBash(t *testing.T) {
 			if err := json.Unmarshal([]byte(jsonPart), &want); err != nil {
 				t.Fatalf("bash JSON %q: %v", jsonPart, err)
 			}
+			// 0.2 staged under file-mounts/<vm>, 0.4 under vms/<vm>/file-mounts.
+			staged := func(s string) string {
+				return strings.ReplaceAll(s, "/vms/t-00000000/file-mounts/", "/file-mounts/t-00000000/")
+			}
 			norm := func(ms []vm.Mount, root string) []vm.Mount {
 				var out []vm.Mount
 				for _, m := range ms {
-					m.Location = strings.ReplaceAll(m.Location, root, "ROOT")
+					m.Location = staged(strings.ReplaceAll(m.Location, root, "ROOT"))
 					m.MountPoint = strings.ReplaceAll(m.MountPoint, root, "ROOT")
 					out = append(out, m)
 				}
@@ -60,7 +64,7 @@ func TestBuildBash(t *testing.T) {
 			}
 			var lines []string
 			for _, f := range files {
-				lines = append(lines, strings.ReplaceAll(f.Line(), gs.root, "ROOT"))
+				lines = append(lines, staged(strings.ReplaceAll(f.Line(), gs.root, "ROOT")))
 			}
 			if strings.Join(lines, "\n") != strings.TrimSuffix(strings.ReplaceAll(cached, bs.root, "ROOT"), "\n") {
 				t.Errorf("file mounts: %q, bash %q", lines, cached)
@@ -68,7 +72,7 @@ func TestBuildBash(t *testing.T) {
 			if strings.ReplaceAll(warn.String(), gs.root, "ROOT") != strings.ReplaceAll(r.Stderr, bs.root, "ROOT") {
 				t.Errorf("warnings: %q, bash %q", warn.String(), r.Stderr)
 			}
-			if fi, err := os.Stat(gs.state + "/file-mounts/t-00000000/0/file.txt"); err != nil || !fi.Mode().IsRegular() {
+			if fi, err := os.Stat(gs.state + "/vms/t-00000000/file-mounts/0/file.txt"); err != nil || !fi.Mode().IsRegular() {
 				t.Error("the file was not staged")
 			}
 		}

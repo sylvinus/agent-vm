@@ -4,7 +4,7 @@ import (
 	"context"
 	"net"
 
-	"github.com/containers/gvisor-tap-vsock/pkg/types"
+	"github.com/sylvinus/agent-vm/third_party/gvisor-tap-vsock/pkg/types"
 )
 
 func (n *VirtualNetwork) AcceptBess(ctx context.Context, conn net.Conn) error {

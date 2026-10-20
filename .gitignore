@@ -12,3 +12,6 @@ dist
 # Built by the Makefile, embedded in the binary.
 /internal/limaembed/assets/*
 !/internal/limaembed/assets/README
+# Made by go generate in the example.
+/examples/consumer/assets/*
+!/examples/consumer/assets/README

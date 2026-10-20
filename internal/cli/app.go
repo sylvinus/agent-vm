@@ -5,9 +5,15 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sync"
 
+	agentvm "github.com/sylvinus/agent-vm"
+	"github.com/sylvinus/agent-vm/internal/engine"
+	"github.com/sylvinus/agent-vm/internal/env"
+	"github.com/sylvinus/agent-vm/internal/host"
+	"github.com/sylvinus/agent-vm/internal/mounts"
 	"github.com/sylvinus/agent-vm/internal/paths"
+	"github.com/sylvinus/agent-vm/internal/policy"
+	"github.com/sylvinus/agent-vm/internal/runscript"
 	"github.com/sylvinus/agent-vm/internal/state"
 	"github.com/sylvinus/agent-vm/internal/ui"
 	"github.com/sylvinus/agent-vm/internal/vm"
@@ -20,43 +26,110 @@ type app struct {
 	ui    *ui.UI
 	state state.Dir
 
-	migrateOnce sync.Once
-	migrate     func() // moves 0.2's VMs, when set
-	backOnce    sync.Once
-	newBack     func() (vm.Backend, error)
-	back        vm.Backend
-	backErr     error
+	// migrate moves 0.2's VMs, when set: the first use of the backend by a
+	// command that changes VMs runs it (see Options.BeforeChange).
+	migrate func()
+	// backend replaces Lima, for tests.
+	testBackend vm.Backend
+
+	eng    *agentvm.Engine
+	engErr error
 }
 
-// backend is made on first use: most commands never need Lima. The first
-// use by a command that changes VMs also moves 0.2's VMs (migrateOld).
-func (e *app) backend() (vm.Backend, error) {
-	e.migrateOnce.Do(func() {
-		if e.migrate != nil {
-			e.migrate()
-		}
-	})
-	return e.readOnlyBackend()
+// engine is the engine the commands run VMs with, opened on first use: most
+// commands never need Lima. It is opened again for each command, so that the
+// environment it reads is the command's.
+func (e *app) engine() (*agentvm.Engine, error) {
+	if e.eng == nil && e.engErr == nil {
+		e.eng, e.engErr = agentvm.Open(e.engineOptions())
+	}
+	return e.eng, e.engErr
 }
 
-// readOnlyBackend is backend without the move of 0.2's VMs, for commands
-// that only look (list, status, doctor, info, install). A command that goes
-// on to change VMs asks for backend, which moves them then.
+// engineOptions are the options agent-vm's command line gives the engine:
+// its files in the state folder, and the AGENT_VM_* variables.
+func (e *app) engineOptions() agentvm.Options {
+	div, _, _ := host.Divisor()
+	return agentvm.Options{
+		StateDir: string(e.state),
+		LimaHome: LimaHome(e.state),
+		AppName:  "agent-vm",
+		Asker:    cliAsker{e},
+		OnEvent:  e.onEvent,
+		Backend:  e.testBackend,
+		Policy:   func() (*policy.File, error) { return policy.Current(string(e.state), "agent-vm") },
+
+		VolumesFile:    e.state.Path("volumes"),
+		EnvFile:        e.state.Path("env"),
+		RuntimeScript:  e.state.Path("runtime.sh"),
+		ProjectEnvFile: env.ProjectEnvFile,
+		ProjectRuntime: runscript.ProjectPath,
+
+		UnsafeWritableGit: os.Getenv("AGENT_VM_UNSAFE_WRITABLE_GIT") == "1",
+		SSHFSCache:        mounts.CacheOn(),
+		HostShare:         div,
+		Quiet:             quiet(),
+		NeverShare:        []string{oldLimaHome()},
+		TERM:              os.Getenv("TERM"),
+		BeforeChange: func(context.Context) {
+			if e.migrate != nil {
+				e.migrate()
+			}
+		},
+	}
+}
+
+// onEvent prints what the engine tells: progress on stdout, the rest on
+// stderr.
+func (e *app) onEvent(ev agentvm.Event) {
+	switch {
+	case ev.Title != "":
+		e.ui.Box(ev.Title, ev.Text)
+	case ev.Level == agentvm.Info:
+		fmt.Fprintln(e.io.Stdout, ev.Text)
+	default:
+		fmt.Fprintln(e.io.Stderr, ev.Text)
+	}
+}
+
+// cliAsker puts the engine's questions to the user on the terminal.
+type cliAsker struct{ e *app }
+
+func (a cliAsker) CanAsk() bool { return a.e.ui.CanAsk() }
+
+func (a cliAsker) Ask(_ context.Context, q agentvm.Question) bool {
+	if q.Title != "" && q.Detail != "" {
+		a.e.ui.Box(q.Title, q.Detail)
+	}
+	return a.e.ui.AskYN(q.Prompt, q.Default)
+}
+
+// backend is the backend for a command that changes VMs: the first use also
+// moves the VMs of older versions.
+func (e *app) backend(ctx context.Context) (vm.Backend, error) {
+	eng, err := e.engine()
+	if err != nil {
+		return nil, err
+	}
+	return eng.Change(ctx)
+}
+
+// readOnlyBackend is the backend for the commands that only look (list,
+// status, doctor, info, install): no VM is moved. A command that goes on to
+// change VMs asks for backend, which moves them then.
 func (e *app) readOnlyBackend() (vm.Backend, error) {
-	e.backOnce.Do(func() { e.back, e.backErr = e.newBack() })
-	return e.back, e.backErr
+	eng, err := e.engine()
+	if err != nil {
+		return nil, err
+	}
+	return eng.Backend()
 }
 
 // migratedMarker says the VMs of 0.2 were moved into agent-vm's Lima home.
 const migratedMarker = ".agent-vm-lima-migrated"
 
 // oldLimaHome is where 0.2 kept its VMs: Lima's home, $LIMA_HOME or ~/.lima.
-func oldLimaHome() string {
-	if h := vm.UserLimaHome(); h != "" {
-		return paths.Host(absOr(h))
-	}
-	return paths.Host(filepath.Join(paths.Home(), ".lima"))
-}
+func oldLimaHome() string { return engine.UserLimaHome() }
 
 // absOr is p made absolute, as it is when that cannot be done: a relative
 // folder would defeat the checks that compare locations.
@@ -82,6 +155,15 @@ func (e *app) unmovedOld() ([]vm.OldVM, string) {
 	}
 	vms, _ := vm.FindOld(old, vmname.OldPrefix)
 	return vms, old
+}
+
+// layoutPending are the VMs of 0.3.0 that have not been moved yet to a
+// folder each. None for an app with no move wired.
+func (e *app) layoutPending() []string {
+	if e.migrate == nil {
+		return nil
+	}
+	return e.state.LegacyVMs(LimaHome(e.state))
 }
 
 // migrateOld moves, once, the VMs agent-vm 0.2 made in the user's Lima home
@@ -129,7 +211,7 @@ func (e *app) migrateOld(ctx context.Context, old, now string) {
 			failed = true
 			continue
 		}
-		if err := e.state.Rename(v.Name, to); err != nil {
+		if err := e.state.LegacyRename(v.Name, to); err != nil {
 			fmt.Fprintf(w, "Warning: %s moved, but not all that agent-vm knows of it: %v\n", to, err)
 		}
 	}
@@ -144,24 +226,18 @@ func (e *app) migrateOld(ctx context.Context, old, now string) {
 
 // sameDir reports whether a and b are one folder, links resolved where they
 // exist.
-func sameDir(a, b string) bool {
-	if fa, err := os.Stat(a); err == nil {
-		if fb, err := os.Stat(b); err == nil {
-			return os.SameFile(fa, fb)
-		}
-	}
-	return filepath.Clean(a) == filepath.Clean(b)
-}
+func sameDir(a, b string) bool { return engine.SameDir(a, b) }
 
-// LimaHome is where agent-vm's Lima keeps its VMs: its own, so that the
-// user's limactl, of another version, never runs them, and nothing of the
-// user's own Lima is touched. AGENT_VM_LIMA_HOME overrides it, made
+// LimaHome is agent-vm's own Lima home: what Lima keeps for every VM (its
+// SSH key, its networks), so that the user's limactl, of another version,
+// never runs the VMs, and nothing of the user's own Lima is touched. The VMs
+// are in the state folder's vms/. AGENT_VM_LIMA_HOME overrides it, made
 // absolute.
 func LimaHome(st state.Dir) string {
 	if h := os.Getenv("AGENT_VM_LIMA_HOME"); h != "" {
 		return paths.Host(absOr(h))
 	}
-	return st.Path("lima")
+	return st.LimaHome()
 }
 
 func newApp(io IO) (*app, error) {
@@ -172,17 +248,13 @@ func newApp(io IO) (*app, error) {
 	u := ui.New()
 	u.Stderr = io.Stderr
 	e := &app{io: io, ui: u, state: st}
+	e.migrate = func() { e.migrateOld(context.Background(), oldLimaHome(), LimaHome(st)) }
 	// Names that fit this machine's socket paths (a long home, a long user
 	// name): cut in their folder part, not refused.
-	vmname.MaxLen = vm.MaxName(LimaHome(st))
-	e.migrate = func() { e.migrateOld(context.Background(), oldLimaHome(), LimaHome(st)) }
-	e.newBack = func() (vm.Backend, error) {
-		// Every VM there is agent-vm's: list, rm and destroy-all take them
-		// all. Never a Lima home the user's own VMs live in.
-		if h := LimaHome(st); sameDir(h, oldLimaHome()) {
-			return nil, fmt.Errorf("agent-vm's Lima home %s is also your own Lima's home: set AGENT_VM_LIMA_HOME to a folder for agent-vm alone", h)
-		}
-		return vm.NewLima(LimaHome(st), string(st))
-	}
+	vmname.MaxLen = vm.MaxName(st.VMs())
 	return e, nil
 }
+
+// quiet is AGENT_VM_QUIET=1: notices that are not about a risk to the host
+// are not printed.
+func quiet() bool { return os.Getenv("AGENT_VM_QUIET") == "1" }

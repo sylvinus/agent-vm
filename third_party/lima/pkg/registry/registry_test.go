@@ -13,8 +13,8 @@ import (
 
 	"gotest.tools/v3/assert"
 
-	"github.com/lima-vm/lima/v2/pkg/driver"
-	"github.com/lima-vm/lima/v2/pkg/limatype"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/driver"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype"
 )
 
 type mockDriver struct {

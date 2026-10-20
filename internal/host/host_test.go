@@ -47,3 +47,22 @@ func TestCapBash(t *testing.T) {
 		t.Error("an unknown host clamped")
 	}
 }
+
+// QEMU's package by the host's package manager, as the .deb and .rpm
+// recommend it.
+func TestQemuBinaryFor(t *testing.T) {
+	for _, c := range []struct {
+		goarch   string
+		dnf      bool
+		bin, cmd string
+	}{
+		{"amd64", false, "qemu-system-x86_64", "sudo apt-get install qemu-system-x86"},
+		{"arm64", false, "qemu-system-aarch64", "sudo apt-get install qemu-system-arm"},
+		{"amd64", true, "qemu-system-x86_64", "sudo dnf install qemu-system-x86-core"},
+		{"arm64", true, "qemu-system-aarch64", "sudo dnf install qemu-system-aarch64-core"},
+	} {
+		if bin, cmd := qemuBinaryFor(c.goarch, c.dnf); bin != c.bin || cmd != c.cmd {
+			t.Errorf("%s dnf=%v: %s %q", c.goarch, c.dnf, bin, cmd)
+		}
+	}
+}

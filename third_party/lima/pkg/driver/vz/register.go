@@ -8,7 +8,7 @@ package vz
 import (
 	"context"
 
-	"github.com/lima-vm/lima/v2/pkg/registry"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/registry"
 )
 
 func init() {

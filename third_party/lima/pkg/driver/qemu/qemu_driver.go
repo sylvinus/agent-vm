@@ -35,17 +35,17 @@ import (
 	"github.com/spakin/netpbm"
 	"golang.org/x/image/bmp"
 
-	"github.com/lima-vm/lima/v2/pkg/driver"
-	"github.com/lima-vm/lima/v2/pkg/driver/qemu/entitlementutil"
-	"github.com/lima-vm/lima/v2/pkg/executil"
-	"github.com/lima-vm/lima/v2/pkg/limatype"
-	"github.com/lima-vm/lima/v2/pkg/limatype/filenames"
-	"github.com/lima-vm/lima/v2/pkg/limayaml"
-	"github.com/lima-vm/lima/v2/pkg/networks"
-	"github.com/lima-vm/lima/v2/pkg/networks/usernet"
-	"github.com/lima-vm/lima/v2/pkg/osutil"
-	"github.com/lima-vm/lima/v2/pkg/reflectutil"
-	"github.com/lima-vm/lima/v2/pkg/version/versionutil"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/driver"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/driver/qemu/entitlementutil"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/executil"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype/filenames"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limayaml"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/networks"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/networks/usernet"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/osutil"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/reflectutil"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/version/versionutil"
 )
 
 type LimaQemuDriver struct {

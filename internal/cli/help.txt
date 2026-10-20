@@ -105,6 +105,17 @@ command or right after its name, never later: in 'agent-vm run docker run
                      The project's env file and runtime script stay out;
                      ~/.agent-vm/env and runtime.sh go in. The folder's own
                      VM is left alone, and several can run at once.
+  --name NAME        The VM called NAME, not the folder's own, so that a
+                     folder can have several. It belongs to the folder it is
+                     made in and runs from there only ('rm NAME' to give it
+                     up, --reset to make it again). NAME: lowercase letters,
+                     digits and dashes, at most 40 characters, not ending in
+                     a dash and 8 hex digits, not 'base' nor 'base-...'.
+  --no-shares        With --name, when the VM is made: it shares nothing (as
+                     --scratch), is kept, and runs from any folder. It never
+                     gets shares. The folder's path is made in the VM as an
+                     empty working folder. ~/.agent-vm/env and runtime.sh go
+                     in, the project's files do not.
 
 Examples:
   agent-vm setup                             # Create base VM
@@ -118,6 +129,9 @@ Examples:
   agent-vm --rm claude                       # Destroy VM after Claude exits
   agent-vm --readonly shell                  # Nothing on the host is writable
   agent-vm --scratch claude                  # Nothing of yours mounted, then deleted
+  agent-vm --name agent2 claude              # A second VM on this folder
+  agent-vm --name sandbox --no-shares claude # Nothing shared, kept, from any folder
+  agent-vm stop agent2                       # Stop a VM by name (see 'list')
   agent-vm shell                             # Shell into the VM
   agent-vm sh -c "ls -la | grep config"      # One-shot command via login zsh
   agent-vm run npm install                   # Run a command in the VM

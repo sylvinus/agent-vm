@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/containers/gvisor-tap-vsock/pkg/types"
+	"github.com/sylvinus/agent-vm/third_party/gvisor-tap-vsock/pkg/types"
 	"github.com/foxcpp/go-mockdns"
 	"github.com/miekg/dns"
 	"github.com/onsi/ginkgo"

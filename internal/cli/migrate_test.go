@@ -1,14 +1,18 @@
 package cli
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/sylvinus/agent-vm/internal/limaembed"
 	"github.com/sylvinus/agent-vm/internal/state"
+	"github.com/sylvinus/agent-vm/internal/vm"
 	"github.com/sylvinus/agent-vm/internal/vm/vmtest"
 )
 
@@ -26,7 +30,7 @@ func TestOwnLimaHome(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := e.backend(); err == nil || !strings.Contains(err.Error(), "your own Lima's home") {
+	if _, err := e.backend(context.Background()); err == nil || !strings.Contains(err.Error(), "your own Lima's home") {
 		t.Errorf("own home: %v", err)
 	}
 	// The LIMA_HOME agent-vm sets for Lima is not the user's: a second
@@ -35,7 +39,7 @@ func TestOwnLimaHome(t *testing.T) {
 	t.Setenv("AGENT_VM_LIMA_HOME", "")
 	for i := range 2 {
 		e, _ := newApp(IO{Stdin: strings.NewReader(""), Stdout: io.Discard, Stderr: io.Discard})
-		if _, err := e.backend(); err != nil {
+		if _, err := e.backend(context.Background()); err != nil {
 			t.Errorf("command %d: %v", i+1, err)
 		}
 	}
@@ -73,7 +77,8 @@ func TestMigrateOld(t *testing.T) {
 
 	te := newTestEnv(t, vmtest.New(), "n\n")
 	os.MkdirAll(string(te.state), 0o755)
-	os.WriteFile(te.state.Marker(state.BuiltByOf, "agent-vm-p-12345678"), []byte("0.2.1\n"), 0o644)
+	// 0.2's markers, named as 0.3.0 named them.
+	os.WriteFile(te.state.Path(".agent-vm-built-by-agent-vm-p-12345678"), []byte("0.2.1\n"), 0o644)
 	te.migrateOld(context.Background(), old, now)
 	if out := te.out(); !strings.Contains(out, "  agent-vm-p-12345678, as p-12345678\n") || strings.Contains(out, "theirs") || !strings.Contains(out, "Not moved") {
 		t.Errorf("declined:\n%s", out)
@@ -104,7 +109,7 @@ func TestMigrateOld(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(now, "p-12345678", "lima.yaml")); err != nil {
 		t.Error("not moved")
 	}
-	if te.state.ReadMarker(state.BuiltByOf, "p-12345678") != "0.2.1" {
+	if te.state.Read(".agent-vm-built-by-p-12345678") != "0.2.1" {
 		t.Error("its markers did not follow")
 	}
 	if _, err := os.Stat(filepath.Join(old, "theirs", "lima.yaml")); err != nil {
@@ -125,5 +130,88 @@ func TestMigrateOld(t *testing.T) {
 	te.migrateOld(context.Background(), t.TempDir(), now)
 	if te.out() != "" {
 		t.Errorf("nothing to move: %q", te.out())
+	}
+}
+
+// 0.3.0's VMs, made by a real Lima in its Lima home, move to a folder each
+// and are found there by the Lima that agent-vm now runs.
+func TestMigrateLayoutLima(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("LIMA_HOME", "")
+	t.Setenv("LIMA_INSTANCES_DIR", "")
+	t.Setenv("LIMA_TEMPLATES_PATH", "")
+	st := state.Dir(filepath.Join(home, ".agent-vm"))
+	t.Setenv("AGENT_VM_STATE_DIR", string(st))
+	ctx := context.Background()
+
+	// How 0.3.0 had them: in the Lima home, with markers.
+	old, err := vm.NewLima(st.LimaHome(), "", string(st))
+	if err != nil {
+		t.Fatal(err)
+	}
+	none := []vm.Mount{}
+	for _, name := range []string{"base", "proj-12345678"} {
+		if err := old.Create(ctx, name, "template:debian-13", vm.Settings{CPUs: 1, Mounts: &none}, io.Discard); errors.Is(err, limaembed.ErrNoAssets) {
+			t.Skip("built without the guest agent: make assets")
+		} else if err != nil {
+			t.Fatal(err)
+		}
+	}
+	for name, content := range map[string]string{
+		".agent-vm-base-version": "1759000000\n", ".agent-vm-base-built-by": "0.3.0\n",
+		".agent-vm-version-proj-12345678": "1759000000\n", ".agent-vm-built-by-proj-12345678": "0.3.0\n",
+		".agent-vm-term-proj-12345678": "xterm\n",
+	} {
+		os.WriteFile(st.Path(name), []byte(content), 0o644)
+	}
+
+	var stderr bytes.Buffer
+	e, err := newApp(IO{Stdin: strings.NewReader(""), Stdout: io.Discard, Stderr: &stderr})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := e.layoutPending(); len(got) != 2 {
+		t.Fatalf("pending: %v", got)
+	}
+	b, err := e.backend(ctx) // moves them
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(stderr.String(), "Moving base, proj-12345678") {
+		t.Errorf("said: %q", stderr.String())
+	}
+	if got := e.layoutPending(); len(got) != 0 || st.PendingLayout(st.LimaHome()) {
+		t.Errorf("still pending: %v\n%s", got, stderr.String())
+	}
+	all, err := b.List(ctx)
+	if err != nil || len(all) != 2 {
+		t.Fatalf("list: %v %v", all, err)
+	}
+	inst, err := b.Get(ctx, "proj-12345678")
+	if err != nil || inst.Status != vm.Stopped || inst.CPUs != 1 || inst.Dir != st.Lima("proj-12345678") {
+		t.Errorf("moved VM: %+v %v", inst, err)
+	}
+	if m := st.Known("proj-12345678"); m.Base == nil || m.Base.BuiltBy != "0.3.0" || m.Term != "xterm" {
+		t.Errorf("metadata: %+v", m)
+	}
+	if !st.BaseReady("base") {
+		t.Error("the base is not ready")
+	}
+	if _, err := os.Stat(filepath.Join(st.LimaHome(), "proj-12345678")); err == nil {
+		t.Error("left in the Lima home")
+	}
+	// Cloned and deleted at the new place, as a start does.
+	if err := b.Clone(ctx, "base", "other-12345678"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(st.Lima("other-12345678"), "lima.yaml")); err != nil {
+		t.Errorf("clone: %v", err)
+	}
+	if !e.deleteVM(ctx, "other-12345678") {
+		t.Error("delete")
+	} else if _, err := os.Stat(st.VM("other-12345678")); err == nil {
+		t.Error("the folder of a deleted VM is left")
 	}
 }

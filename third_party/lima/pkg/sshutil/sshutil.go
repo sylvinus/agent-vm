@@ -27,11 +27,11 @@ import (
 	"github.com/sirupsen/logrus"
 	"golang.org/x/sys/cpu"
 
-	"github.com/lima-vm/lima/v2/pkg/fsutil"
-	"github.com/lima-vm/lima/v2/pkg/limatype/dirnames"
-	"github.com/lima-vm/lima/v2/pkg/limatype/filenames"
-	"github.com/lima-vm/lima/v2/pkg/lockutil"
-	"github.com/lima-vm/lima/v2/pkg/osutil"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/fsutil"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype/dirnames"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype/filenames"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/lockutil"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/osutil"
 )
 
 // Environment variable that allows configuring the command (alias) to execute

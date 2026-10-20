@@ -12,16 +12,16 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	"github.com/lima-vm/lima/v2/pkg/envutil"
-	"github.com/lima-vm/lima/v2/pkg/limatype"
-	"github.com/lima-vm/lima/v2/pkg/limatype/dirnames"
-	"github.com/lima-vm/lima/v2/pkg/limatype/filenames"
-	"github.com/lima-vm/lima/v2/pkg/limayaml"
-	"github.com/lima-vm/lima/v2/pkg/plugins"
-	"github.com/lima-vm/lima/v2/pkg/registry"
-	"github.com/lima-vm/lima/v2/pkg/templatestore"
-	"github.com/lima-vm/lima/v2/pkg/usrlocal"
-	"github.com/lima-vm/lima/v2/pkg/version"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/envutil"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype/dirnames"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype/filenames"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limayaml"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/plugins"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/registry"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/templatestore"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/usrlocal"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/version"
 )
 
 type LimaInfo struct {

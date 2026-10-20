@@ -22,7 +22,7 @@ func device(p string) (uint64, bool) {
 // To another file system: copied, then removed (rename cannot).
 func TestMoveOldAcrossFS(t *testing.T) {
 	ctx := context.Background()
-	l := newTestLima(t)
+	l := newLegacyLima(t)
 	old := os.Getenv("LIMA_HOME")
 	from, _ := device(old)
 	other := ""
@@ -61,7 +61,7 @@ func TestMoveOldAcrossFS(t *testing.T) {
 	if l, err := os.Readlink(filepath.Join(moved, "link")); err != nil || l != "lima.yaml" {
 		t.Errorf("link: %q %v", l, err)
 	}
-	l2, err := NewLima(now, t.TempDir())
+	l2, err := NewLima(now, "", t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}

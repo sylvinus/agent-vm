@@ -1,0 +1,48 @@
+# The .deb and .rpm of a Linux build, made by release.sh (linux_packages) with
+# nfpm, run in the folder of that build's tarball. The variables come from
+# release.sh. QEMU and ssh are recommended, not required: apt and dnf install
+# recommends by default; RHEL and its rebuilds name QEMU qemu-kvm, and a QEMU
+# from elsewhere on the PATH does too. `agent-vm setup` says what is missing.
+name: agent-vm
+arch: ${GOARCH}
+platform: linux
+version: ${VERSION}
+release: "1"
+section: utils
+priority: optional
+maintainer: Sylvain Zimmer <sylvain@sylvainzimmer.com>
+description: |
+  Run AI coding agents in a disposable Linux VM per project.
+  The VM gets the project directory and nothing else of the host's.
+homepage: https://www.agent-vm.org/
+license: MIT
+
+contents:
+  - src: agent-vm
+    dst: /usr/bin/agent-vm
+    file_info:
+      mode: 0755
+  - src: README.md
+    dst: /usr/share/doc/agent-vm/README.md
+  - src: CHANGELOG.md
+    dst: /usr/share/doc/agent-vm/CHANGELOG.md
+  - src: LICENSE
+    dst: /usr/share/doc/agent-vm/LICENSE
+  - src: NOTICE
+    dst: /usr/share/doc/agent-vm/NOTICE
+  - src: THIRD_PARTY_LICENSES
+    dst: /usr/share/doc/agent-vm/THIRD_PARTY_LICENSES
+  - src: runtime.example.sh
+    dst: /usr/share/doc/agent-vm/runtime.example.sh
+
+overrides:
+  deb:
+    recommends:
+      - ${QEMU_DEB}
+      - qemu-utils
+      - openssh-client
+  rpm:
+    recommends:
+      - ${QEMU_RPM}
+      - qemu-img
+      - openssh-clients

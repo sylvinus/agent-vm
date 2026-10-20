@@ -16,7 +16,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	guestagentapi "github.com/lima-vm/lima/v2/pkg/guestagent/api"
+	guestagentapi "github.com/sylvinus/agent-vm/third_party/lima/pkg/guestagent/api"
 )
 
 const CacheSize = 10000

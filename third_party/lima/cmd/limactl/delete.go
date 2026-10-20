@@ -11,12 +11,12 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 
-	"github.com/lima-vm/lima/v2/pkg/autostart"
-	"github.com/lima-vm/lima/v2/pkg/instance"
-	"github.com/lima-vm/lima/v2/pkg/limatype/dirnames"
-	"github.com/lima-vm/lima/v2/pkg/limatype/filenames"
-	"github.com/lima-vm/lima/v2/pkg/networks/reconcile"
-	"github.com/lima-vm/lima/v2/pkg/store"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/autostart"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/instance"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype/dirnames"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype/filenames"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/networks/reconcile"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/store"
 )
 
 func newDeleteCommand() *cobra.Command {

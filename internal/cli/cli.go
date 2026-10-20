@@ -12,6 +12,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/sylvinus/agent-vm/agents"
 	"github.com/sylvinus/agent-vm/internal/version"
 	"github.com/sylvinus/agent-vm/internal/vmname"
 )
@@ -73,6 +74,8 @@ func Main(args []string, io IO) int {
 // main runs the command line. An app made only of io is enough for the
 // commands outside stateful.
 func (e *app) main(ctx context.Context, args []string) int {
+	// The engine reads the environment when it is opened: once per command.
+	e.eng, e.engErr = nil, nil
 	io := e.io
 	opts := newVMOpts()
 	lead, args, err := opts.takeAll(args)
@@ -112,8 +115,6 @@ func (e *app) main(ctx context.Context, args []string) int {
 		return e.sharedEnvCmd(args)
 	case "project-env":
 		return e.projectEnvCmd(ctx, args)
-	case "claude", "opencode", "codex", "vibe", "pi":
-		return e.agentCmd(ctx, cmd, opts, args)
 	case "shell", "sh":
 		return e.shellCmd(ctx, opts, args)
 	case "run":
@@ -129,6 +130,9 @@ func (e *app) main(ctx context.Context, args []string) int {
 	case "code":
 		return e.codeCmd(ctx, opts, args)
 	default:
+		if a, ok := agents.Lookup(cmd); ok {
+			return e.agentCmd(ctx, a, opts, args)
+		}
 		fmt.Fprintf(io.Stderr, "Unknown command: %s\nRun 'agent-vm help' for usage.\n", cmd)
 		return exitUsage
 	}
@@ -171,8 +175,26 @@ func versionCmd(args []string, io IO) int {
 	return 1
 }
 
-// updateCommand is how this copy of agent-vm is updated.
+// updateCommand is how this copy of agent-vm is updated: by what installed
+// it. The installer's copy would otherwise land in ~/.local/bin, ahead of a
+// package's on the PATH, and hide its updates.
 func updateCommand() string {
+	exe, err := self()
+	if err != nil {
+		exe = ""
+	}
+	return updateCommandFor(exe)
+}
+
+func updateCommandFor(exe string) string {
+	switch {
+	case strings.HasPrefix(exe, "/nix/store/"):
+		return "with Nix, as installed (nix profile upgrade agent-vm, or the flake input)"
+	case strings.Contains(exe, "/Cellar/agent-vm/"):
+		return "brew upgrade agent-vm"
+	case exe == "/usr/bin/agent-vm":
+		return "install the .deb or .rpm of https://github.com/sylvinus/agent-vm/releases/latest"
+	}
 	return "curl -fsSL https://www.agent-vm.org/install.sh | sh"
 }
 

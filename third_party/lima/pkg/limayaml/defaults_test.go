@@ -19,12 +19,12 @@ import (
 	"github.com/sirupsen/logrus"
 	"gotest.tools/v3/assert"
 
-	"github.com/lima-vm/lima/v2/pkg/fsutil"
-	"github.com/lima-vm/lima/v2/pkg/limatype"
-	"github.com/lima-vm/lima/v2/pkg/limatype/dirnames"
-	"github.com/lima-vm/lima/v2/pkg/limatype/filenames"
-	"github.com/lima-vm/lima/v2/pkg/osutil"
-	"github.com/lima-vm/lima/v2/pkg/version"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/fsutil"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype/dirnames"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype/filenames"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/osutil"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/version"
 )
 
 func TestExistingLimaVersion(t *testing.T) {

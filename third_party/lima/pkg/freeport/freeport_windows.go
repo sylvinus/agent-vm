@@ -3,7 +3,7 @@
 
 package freeport
 
-import "github.com/lima-vm/lima/v2/pkg/windows"
+import "github.com/sylvinus/agent-vm/third_party/lima/pkg/windows"
 
 func VSock() (int, error) {
 	return windows.GetRandomFreeVSockPort(0, 2147483647)

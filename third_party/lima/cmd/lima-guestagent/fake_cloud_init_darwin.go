@@ -6,7 +6,7 @@ package main
 import (
 	"github.com/spf13/cobra"
 
-	"github.com/lima-vm/lima/v2/pkg/guestagent/fakecloudinit"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/guestagent/fakecloudinit"
 )
 
 func newFakeCloudInitCommand() *cobra.Command {

@@ -4,16 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/sylvinus/agent-vm/internal/env"
 	"github.com/sylvinus/agent-vm/internal/gitguard"
 	"github.com/sylvinus/agent-vm/internal/mounts"
-	"github.com/sylvinus/agent-vm/internal/paths"
-	"github.com/sylvinus/agent-vm/internal/state"
 	"github.com/sylvinus/agent-vm/internal/version"
 	"github.com/sylvinus/agent-vm/internal/vm"
 	"github.com/sylvinus/agent-vm/internal/vmname"
@@ -21,26 +17,21 @@ import (
 
 // refs are the locations no share may reach (see mounts.Refs).
 func (e *app) refs() []mounts.Ref {
-	self := ""
-	if exe, err := os.Executable(); err == nil {
-		if p, err := filepath.EvalSymlinks(exe); err == nil {
-			self = paths.Host(filepath.Dir(p))
-		}
+	eng, err := e.engine()
+	if err != nil {
+		return nil
 	}
-	return mounts.Refs(paths.Home(), self, string(e.state), LimaHome(e.state), oldLimaHome())
-}
-
-// entries are the usable entries of ~/.agent-vm/volumes for the project
-// dir, their warnings on warn.
-func (e *app) entries(dir string, warn io.Writer) []mounts.Entry {
-	return mounts.Entries(e.state.Path("volumes"), dir, paths.Home(), e.refs(), warn)
+	return eng.Refs()
 }
 
 // scan is the git scan of the project dir's writable shares (see
 // gitguard.Scan), the volumes read quietly.
 func (e *app) scan(ctx context.Context, dir string) *gitguard.Result {
-	shares := gitguard.Shares(dir, mounts.RWDirs(e.entries(dir, io.Discard)))
-	return gitguard.Scan(ctx, shares, paths.Home())
+	eng, err := e.engine()
+	if err != nil {
+		return &gitguard.Result{}
+	}
+	return eng.Scan(ctx, dir)
 }
 
 // writableGitOptOut: AGENT_VM_UNSAFE_WRITABLE_GIT=1, or --unsafe-writable-git
@@ -100,8 +91,7 @@ func (e *app) infoCmd(ctx context.Context, args []string) int {
 		return inst, err
 	}
 	base, baseErr := get(vmname.Template)
-	_, markErr := os.Stat(e.state.Path(state.BaseVersion))
-	fmt.Fprintf(w, "base_exists=%s\n", tristate(base != nil && markErr == nil, baseErr))
+	fmt.Fprintf(w, "base_exists=%s\n", tristate(base != nil && e.state.BaseReady(vmname.Template), baseErr))
 	inst, instErr := get(name)
 	fmt.Fprintf(w, "vm_exists=%s\n", tristate(inst != nil, instErr))
 	fmt.Fprintf(w, "vm_running=%s\n", tristate(inst != nil && inst.Status == vm.Running, instErr))
@@ -151,12 +141,11 @@ func (e *app) infoCmd(ctx context.Context, args []string) int {
 // current one: 1, 0, or unknown with nothing to compare against. A VM with
 // no record but a known base predates the record, which makes it stale.
 func (e *app) staleState(name string) string {
-	base, err := os.ReadFile(e.state.Path(state.BaseVersion))
-	if err != nil {
+	base := e.state.Known(vmname.Template).Base
+	if base == nil || base.Built <= 0 {
 		return "unknown"
 	}
-	mine, err := os.ReadFile(e.state.Marker(state.VersionOf, name))
-	if err != nil || strings.TrimRight(string(mine), "\n") != strings.TrimRight(string(base), "\n") {
+	if mine := e.state.Known(name).Base; mine == nil || mine.Built != base.Built {
 		return "1"
 	}
 	return "0"

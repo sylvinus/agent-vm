@@ -21,14 +21,14 @@ import (
 	"github.com/docker/go-units"
 	"github.com/sirupsen/logrus"
 
-	"github.com/lima-vm/lima/v2/pkg/driverutil"
-	hostagentclient "github.com/lima-vm/lima/v2/pkg/hostagent/api/client"
-	"github.com/lima-vm/lima/v2/pkg/instance/hostname"
-	"github.com/lima-vm/lima/v2/pkg/limatype"
-	"github.com/lima-vm/lima/v2/pkg/limatype/dirnames"
-	"github.com/lima-vm/lima/v2/pkg/limatype/filenames"
-	"github.com/lima-vm/lima/v2/pkg/textutil"
-	"github.com/lima-vm/lima/v2/pkg/version/versionutil"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/driverutil"
+	hostagentclient "github.com/sylvinus/agent-vm/third_party/lima/pkg/hostagent/api/client"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/instance/hostname"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype/dirnames"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype/filenames"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/textutil"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/version/versionutil"
 )
 
 // Inspect returns err only when the instance does not exist (os.ErrNotExist).

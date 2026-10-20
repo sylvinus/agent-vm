@@ -13,9 +13,9 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	"github.com/lima-vm/lima/v2/pkg/driver"
-	"github.com/lima-vm/lima/v2/pkg/driver/external/client"
-	"github.com/lima-vm/lima/v2/pkg/usrlocal"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/driver"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/driver/external/client"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/usrlocal"
 )
 
 const (

@@ -16,9 +16,9 @@ import (
 	"github.com/lima-vm/go-qcow2reader/image"
 	"gotest.tools/v3/assert"
 
-	"github.com/lima-vm/lima/v2/pkg/iso9660util"
-	"github.com/lima-vm/lima/v2/pkg/limatype/filenames"
-	"github.com/lima-vm/lima/v2/pkg/osutil"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/iso9660util"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype/filenames"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/osutil"
 )
 
 const (

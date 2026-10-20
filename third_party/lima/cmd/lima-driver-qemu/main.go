@@ -6,8 +6,8 @@ package main
 import (
 	"context"
 
-	"github.com/lima-vm/lima/v2/pkg/driver/external/server"
-	"github.com/lima-vm/lima/v2/pkg/driver/qemu"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/driver/external/server"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/driver/qemu"
 )
 
 // To be used as an external driver for Lima.

@@ -10,9 +10,9 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	"github.com/lima-vm/lima/v2/pkg/autostart"
-	"github.com/lima-vm/lima/v2/pkg/limatype"
-	"github.com/lima-vm/lima/v2/pkg/networks/reconcile"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/autostart"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/networks/reconcile"
 )
 
 const (

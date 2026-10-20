@@ -21,7 +21,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	"github.com/lima-vm/lima/v2/pkg/networks"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/networks"
 )
 
 // netConfig is the fully resolved description of a Lima network. Every value is

@@ -18,7 +18,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	"github.com/lima-vm/lima/v2/pkg/plist"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/plist"
 )
 
 var MachineID = sync.OnceValue(func() string {

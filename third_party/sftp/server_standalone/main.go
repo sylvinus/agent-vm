@@ -10,7 +10,7 @@ import (
 	"io/ioutil"
 	"os"
 
-	"github.com/pkg/sftp"
+	"github.com/sylvinus/agent-vm/third_party/sftp"
 )
 
 func main() {

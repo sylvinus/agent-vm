@@ -20,11 +20,11 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	"github.com/lima-vm/lima/v2/pkg/identifiers"
-	"github.com/lima-vm/lima/v2/pkg/ioutilx"
-	"github.com/lima-vm/lima/v2/pkg/limatype"
-	"github.com/lima-vm/lima/v2/pkg/plugins"
-	"github.com/lima-vm/lima/v2/pkg/templatestore"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/identifiers"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/ioutilx"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/plugins"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/templatestore"
 )
 
 const yBytesLimit = 4 * 1024 * 1024 // 4MiB

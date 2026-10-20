@@ -12,7 +12,7 @@ import (
 
 	"gotest.tools/v3/assert"
 
-	"github.com/lima-vm/lima/v2/pkg/hostagent/events"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/hostagent/events"
 )
 
 func TestEmitCloudInitProgressEventStripsControlChars(t *testing.T) {

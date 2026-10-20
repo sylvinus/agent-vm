@@ -11,7 +11,7 @@ import (
 	"github.com/spf13/cobra"
 	"gotest.tools/v3/assert"
 
-	"github.com/lima-vm/lima/v2/pkg/limatype/filenames"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype/filenames"
 )
 
 func TestLoadOrCreateInstance(t *testing.T) {

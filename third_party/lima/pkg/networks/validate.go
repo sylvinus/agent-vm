@@ -13,8 +13,8 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/lima-vm/lima/v2/pkg/identifiers"
-	"github.com/lima-vm/lima/v2/pkg/osutil"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/identifiers"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/osutil"
 )
 
 func (c *Config) Validate() error {

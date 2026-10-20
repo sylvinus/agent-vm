@@ -23,14 +23,14 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/keepalive"
 
-	"github.com/lima-vm/lima/v2/pkg/driver"
-	pb "github.com/lima-vm/lima/v2/pkg/driver/external"
-	"github.com/lima-vm/lima/v2/pkg/driver/external/client"
-	"github.com/lima-vm/lima/v2/pkg/limatype"
-	"github.com/lima-vm/lima/v2/pkg/limatype/dirnames"
-	"github.com/lima-vm/lima/v2/pkg/limatype/filenames"
-	"github.com/lima-vm/lima/v2/pkg/osutil"
-	"github.com/lima-vm/lima/v2/pkg/registry"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/driver"
+	pb "github.com/sylvinus/agent-vm/third_party/lima/pkg/driver/external"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/driver/external/client"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype/dirnames"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype/filenames"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/osutil"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/registry"
 )
 
 type DriverServer struct {

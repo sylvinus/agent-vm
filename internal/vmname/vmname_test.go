@@ -127,6 +127,51 @@ func TestScratchBash(t *testing.T) {
 	}
 }
 
+func TestValidateCustom(t *testing.T) {
+	for name, want := range map[string]string{
+		"agent2":                  "",
+		"sandbox":                 "",
+		"a":                       "",
+		"my-vm-2":                 "",
+		"1a":                      "",
+		strings.Repeat("a", 40):   "",
+		strings.Repeat("a", 41):   "at most 40",
+		"":                        "lowercase",
+		"Agent":                   "lowercase",
+		"a_b":                     "lowercase",
+		"a.b":                     "lowercase",
+		"a b":                     "lowercase",
+		"-a":                      "lowercase",
+		"a-":                      "lowercase",
+		"a--b":                    "lowercase",
+		"é":                       "lowercase",
+		"a/b":                     "lowercase",
+		"proj-1a2b3c4d":           "8 hexadecimal",
+		"x-scratch-0000aaaa":      "8 hexadecimal",
+		"proj-1A2B3C4D":           "lowercase",
+		"proj-1a2b3c4":            "",
+		"proj-1a2b3c4de":          "",
+		"base":                    "reserved",
+		"base-krunkit":            "reserved",
+		"base-building":           "reserved",
+		"basement":                "",
+		"database":                "",
+		"the-base":                "",
+		"a-12345678-b":            "",
+		"deadbeef":                "",
+		"aaaa-deadbeef":           "8 hexadecimal",
+		"aaaa-deadbeee-deadbeeff": "",
+	} {
+		err := ValidateCustom(name)
+		switch {
+		case want == "" && err != nil:
+			t.Errorf("%q: %v", name, err)
+		case want != "" && (err == nil || !strings.Contains(err.Error(), want)):
+			t.Errorf("%q: %v, want %q", name, err, want)
+		}
+	}
+}
+
 func TestIsScratch(t *testing.T) {
 	for name, want := range map[string]bool{
 		"proj-scratch-0123abcd":   true,

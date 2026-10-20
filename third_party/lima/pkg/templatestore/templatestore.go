@@ -14,8 +14,8 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/lima-vm/lima/v2/pkg/limatype/dirnames"
-	"github.com/lima-vm/lima/v2/pkg/usrlocal"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype/dirnames"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/usrlocal"
 )
 
 type Template struct {

@@ -2,22 +2,18 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
-	"strconv"
 	"strings"
-	"time"
 
 	agentvm "github.com/sylvinus/agent-vm"
 	"github.com/sylvinus/agent-vm/internal/env"
 	"github.com/sylvinus/agent-vm/internal/host"
-	"github.com/sylvinus/agent-vm/internal/state"
 	"github.com/sylvinus/agent-vm/internal/ui"
-	"github.com/sylvinus/agent-vm/internal/version"
-	"github.com/sylvinus/agent-vm/internal/vm"
 	"github.com/sylvinus/agent-vm/internal/vmname"
+	"github.com/sylvinus/agent-vm/provision"
 )
 
 const setupUsage = "Usage: agent-vm setup [--disk GB] [--memory GB] [--cpus N] [--preinstall=LIST]"
@@ -79,15 +75,11 @@ Options:
 `
 
 // The software of the base, as agent-vm.setup.sh names it
-// (AGENT_VM_INSTALL_<NAME>).
-var software = []string{"python", "node", "ruby", "rust", "golang", "docker", "chromium", "gh", "claude", "opencode", "codex", "vibe", "pi",
-	"code-server", "code-claude", "code-codex", "code-vibe", "mcp-chrome", "mcp-playwright"}
-
-// The default set. Opt-in: Ruby, Rust, Go, Pi (released several times a
-// week), Playwright MCP (a second browser-driving server, whose tools cost
-// context in every agent), and code-server with its extensions (an editor
-// most use on the host).
-var defaultSoftware = []string{"python", "node", "docker", "chromium", "gh", "claude", "opencode", "codex", "vibe", "mcp-chrome"}
+// (AGENT_VM_INSTALL_<NAME>), and the default set.
+var (
+	software        = provision.Software
+	defaultSoftware = provision.DefaultSoftware
+)
 
 // skipPrereqs is for tests, on hosts without KVM.
 var skipPrereqs = false
@@ -100,32 +92,8 @@ func (in install) set(names ...string) {
 	}
 }
 
-// nodeNeededBy says why the choices need Node.js, if they do: Codex and Pi
-// install with npm, Chrome DevTools MCP runs with npx.
-func (in install) nodeNeededBy() string {
-	switch {
-	case in["codex"]:
-		return "Codex CLI requires npm"
-	case in["pi"]:
-		return "Pi requires npm"
-	case in["chromium"] && in["mcp-chrome"] && (in["claude"] || in["opencode"] || in["vibe"] || in["code-claude"] || in["code-codex"] || in["code-vibe"]):
-		return "Chrome DevTools MCP uses npx"
-	}
-	return ""
-}
-
-// exports are the choices as the setup script reads them.
-func (in install) exports() string {
-	var b strings.Builder
-	for _, n := range software {
-		v := 0
-		if in[n] {
-			v = 1
-		}
-		fmt.Fprintf(&b, "export AGENT_VM_INSTALL_%s=%d\n", strings.ToUpper(strings.ReplaceAll(n, "-", "_")), v)
-	}
-	return b.String()
-}
+// nodeNeededBy says why the choices need Node.js, if they do.
+func (in install) nodeNeededBy() string { return provision.NodeNeededBy(in) }
 
 // setupCmd: `setup [options]`, the options given before it included. Of the
 // VM options, it takes the resources.
@@ -217,51 +185,6 @@ func (e *app) setupCmd(ctx context.Context, args []string) int {
 		in["node"] = true
 	}
 	return e.buildBase(ctx, in, disk, memory, cpus)
-}
-
-// swapBase puts the finished build in the base's place: the old base and its
-// markers go, the build is cloned to the base's name and marked ready, last
-// the build goes. Under the base's lock, so that no start clones the base
-// meanwhile. Lima has no rename, so the disk is copied once more; the build
-// is kept if the copy cannot be made, and said.
-func (e *app) swapBase(ctx context.Context, b vm.Backend) bool {
-	w := e.io.Stderr
-	unlock, err := e.lockVM(ctx, vmname.Template)
-	if err != nil {
-		fmt.Fprintf(w, "Error: could not lock the base template: %v. The new base is VM '%s'; 'agent-vm setup' again builds another.\n", err, building)
-		return false
-	}
-	defer unlock()
-	if d := filepath.Join(LimaHome(e.state), vmname.Template); isDirNoYAML(d) {
-		fmt.Fprintf(w, "Detected partial VM state at %s (no lima.yaml): cleaning up.\n", d)
-		if err := os.RemoveAll(d); err != nil {
-			fmt.Fprintf(w, "Error: could not remove %s: %v\n", d, err)
-			return false
-		}
-	}
-	// Forgets the old base's markers with it: from here on, nothing says a
-	// base is ready.
-	if !e.deleteVM(ctx, vmname.Template) {
-		fmt.Fprintf(w, "Error: could not replace the base VM. The new one is VM '%s'; 'agent-vm setup' again builds another.\n", building)
-		return false
-	}
-	if err := b.Clone(ctx, building, vmname.Template); err != nil {
-		fmt.Fprintf(w, "Error: could not copy the new base VM to '%s': %v\nThere is no base now. The new one is VM '%s'; 'agent-vm setup' again builds another.\n", vmname.Template, err, building)
-		return false
-	}
-	// The version last: it says the base can be cloned.
-	if err := e.state.Write(state.BaseBuiltBy, []byte(version.Version+"\n")); err != nil {
-		fmt.Fprintf(w, "Error: could not record the version that built the base: %v\nThe base VM is not marked ready: 'agent-vm setup' again.\n", err)
-		return false
-	}
-	if err := e.state.Write(state.BaseVersion, []byte(strconv.FormatInt(time.Now().Unix(), 10)+"\n")); err != nil {
-		fmt.Fprintf(w, "Error: could not record when the base was built: %v\nThe base VM is not marked ready: 'agent-vm setup' again.\n", err)
-		return false
-	}
-	if !e.deleteVM(ctx, building) {
-		fmt.Fprintf(w, "Warning: the base is ready, but VM '%s' stays: 'agent-vm rm %s' frees its disk.\n", building, building)
-	}
-	return true
 }
 
 func contains(s []string, v string) bool {
@@ -363,129 +286,114 @@ func (e *app) askCodeExtensions(in install) {
 }
 
 // building is the VM the new base is built as. The base that is there keeps
-// serving the starts, with its markers, until the new one is complete.
+// serving the starts, with its record, until the new one is complete.
 const building = vmname.Template + "-building"
+
+// customSetup is the name of the user's setup.sh among the scripts of the
+// build.
+const customSetup = "custom setup"
+
+// setupOutput shows what the steps of the build print: the last lines in a
+// window, all of it in a log.
+type setupOutput struct {
+	e       *app
+	logPath string
+	log     *os.File
+	err     error
+}
+
+// open makes the log, on first use.
+func (o *setupOutput) open() error {
+	if o.log != nil || o.err != nil {
+		return o.err
+	}
+	if o.err = os.MkdirAll(string(o.e.state), 0o755); o.err != nil {
+		return o.err
+	}
+	o.logPath = o.e.state.Path("setup.log")
+	o.log, o.err = os.Create(o.logPath)
+	return o.err
+}
+
+func (o *setupOutput) Step(name string, fn func(stdout, stderr io.Writer) error) error {
+	e := o.e
+	// The user's own script runs on the terminal, as it always did.
+	if name == "script:"+customSetup {
+		return fn(e.io.Stdout, e.io.Stderr)
+	}
+	if err := o.open(); err != nil {
+		return errSetupLog{err}
+	}
+	// Every step from here shows its output in a 10-line window, all of it
+	// kept in one log for when something fails.
+	win := e.ui.NewWindow(e.io.Stdout, o.log)
+	err := fn(win, win)
+	win.Close()
+	if err != nil {
+		fmt.Fprintf(o.log, "%v\n", err)
+		if f, ok := e.io.Stdout.(*os.File); ok && ui.IsTerminal(f) {
+			fmt.Fprint(e.io.Stderr, ui.Tail(o.logPath, 20))
+		}
+	}
+	return err
+}
+
+// errSetupLog is why the log of the build could not be made.
+type errSetupLog struct{ error }
 
 // buildBase makes the base template: built as `building` (created, booted,
 // provisioned by the setup script and the user's, stopped), then swapped in
 // for the base and marked as ready. A setup that fails before the swap
 // leaves the base it found.
 func (e *app) buildBase(ctx context.Context, in install, disk, memory, cpus int) int {
-	b, err := e.backend()
+	eng, err := e.engine()
 	if err != nil {
 		fmt.Fprintf(e.io.Stderr, "Error: %v\n", err)
 		return 1
 	}
-	// One setup at a time: two would build in the same VM.
-	unlockSetup, err := e.lockVM(ctx, vmname.Template+"-setup")
-	if err != nil {
-		fmt.Fprintf(e.io.Stderr, "Error: could not lock the base template's setup: %v\n", err)
-		return 1
-	}
-	defer unlockSetup()
-	if !(&start{app: e, ctx: ctx}).limaOverridesOK() {
-		return 1
-	}
-	if err := policiesErr(e.state); err != nil {
-		fmt.Fprintf(e.io.Stderr, "Error: %v\n", err)
-		return 1
-	}
-	warnDomains(e.state, e.io.Stderr)
-	// A build an earlier setup left, finished or not, is not this one's.
-	if d := filepath.Join(LimaHome(e.state), building); isDirNoYAML(d) {
-		fmt.Fprintf(e.io.Stderr, "Detected partial VM state at %s (no lima.yaml): cleaning up.\n", d)
-		if err := os.RemoveAll(d); err != nil {
-			fmt.Fprintf(e.io.Stderr, "Error: could not remove %s: %v\n", d, err)
-			return 1
-		}
-	}
-	if !e.deleteVM(ctx, building) {
-		return 1
-	}
-
-	cpus = host.Cap("cpus", cpus, e.io.Stderr)
-	memory = host.Cap("memory", memory, e.io.Stderr)
-	host.WarnDiskSpace(LimaHome(e.state), disk, e.io.Stderr)
-
-	if err := os.MkdirAll(string(e.state), 0o755); err != nil {
-		fmt.Fprintf(e.io.Stderr, "Error: %v\n", err)
-		return 1
-	}
-	logPath := e.state.Path("setup.log")
-	log, err := os.Create(logPath)
-	if err != nil {
-		fmt.Fprintf(e.io.Stderr, "Error: %v\n", err)
-		return 1
-	}
-	defer log.Close()
-	// Every step from here shows its output in a 10-line window, all of it
-	// kept in one log for when something fails.
-	windowed := func(fn func(w io.Writer) error) bool {
-		win := e.ui.NewWindow(e.io.Stdout, log)
-		err := fn(win)
-		win.Close()
-		if err != nil {
-			fmt.Fprintf(log, "%v\n", err)
-			if f, ok := e.io.Stdout.(*os.File); ok && ui.IsTerminal(f) {
-				fmt.Fprint(e.io.Stderr, ui.Tail(logPath, 20))
-			}
-			return false
-		}
-		return true
-	}
-	stopBase := func() { _ = b.Stop(ctx, building) }
-
-	fmt.Fprintln(e.io.Stdout, "Creating base VM...")
-	none := []vm.Mount{}
-	if !windowed(func(w io.Writer) error {
-		return b.Create(ctx, building, "template:debian-13", vm.Settings{CPUs: cpus, MemoryGiB: memory, DiskGiB: disk, Mounts: &none, NoContainerd: true}, w)
-	}) {
-		fmt.Fprintf(e.io.Stderr, "Error: Failed to create base VM. Full log: %s\n", logPath)
-		return 1
-	}
-	(&start{app: e, ctx: ctx, name: building}).printResources()
-
-	fmt.Fprintln(e.io.Stdout, "Starting base VM (the first run downloads a Debian image)...")
-	if !windowed(func(w io.Writer) error { return b.Start(ctx, building, w) }) {
-		ha := filepath.Join(LimaHome(e.state), building, "ha.stderr.log")
-		fmt.Fprintf(e.io.Stderr, "Error: Failed to start base VM. Full log: %s\nLima's own log: %s\n", logPath, ha)
-		host.WindowsStartHint(e.io.Stderr, logPath, ha)
-		return 1
-	}
-
-	// The choices as export lines, then the script, on stdin. Without them it
-	// installs the default set.
-	fmt.Fprintln(e.io.Stdout, "Installing packages inside VM...")
-	if !windowed(func(w io.Writer) error {
-		code, err := b.Shell(ctx, building, vm.ShellOpts{Args: []string{"bash", "-l"},
-			Stdin: strings.NewReader(in.exports() + agentvm.SetupScript), Stdout: w, Stderr: w})
-		if err == nil && code != 0 {
-			err = fmt.Errorf("exit status %d", code)
-		}
-		return err
-	}) {
-		fmt.Fprintf(e.io.Stderr, "Error: Setup script failed. Full log: %s\n", logPath)
-		stopBase()
-		return 1
-	}
-
+	t := provision.AgentVMChoices(in)
+	t.Name = vmname.Template
+	t.CPUs, t.MemoryGiB, t.DiskGiB = cpus, memory, disk
 	if user, ok := readRegular(e.state.Path("setup.sh")); ok {
-		fmt.Fprintf(e.io.Stdout, "Running custom setup from %s...\n", e.state.Path("setup.sh"))
-		code, err := b.Shell(ctx, building, vm.ShellOpts{Args: []string{"zsh", "-l"},
-			Stdin: strings.NewReader(env.StripCR(user)), Stdout: e.io.Stdout, Stderr: e.io.Stderr})
-		if err != nil || code != 0 {
-			fmt.Fprintln(e.io.Stderr, "Error: Custom setup script failed.")
-			stopBase()
+		t.Scripts = append(t.Scripts, provision.Script{
+			Name:    customSetup,
+			Message: fmt.Sprintf("Running custom setup from %s...", e.state.Path("setup.sh")),
+			Shell:   []string{"zsh", "-l"},
+			Content: env.StripCR(user),
+		})
+	}
+	out := &setupOutput{e: e}
+	defer func() {
+		if out.log != nil {
+			out.log.Close()
+		}
+	}()
+	err = eng.Setup(ctx, t, out)
+	var se *agentvm.SetupError
+	switch {
+	case err == nil:
+	case errors.As(err, &se) && se.Told:
+		return 1
+	case errors.As(err, &se):
+		var logErr errSetupLog
+		if errors.As(se.Err, &logErr) {
+			fmt.Fprintf(e.io.Stderr, "Error: %v\n", logErr.error)
 			return 1
 		}
-	}
-
-	// Ready only once stopped: Lima clones only a stopped instance.
-	if !e.stopVM(ctx, building) {
-		fmt.Fprintf(e.io.Stderr, "Error: the new base VM is set up but did not stop: 'agent-vm stop %s', then 'agent-vm setup' again. The base from before is untouched.\n", building)
+		switch {
+		case se.Step == "create":
+			fmt.Fprintf(e.io.Stderr, "Error: Failed to create base VM. Full log: %s\n", out.logPath)
+		case se.Step == "start":
+			fmt.Fprintf(e.io.Stderr, "Error: Failed to start base VM. Full log: %s\nLima's own log: %s\n", out.logPath, se.LimaLog)
+			host.WindowsStartHint(e.io.Stderr, out.logPath, se.LimaLog)
+		case se.Script == customSetup:
+			fmt.Fprintln(e.io.Stderr, "Error: Custom setup script failed.")
+		default:
+			fmt.Fprintf(e.io.Stderr, "Error: Setup script failed. Full log: %s\n", out.logPath)
+		}
 		return 1
-	}
-	if !e.swapBase(ctx, b) {
+	default:
+		fmt.Fprintf(e.io.Stderr, "Error: %v\n", err)
 		return 1
 	}
 
@@ -503,4 +411,16 @@ func (e *app) buildBase(ctx context.Context, in install, disk, memory, cpus int)
 		fmt.Fprint(e.io.Stdout, "\nNote: Existing VMs were not updated. Use --reset to re-clone them from the new base.\n")
 	}
 	return 0
+}
+
+// isFile and readRegular: a regular file, once links are followed; another
+// kind (a FIFO, a device) is not read, it could block.
+func isFile(p string) bool { fi, err := os.Stat(p); return err == nil && fi.Mode().IsRegular() }
+
+func readRegular(p string) (string, bool) {
+	if !isFile(p) {
+		return "", false
+	}
+	b, err := os.ReadFile(p)
+	return string(b), err == nil
 }

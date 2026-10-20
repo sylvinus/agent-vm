@@ -10,7 +10,7 @@ import (
 	"github.com/spf13/cobra"
 	"gotest.tools/v3/assert"
 
-	"github.com/lima-vm/lima/v2/pkg/localpathutil"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/localpathutil"
 )
 
 func TestCompleteCPUs(t *testing.T) {

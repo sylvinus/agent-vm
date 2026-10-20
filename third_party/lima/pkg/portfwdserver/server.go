@@ -14,7 +14,7 @@ import (
 	"github.com/inetaf/tcpproxy"
 	"github.com/sirupsen/logrus"
 
-	"github.com/lima-vm/lima/v2/pkg/guestagent/api"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/guestagent/api"
 )
 
 type TunnelServer struct{}

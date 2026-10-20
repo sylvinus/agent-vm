@@ -14,11 +14,11 @@ import (
 	"github.com/lima-vm/go-qcow2reader/image"
 	"github.com/sirupsen/logrus"
 
-	"github.com/lima-vm/lima/v2/pkg/imgutil/nativeimgutil"
-	"github.com/lima-vm/lima/v2/pkg/imgutil/proxyimgutil"
-	"github.com/lima-vm/lima/v2/pkg/iso9660util"
-	"github.com/lima-vm/lima/v2/pkg/limatype/filenames"
-	"github.com/lima-vm/lima/v2/pkg/osutil"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/imgutil/nativeimgutil"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/imgutil/proxyimgutil"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/iso9660util"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype/filenames"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/osutil"
 )
 
 // MigrateDiskLayout creates symlinks from the current filenames (disk, iso) to

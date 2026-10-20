@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"testing"
 
-	sshfx "github.com/pkg/sftp/internal/encoding/ssh/filexfer"
+	sshfx "github.com/sylvinus/agent-vm/third_party/sftp/internal/encoding/ssh/filexfer"
 )
 
 var _ sshfx.PacketMarshaller = &HardlinkExtendedPacket{}

@@ -9,7 +9,7 @@ import (
 	"math"
 	"net"
 
-	"github.com/containers/gvisor-tap-vsock/pkg/types"
+	"github.com/sylvinus/agent-vm/third_party/gvisor-tap-vsock/pkg/types"
 	log "github.com/sirupsen/logrus"
 	"gvisor.dev/gvisor/pkg/tcpip/header"
 )

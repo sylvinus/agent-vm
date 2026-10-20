@@ -1,7 +1,7 @@
 package reversesshfs
 
 import (
-	"github.com/pkg/sftp"
+	"github.com/sylvinus/agent-vm/third_party/sftp"
 	"golang.org/x/sys/unix"
 )
 

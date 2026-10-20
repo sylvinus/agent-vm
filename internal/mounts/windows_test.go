@@ -75,7 +75,7 @@ func TestWindowsVolumes(t *testing.T) {
 		t.Errorf("warnings: %s", warn.String())
 	}
 
-	ms, files := Build(Shares{VM: "v", Dir: "C:/Users/me/proj", Writable: true, Entries: es, StateDir: "C:/st", Warn: &warn})
+	ms, files := Build(Shares{Dir: "C:/Users/me/proj", Writable: true, Entries: es, FileMounts: "C:/st/vms/v/file-mounts", Warn: &warn})
 	var mounts []string
 	for _, m := range ms[:len(ms)-1] {
 		mounts = append(mounts, m.Location+">"+m.MountPoint)
@@ -83,7 +83,7 @@ func TestWindowsVolumes(t *testing.T) {
 	if want := "C:/Users/me/proj>/c/Users/me/proj C:/data>/c/data C:/data2>/mnt/d2 C:/data3>/c/data3 C:/data4>/c/Users/me/proj/sub C:/data6>/mnt/d6"; strings.Join(mounts, " ") != want {
 		t.Errorf("mounts:\n got  %s\n want %s", strings.Join(mounts, " "), want)
 	}
-	if len(files) != 1 || files[0].BindDst != "/c/f.txt" || !strings.HasPrefix(files[0].Staging, "C:/st/file-mounts/v/") || ms[len(ms)-1].MountPoint != "/tmp/.agent-vm-file-mounts/0" {
+	if len(files) != 1 || files[0].BindDst != "/c/f.txt" || !strings.HasPrefix(files[0].Staging, "C:/st/vms/v/file-mounts/") || ms[len(ms)-1].MountPoint != "/tmp/.agent-vm-file-mounts/0" {
 		t.Errorf("single file: %+v %+v", files, ms[len(ms)-1])
 	}
 }

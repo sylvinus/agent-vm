@@ -88,6 +88,36 @@ func Scratch(dir string) (string, error) {
 	return fit(name, "-scratch-"+hex.EncodeToString(b[:])), nil
 }
 
+// MaxCustom is the longest name a user gives a VM. Lowercase, because macOS
+// folders ignore case; 40 keeps <name>.localhost (the address of a VM's
+// editor) a DNS label, with room to spare.
+const MaxCustom = 40
+
+var (
+	customRe     = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
+	hashSuffixRe = regexp.MustCompile(`-[0-9a-f]{8}$`)
+)
+
+// ValidateCustom says why name cannot be the name a user gives a VM, nil when
+// it can: lowercase letters, digits and single dashes; at most MaxCustom
+// characters; not ending in a dash and 8 hexadecimal digits, which every
+// project's and scratch VM's name does, so that names cannot meet; not the
+// base template's (Template) nor a name starting with "base-", the other
+// templates' and the setup lock's.
+func ValidateCustom(name string) error {
+	switch {
+	case !customRe.MatchString(name):
+		return fmt.Errorf("a name is lowercase letters, digits and single dashes, starting and ending with a letter or a digit (got: '%s')", name)
+	case len(name) > MaxCustom:
+		return fmt.Errorf("a name has at most %d characters (got: %d)", MaxCustom, len(name))
+	case hashSuffixRe.MatchString(name):
+		return fmt.Errorf("a name does not end with a dash and 8 hexadecimal digits, as the VMs of projects do (got: '%s')", name)
+	case name == Template || strings.HasPrefix(name, Template+"-"):
+		return fmt.Errorf("'%s' is reserved for the base templates", name)
+	}
+	return nil
+}
+
 // IsScratch reports whether name looks like one Scratch makes. It only
 // looks like it: a project folder named "x-scratch" gets a VM named
 // "x-scratch-<hash>", which matches. Deleting a VM unasked takes more than

@@ -14,7 +14,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/lima-vm/lima/v2/pkg/plist"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/plist"
 )
 
 // NewASIF creates a new ASIF image file at the specified path with the given size.

@@ -7,7 +7,7 @@ import (
 	"context"
 	"io"
 
-	"github.com/lima-vm/lima/v2/pkg/guestagent/api"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/guestagent/api"
 )
 
 type Agent interface {

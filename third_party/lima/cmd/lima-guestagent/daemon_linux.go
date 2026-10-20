@@ -15,11 +15,11 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 
-	"github.com/lima-vm/lima/v2/pkg/guestagent"
-	"github.com/lima-vm/lima/v2/pkg/guestagent/api/server"
-	"github.com/lima-vm/lima/v2/pkg/guestagent/serialport"
-	"github.com/lima-vm/lima/v2/pkg/guestagent/ticker"
-	"github.com/lima-vm/lima/v2/pkg/portfwdserver"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/guestagent"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/guestagent/api/server"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/guestagent/serialport"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/guestagent/ticker"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/portfwdserver"
 )
 
 const hostCID = 2

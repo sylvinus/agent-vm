@@ -13,8 +13,8 @@ import (
 	"github.com/lima-vm/go-qcow2reader/image/vhdx"
 	"gotest.tools/v3/assert"
 
-	"github.com/lima-vm/lima/v2/pkg/limatype"
-	"github.com/lima-vm/lima/v2/pkg/limatype/filenames"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype/filenames"
 )
 
 func newTestInstance(t *testing.T, cfg *limatype.LimaYAML) *limatype.Instance {

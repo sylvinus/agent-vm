@@ -16,7 +16,6 @@ import (
 	"syscall"
 
 	"github.com/sylvinus/agent-vm/internal/paths"
-	"github.com/sylvinus/agent-vm/internal/state"
 	"github.com/sylvinus/agent-vm/internal/version"
 	"github.com/sylvinus/agent-vm/internal/vmname"
 )
@@ -233,7 +232,7 @@ func (e *app) installCmd(ctx context.Context, args []string) int {
 	// Looking only: installing must not move 0.2's VMs, which stops running ones.
 	if b, err := e.readOnlyBackend(); err == nil {
 		if base, err := b.Get(ctx, vmname.Template); err == nil && base != nil {
-			if _, err := os.Stat(e.state.Path(state.BaseVersion)); err == nil {
+			if e.state.BaseReady(vmname.Template) {
 				fmt.Fprintln(w, "Next:  cd your-project && agent-vm claude   # or opencode, codex, vibe, pi")
 				return 0
 			}

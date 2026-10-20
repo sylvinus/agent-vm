@@ -64,13 +64,13 @@ jobs:
       - name: Shell syntax and shellcheck
         if: runner.os == 'Linux'
         run: |
-          for f in agent-vm.sh agent-vm.setup.sh release.sh runtime.example.sh tests/*.sh tests/sftp/run tests/sftp/*.sh scripts/*; do
+          for f in agent-vm.sh provision/agent-vm.setup.sh release.sh runtime.example.sh tests/*.sh tests/sftp/run tests/sftp/*.sh scripts/*; do
             echo "bash -n $f"
             bash -n "$f"
           done
           sh -n www/public/install.sh
           shellcheck --version
-          shellcheck -S warning agent-vm.sh agent-vm.setup.sh release.sh runtime.example.sh tests/*.sh tests/sftp/run tests/sftp/*.sh scripts/*
+          shellcheck -S warning agent-vm.sh provision/agent-vm.setup.sh release.sh runtime.example.sh tests/*.sh tests/sftp/run tests/sftp/*.sh scripts/*
           shellcheck -S warning --shell=sh www/public/install.sh
 
       - name: Build, with the guest agent and templates
@@ -83,7 +83,7 @@ jobs:
         run: go build -o _output/bin/agent-vm.exe ./cmd/agent-vm
 
       - name: Vet
-        run: go vet . ./cmd/... ./internal/...
+        run: go vet . ./agents/... ./cmd/... ./internal/... ./policy/... ./provision/...
 
       - name: Vet for Windows, amd64 and arm64
         if: runner.os == 'Linux'
@@ -99,15 +99,22 @@ jobs:
           GOOS=windows govulncheck ./...
 
       - name: Test
-        run: go test . ./cmd/... ./internal/...
+        run: go test . ./agents/... ./cmd/... ./internal/... ./policy/... ./provision/...
 
       - name: Tests of Lima, sshocker and pkg/sftp, patched
         if: runner.os != 'Windows'
         run: make test-third-party
+
+      # A program that embeds the library, built against this checkout.
+      # Its end-to-end test (go test -tags e2e in _output/example) boots a
+      # VM: not run here.
+      - name: Example program that embeds the library
+        if: runner.os == 'Linux'
+        run: make test-example
 
       # Where the file system folds names (APFS, NTFS), it is the oracle of
       # the read-only names' matching; Linux's matches byte for byte.
       - name: Fuzz read-only name matching against the file system
         if: runner.os != 'Linux'
         shell: bash
-        run: GOWORK="$PWD/tests/fuzz/go.work" go test -vet=off -run '^$' -fuzz '^FuzzSameNameFS$' -fuzztime 2m github.com/lima-vm/sshocker/pkg/reversesshfs
+        run: go test -vet=off -run '^$' -fuzz '^FuzzSameNameFS$' -fuzztime 2m ./third_party/sshocker/pkg/reversesshfs

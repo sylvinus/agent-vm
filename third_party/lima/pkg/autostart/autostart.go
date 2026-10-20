@@ -8,7 +8,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/lima-vm/lima/v2/pkg/limatype"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype"
 )
 
 // IsRegistered checks if the instance is registered to start at login.

@@ -42,10 +42,10 @@ func newTestEnv(t *testing.T, fake *vmtest.Fake, answers ...string) *testEnv {
 		u.OpenTTY = func() (io.ReadCloser, error) { return &answer{pop: pop}, nil }
 	}
 	te.app = &app{
-		io:      IO{Stdin: strings.NewReader(""), Stdout: &te.stdout, Stderr: &te.stderr},
-		ui:      u,
-		state:   state.Dir(t.TempDir()),
-		newBack: func() (vm.Backend, error) { return fake, nil },
+		io:          IO{Stdin: strings.NewReader(""), Stdout: &te.stdout, Stderr: &te.stderr},
+		ui:          u,
+		state:       state.Dir(t.TempDir()),
+		testBackend: fake,
 	}
 	return te
 }
@@ -92,21 +92,33 @@ func TestStopRm(t *testing.T) {
 	if te.run("stop", "proj-deadbeef") != 1 || !strings.Contains(te.out(), "is still running") {
 		t.Errorf("stop that did not take: %s", te.out())
 	}
+	// A Broken VM is not stopped: said so. An orphaned one is stopped by force.
+	te.fake.Sticky = map[string]bool{}
+	te.fake.VMs["proj-deadbeef"].Status = vm.Broken
+	if te.run("stop", "proj-deadbeef") != 1 || !strings.Contains(te.out(), "is still running") {
+		t.Errorf("stop of a Broken VM: %s", te.out())
+	}
+	te.fake.VMs["proj-deadbeef"].Orphaned = true
+	if te.run("stop", "proj-deadbeef") != 0 || !strings.HasSuffix(te.out(), "VM stopped.\n") || te.fake.VMs["proj-deadbeef"].Status != vm.Stopped {
+		t.Errorf("stop of an orphaned VM: %s", te.out())
+	}
+	te.fake.VMs["proj-deadbeef"].Status = vm.Running
+	te.fake.Sticky["proj-deadbeef"] = true
 	// Nor a delete that did not take.
-	os.WriteFile(te.state.Marker(state.VersionOf, "proj-deadbeef"), []byte("1\n"), 0o644)
+	te.state.UpdateMeta("proj-deadbeef", func(m *state.Metadata) { m.Term = "xterm" })
 	if te.run("rm", "proj-deadbeef") != 1 || !strings.Contains(te.out(), "could not delete VM 'proj-deadbeef'") ||
 		strings.Contains(te.out(), "VM destroyed.") {
 		t.Errorf("rm that did not take: %s", te.out())
 	}
-	if _, err := os.Stat(te.state.Marker(state.VersionOf, "proj-deadbeef")); err != nil {
+	if te.state.Known("proj-deadbeef").Term != "xterm" {
 		t.Error("a VM still there was forgotten")
 	}
 	te.fake.Sticky = map[string]bool{}
 	if te.run("rm", "proj-deadbeef") != 0 || te.fake.CallLog() != "delete proj-deadbeef" || !strings.HasSuffix(te.out(), "VM destroyed.\n") {
 		t.Errorf("rm <name>: %s %s", te.fake.CallLog(), te.out())
 	}
-	if _, err := os.Stat(te.state.Marker(state.VersionOf, "proj-deadbeef")); !os.IsNotExist(err) {
-		t.Error("rm left the VM's markers")
+	if _, err := os.Stat(te.state.VM("proj-deadbeef")); !os.IsNotExist(err) {
+		t.Error("rm left the VM's folder")
 	}
 
 	// agent-vm's Lima home holds its VMs alone: any name is looked up.
@@ -152,17 +164,12 @@ func TestDestroyAll(t *testing.T) {
 	}
 	te.fake.Sticky = map[string]bool{}
 	te.fake.VMs["base"] = running("base")
-	os.MkdirAll(string(te.state), 0o755)
-	for _, f := range []string{state.BaseVersion, state.BaseBuiltBy} {
-		os.WriteFile(te.state.Path(f), []byte("x\n"), 0o644)
-	}
+	te.state.UpdateMeta("base", func(m *state.Metadata) { m.Base = &state.Base{Name: "base", Built: 5, BuiltBy: "0.4.0"} })
 	if te.run("destroy-all") != 0 || !strings.HasSuffix(te.stdout.String(), "All VMs destroyed.\n") || len(te.fake.VMs) != 0 {
 		t.Errorf("a yes: %s", te.out())
 	}
-	for _, f := range []string{state.BaseVersion, state.BaseBuiltBy} {
-		if _, err := os.Stat(te.state.Path(f)); err == nil {
-			t.Errorf("%s left: the next start would take a missing base as ready", f)
-		}
+	if te.state.BaseReady("base") {
+		t.Error("the base is left ready: the next start would take a missing base as ready")
 	}
 	if te.run("destroy-all") != 0 || te.out() != "No agent-vm VMs found.\n" {
 		t.Errorf("none left: %q", te.out())
@@ -185,9 +192,8 @@ func TestList(t *testing.T) {
 	te.fake.VMs[here] = &vm.Instance{Name: here, Status: vm.Running, SSHAddress: "127.0.0.1", SSHLocalPort: 60022,
 		VMType: "qemu", Arch: "aarch64", CPUs: 2, Memory: 4 << 30, Disk: 10 << 30, Dir: filepath.Join(proj, "lima", here)}
 	te.fake.VMs["base"] = &vm.Instance{Name: "base", Status: vm.Stopped, VMType: "qemu", Arch: "aarch64", CPUs: 1, Memory: 2 << 30, Disk: 10 << 30}
-	os.WriteFile(te.state.Path(state.BaseVersion), []byte("1759000000\n"), 0o644)
-	os.WriteFile(te.state.Path(state.BaseBuiltBy), []byte("0.2.1\n"), 0o644)
-	os.WriteFile(te.state.Marker(state.BuiltByOf, here), []byte("0.2.0\n"), 0o644)
+	te.state.UpdateMeta("base", func(m *state.Metadata) { m.Base = &state.Base{Name: "base", Built: 1759000000, BuiltBy: "0.2.1"} })
+	te.state.UpdateMeta(here, func(m *state.Metadata) { m.Base = &state.Base{Name: "base", BuiltBy: "0.2.0"} })
 	if te.run("status") != 0 {
 		t.Fatal(te.out())
 	}

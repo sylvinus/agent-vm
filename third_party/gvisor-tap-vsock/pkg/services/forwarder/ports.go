@@ -15,8 +15,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/containers/gvisor-tap-vsock/pkg/sshclient"
-	"github.com/containers/gvisor-tap-vsock/pkg/types"
+	"github.com/sylvinus/agent-vm/third_party/gvisor-tap-vsock/pkg/sshclient"
+	"github.com/sylvinus/agent-vm/third_party/gvisor-tap-vsock/pkg/types"
 	"github.com/inetaf/tcpproxy"
 	log "github.com/sirupsen/logrus"
 	"gvisor.dev/gvisor/pkg/tcpip"

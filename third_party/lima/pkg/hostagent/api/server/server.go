@@ -11,9 +11,9 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/lima-vm/lima/v2/pkg/driver"
-	"github.com/lima-vm/lima/v2/pkg/hostagent"
-	"github.com/lima-vm/lima/v2/pkg/httputil"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/driver"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/hostagent"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/httputil"
 )
 
 type Backend struct {

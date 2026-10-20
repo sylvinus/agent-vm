@@ -20,21 +20,21 @@ import (
 	"github.com/lima-vm/go-qcow2reader/image/vhdx"
 	"github.com/sirupsen/logrus"
 
-	"github.com/lima-vm/lima/v2/pkg/autostart"
-	"github.com/lima-vm/lima/v2/pkg/cacheutil"
-	"github.com/lima-vm/lima/v2/pkg/driver"
-	"github.com/lima-vm/lima/v2/pkg/driverutil"
-	"github.com/lima-vm/lima/v2/pkg/executil"
-	"github.com/lima-vm/lima/v2/pkg/fileutils"
-	hostagentevents "github.com/lima-vm/lima/v2/pkg/hostagent/events"
-	"github.com/lima-vm/lima/v2/pkg/imgutil/proxyimgutil"
-	"github.com/lima-vm/lima/v2/pkg/limatype"
-	"github.com/lima-vm/lima/v2/pkg/limatype/filenames"
-	"github.com/lima-vm/lima/v2/pkg/limayaml"
-	"github.com/lima-vm/lima/v2/pkg/osutil"
-	"github.com/lima-vm/lima/v2/pkg/registry"
-	"github.com/lima-vm/lima/v2/pkg/store"
-	"github.com/lima-vm/lima/v2/pkg/usrlocal"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/autostart"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/cacheutil"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/driver"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/driverutil"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/executil"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/fileutils"
+	hostagentevents "github.com/sylvinus/agent-vm/third_party/lima/pkg/hostagent/events"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/imgutil/proxyimgutil"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype/filenames"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limayaml"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/osutil"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/registry"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/store"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/usrlocal"
 )
 
 // DefaultWatchHostAgentEventsTimeout is the duration to wait for the instance
@@ -291,7 +291,9 @@ func StartWithPaths(ctx context.Context, inst *limatype.Instance, launchHostAgen
 			args = append(args, "--progress")
 		}
 		args = append(args, inst.Name)
-		haCmd = exec.CommandContext(ctx, limactl, args...)
+		// Not exec.CommandContext: the hostagent outlives this call, and os/exec
+		// would kill it whenever ctx ends, even after Start returned.
+		haCmd = exec.Command(limactl, args...)
 
 		haCmd.SysProcAttr = executil.BackgroundSysProcAttr
 

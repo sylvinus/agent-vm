@@ -15,8 +15,8 @@ import (
 	"strings"
 	"sync/atomic"
 
-	"github.com/lima-vm/sshocker/pkg/ssh"
-	"github.com/lima-vm/sshocker/pkg/util"
+	"github.com/sylvinus/agent-vm/third_party/sshocker/pkg/ssh"
+	"github.com/sylvinus/agent-vm/third_party/sshocker/pkg/util"
 	"github.com/sirupsen/logrus"
 )
 

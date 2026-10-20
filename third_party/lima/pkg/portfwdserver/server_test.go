@@ -13,7 +13,7 @@ import (
 
 	"gotest.tools/v3/assert"
 
-	"github.com/lima-vm/lima/v2/pkg/guestagent/api"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/guestagent/api"
 )
 
 // recvOnlyTunnelServer implements only Recv of the bidi stream; the other

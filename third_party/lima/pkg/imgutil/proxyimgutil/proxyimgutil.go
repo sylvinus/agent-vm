@@ -12,9 +12,9 @@ import (
 	"github.com/lima-vm/go-qcow2reader/image"
 	"github.com/lima-vm/go-qcow2reader/image/raw"
 
-	"github.com/lima-vm/lima/v2/pkg/imgutil"
-	"github.com/lima-vm/lima/v2/pkg/imgutil/nativeimgutil"
-	"github.com/lima-vm/lima/v2/pkg/qemuimgutil"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/imgutil"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/imgutil/nativeimgutil"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/qemuimgutil"
 )
 
 // ImageDiskManager is a proxy implementation of imgutil.ImageDiskManager that uses both QEMU and native image utilities.

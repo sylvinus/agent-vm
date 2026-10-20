@@ -13,8 +13,8 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 
-	"github.com/lima-vm/lima/v2/pkg/autostart"
-	"github.com/lima-vm/lima/v2/pkg/store"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/autostart"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/store"
 )
 
 func startAtLoginAction(cmd *cobra.Command, args []string) error {

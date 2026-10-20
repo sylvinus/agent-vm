@@ -9,8 +9,8 @@ import (
 
 	"gotest.tools/v3/assert"
 
-	"github.com/lima-vm/lima/v2/pkg/autostart/launchd"
-	"github.com/lima-vm/lima/v2/pkg/autostart/systemd"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/autostart/launchd"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/autostart/systemd"
 )
 
 var (

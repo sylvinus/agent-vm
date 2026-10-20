@@ -13,11 +13,11 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 
-	"github.com/lima-vm/lima/v2/pkg/autostart"
-	"github.com/lima-vm/lima/v2/pkg/autostart/launchd"
-	"github.com/lima-vm/lima/v2/pkg/limatype/dirnames"
-	"github.com/lima-vm/lima/v2/pkg/store"
-	"github.com/lima-vm/lima/v2/pkg/textutil"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/autostart"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/autostart/launchd"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype/dirnames"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/store"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/textutil"
 )
 
 func autostartEnableAction(cmd *cobra.Command, args []string) error {

@@ -140,7 +140,7 @@ func (s *start) codeSession() int {
 	for _, p := range ports {
 		args = append(args, strconv.Itoa(p))
 	}
-	b, err := s.backend()
+	b, err := s.backend(s.ctx)
 	if err != nil {
 		return 1
 	}

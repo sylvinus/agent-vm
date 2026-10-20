@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"os/exec"
 
-	"github.com/lima-vm/lima/v2/pkg/strutil"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/strutil"
 )
 
 type options struct {

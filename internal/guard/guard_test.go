@@ -65,6 +65,21 @@ func TestAllow(t *testing.T) {
 }
 
 // The user adds paths (Makefile) and removes defaults.
+// The program is named in the question as it was opened, agent-vm by default.
+func TestAppName(t *testing.T) {
+	for _, c := range []struct{ app, title, why string }{
+		{"", "agent-vm: p", "You asked agent-vm to guard it (~/.agent-vm/guarded)."},
+		{"mytool", "mytool: p", "You asked mytool to guard it."},
+	} {
+		var title, msg string
+		g := &Guard{App: c.app, VM: "p", Paths: map[string]string{"Makefile": ""},
+			Ask: func(_ context.Context, ti, m string) (bool, bool) { title, msg = ti, m; return true, true }}
+		if !g.Allow(t.TempDir(), "Makefile", false) || title != c.title || !strings.Contains(msg, c.why) {
+			t.Errorf("%q: %q %q", c.app, title, msg)
+		}
+	}
+}
+
 func TestList(t *testing.T) {
 	a := &asker{answers: []bool{false}}
 	g := a.guard(t, "# mine\nMakefile\n!.envrc\n /scripts/deploy.sh \n")

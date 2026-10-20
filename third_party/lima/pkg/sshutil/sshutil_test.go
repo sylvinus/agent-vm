@@ -13,7 +13,7 @@ import (
 	"github.com/coreos/go-semver/semver"
 	"gotest.tools/v3/assert"
 
-	"github.com/lima-vm/lima/v2/pkg/limatype/filenames"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype/filenames"
 )
 
 func TestDefaultPubKeys(t *testing.T) {

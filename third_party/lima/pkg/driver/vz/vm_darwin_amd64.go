@@ -10,7 +10,7 @@ import (
 
 	"github.com/Code-Hex/vz/v3"
 
-	"github.com/lima-vm/lima/v2/pkg/limatype"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype"
 )
 
 func getMacMachineIdentifier(_ string) (machineIdentifier, error) {

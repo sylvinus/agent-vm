@@ -10,12 +10,12 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/lima-vm/lima/v2/pkg/driverutil"
-	"github.com/lima-vm/lima/v2/pkg/identifiers"
-	"github.com/lima-vm/lima/v2/pkg/limatype"
-	"github.com/lima-vm/lima/v2/pkg/limatype/dirnames"
-	"github.com/lima-vm/lima/v2/pkg/limatype/filenames"
-	"github.com/lima-vm/lima/v2/pkg/limayaml"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/driverutil"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/identifiers"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype/dirnames"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype/filenames"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limayaml"
 )
 
 // Directory returns the LimaDir.
@@ -29,17 +29,16 @@ func Directory() string {
 
 // Validate checks the LimaDir.
 func Validate() error {
-	limaDir, err := dirnames.LimaDir()
-	if err != nil {
-		return err
-	}
 	names, err := Instances()
 	if err != nil {
 		return err
 	}
 	for _, name := range names {
 		// Each instance directory needs to have limayaml
-		instDir := filepath.Join(limaDir, name)
+		instDir, err := dirnames.InstanceDir(name)
+		if err != nil {
+			return err
+		}
 		yamlPath := filepath.Join(instDir, filenames.LimaYAML)
 		if _, err := os.Stat(yamlPath); err != nil {
 			return err
@@ -48,11 +47,19 @@ func Validate() error {
 	return nil
 }
 
-// Instances returns the names of the instances under LimaDir.
+// Instances returns the names of the instances under LimaDir, or under
+// $LIMA_INSTANCES_DIR when it is set (see dirnames.InstancesEnv): there, a
+// folder without an instance folder in it is not one.
 func Instances() ([]string, error) {
-	limaDir, err := dirnames.LimaDir()
+	instancesDir, err := dirnames.InstancesDir()
 	if err != nil {
 		return nil, err
+	}
+	limaDir := instancesDir
+	if limaDir == "" {
+		if limaDir, err = dirnames.LimaDir(); err != nil {
+			return nil, err
+		}
 	}
 	limaDirList, err := os.ReadDir(limaDir)
 	if err != nil {
@@ -68,6 +75,11 @@ func Instances() ([]string, error) {
 		}
 		if !f.IsDir() {
 			continue
+		}
+		if instancesDir != "" {
+			if st, err := os.Stat(filepath.Join(limaDir, f.Name(), dirnames.InstanceSubdir)); err != nil || !st.IsDir() {
+				continue
+			}
 		}
 		names = append(names, f.Name())
 	}

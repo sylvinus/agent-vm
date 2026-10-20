@@ -17,8 +17,8 @@ import (
 	"github.com/spf13/cobra"
 	flag "github.com/spf13/pflag"
 
-	"github.com/lima-vm/lima/v2/pkg/localpathutil"
-	"github.com/lima-vm/lima/v2/pkg/registry"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/localpathutil"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/registry"
 )
 
 // RegisterEdit registers flags related to in-place YAML modification, for `limactl edit`.

@@ -15,11 +15,11 @@ import (
 
 	"github.com/sethvargo/go-password/password"
 
-	"github.com/lima-vm/lima/v2/pkg/identifiers"
-	"github.com/lima-vm/lima/v2/pkg/iso9660util"
-	"github.com/lima-vm/lima/v2/pkg/limatype"
-	"github.com/lima-vm/lima/v2/pkg/limatype/filenames"
-	"github.com/lima-vm/lima/v2/pkg/textutil"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/identifiers"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/iso9660util"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype/filenames"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/textutil"
 )
 
 //go:embed cidata.TEMPLATE.d

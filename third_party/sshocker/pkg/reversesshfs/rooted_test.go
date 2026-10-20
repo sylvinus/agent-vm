@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lima-vm/sshocker/pkg/util"
-	"github.com/pkg/sftp"
+	"github.com/sylvinus/agent-vm/third_party/sshocker/pkg/util"
+	"github.com/sylvinus/agent-vm/third_party/sftp"
 )
 
 var (

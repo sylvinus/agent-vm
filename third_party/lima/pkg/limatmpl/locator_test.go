@@ -10,8 +10,8 @@ import (
 
 	"gotest.tools/v3/assert"
 
-	"github.com/lima-vm/lima/v2/pkg/limatmpl"
-	"github.com/lima-vm/lima/v2/pkg/limatype"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatmpl"
+	"github.com/sylvinus/agent-vm/third_party/lima/pkg/limatype"
 )
 
 func TestInstNameFromImageURL(t *testing.T) {

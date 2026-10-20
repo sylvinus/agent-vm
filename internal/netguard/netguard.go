@@ -9,6 +9,7 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/netip"
 	"os"
@@ -29,14 +30,14 @@ const resolvedFor = 30 * time.Minute
 // internet only.
 type Policy struct {
 	// Open turns isolation off (AGENT_VM_UNSAFE_OPEN_NETWORK=1).
-	Open bool
+	Open bool `json:"open,omitempty"`
 	// Allow are reachable whatever else: an address or network, every port
 	// when Port is 0.
-	Allow []Rule
+	Allow []Rule `json:"allow,omitempty"`
 	// Domains, when any, are the only names of the internet the VMs may
 	// reach, subdomains included: an address is reachable once agent-vm's
 	// DNS gave it for one of them.
-	Domains []string
+	Domains []string `json:"domains,omitempty"`
 
 	mu       sync.Mutex
 	resolved map[netip.Addr]time.Time
@@ -46,23 +47,35 @@ type Policy struct {
 
 // Rule is an allow line: a network, and a port or 0 for every one.
 type Rule struct {
-	Net  netip.Prefix
-	Port uint16
+	Net  netip.Prefix `json:"net"`
+	Port uint16       `json:"port,omitempty"`
 }
 
 // Load reads the policy from the state folder's network file (none: the
 // default), and AGENT_VM_UNSAFE_OPEN_NETWORK.
 func Load(stateDir string) (*Policy, error) {
-	p := &Policy{Open: os.Getenv("AGENT_VM_UNSAFE_OPEN_NETWORK") == "1"}
+	open := os.Getenv("AGENT_VM_UNSAFE_OPEN_NETWORK") == "1"
 	f, err := os.Open(stateDir + "/" + FileName)
 	if errors.Is(err, os.ErrNotExist) {
-		return p, nil
+		return &Policy{Open: open}, nil
 	}
 	if err != nil {
 		return nil, err
 	}
 	defer f.Close()
-	sc := bufio.NewScanner(f)
+	p, err := Parse(f, stateDir+"/"+FileName)
+	if err != nil {
+		return nil, err
+	}
+	p.Open = open
+	return p, nil
+}
+
+// Parse reads the lines of a network file; name is the file's, for the
+// messages.
+func Parse(r io.Reader, name string) (*Policy, error) {
+	p := &Policy{}
+	sc := bufio.NewScanner(r)
 	for n := 1; sc.Scan(); n++ {
 		line, _, _ := strings.Cut(sc.Text(), "#")
 		fields := strings.Fields(line)
@@ -70,23 +83,23 @@ func Load(stateDir string) (*Policy, error) {
 			continue
 		}
 		if len(fields) != 2 {
-			return nil, fmt.Errorf("%s/%s, line %d: want 'allow <address>' or 'domain <name>'", stateDir, FileName, n)
+			return nil, fmt.Errorf("%s, line %d: want 'allow <address>' or 'domain <name>'", name, n)
 		}
 		switch fields[0] {
 		case "allow":
 			rules, err := parseAllow(fields[1])
 			if err != nil {
-				return nil, fmt.Errorf("%s/%s, line %d: %v", stateDir, FileName, n, err)
+				return nil, fmt.Errorf("%s, line %d: %v", name, n, err)
 			}
 			p.Allow = append(p.Allow, rules...)
 		case "domain":
 			d := strings.ToLower(strings.TrimSuffix(strings.TrimPrefix(fields[1], "*."), "."))
 			if d == "" || strings.ContainsAny(d, "/:*") {
-				return nil, fmt.Errorf("%s/%s, line %d: %q is not a domain name", stateDir, FileName, n, fields[1])
+				return nil, fmt.Errorf("%s, line %d: %q is not a domain name", name, n, fields[1])
 			}
 			p.Domains = append(p.Domains, d)
 		default:
-			return nil, fmt.Errorf("%s/%s, line %d: unknown %q (allow, domain)", stateDir, FileName, n, fields[0])
+			return nil, fmt.Errorf("%s, line %d: unknown %q (allow, domain)", name, n, fields[0])
 		}
 	}
 	return p, sc.Err()
