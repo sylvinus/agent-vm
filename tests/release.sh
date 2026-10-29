@@ -75,7 +75,7 @@ RR="$SB/repo"; RO="$SB/origin.git"; RB="$SB/bin"
 mkdir -p "$RR/www/public" "$RB"
 cp -R "$SELF_DIR/release.sh" "$SELF_DIR/agent-vm.sh" "$SELF_DIR/agent-vm.setup.sh" "$SELF_DIR/runtime.example.sh" \
   "$SELF_DIR/LICENSE" "$SELF_DIR/NOTICE" "$SELF_DIR/THIRD_PARTY_LICENSES" "$SELF_DIR/README.md" \
-  "$SELF_DIR/tests" "$SELF_DIR/scripts" "$RR/"
+  "$SELF_DIR/tests" "$SELF_DIR/scripts" "$SELF_DIR/packaging" "$RR/"
 cp "$SELF_DIR/www/public/install.sh" "$RR/www/public/"
 printf 'NEXT_VERSION := %s\n' "$V" > "$RR/Makefile"
 printf '# Changelog\n\n## %s\n\n- notes\n' "$V" > "$RR/CHANGELOG.md"
@@ -95,7 +95,7 @@ case "\$1 \$2" in
   "release create")
     echo "\$*" > "$SB/gh-create.log"
     mkdir -p "$SB/assets"
-    for a in "\$@"; do case "\$a" in *.tar.gz|*SHA256SUMS|*.minisig) cp "\$a" "$SB/assets/" ;; esac; done
+    for a in "\$@"; do case "\$a" in *.tar.gz|*.deb|*.rpm|*SHA256SUMS|*.minisig) cp "\$a" "$SB/assets/" ;; esac; done
     touch "$SB/draft" ;;
   "release download")
     dir=""
@@ -156,7 +156,17 @@ case "\$*" in
     else echo "\$os-\$arch" > "\$2/_output/bin/agent-vm.exe"; fi ;;
 esac
 STUB
-chmod +x "$RB/gh" "$RB/make" "$RB/curl"
+# nfpm writes what it was told to (-t), holding the variables release.sh sets
+# and the files it was run next to.
+cat > "$RB/nfpm" <<STUB
+#!/bin/sh
+while [ \$# -gt 0 ]; do case "\$1" in -t) out="\$2" ;; -p) fmt="\$2" ;; -f) cfg="\$2" ;; esac; shift; done
+[ -f "\$cfg" ] || { echo "nfpm stub: no config at \$cfg" >&2; exit 1; }
+[ -f agent-vm ] || { echo "nfpm stub: no agent-vm in \$(pwd)" >&2; exit 1; }
+echo "\$fmt \$GOARCH \$VERSION \$QEMU_DEB \$QEMU_RPM \$SOURCE_DATE_EPOCH" > "\$out"
+STUB
+chmod +x "$RB/gh" "$RB/make" "$RB/curl" "$RB/nfpm"
+export AGENT_VM_NFPM="$RB/nfpm"
 ( cd "$RR" && git init -q -b main && git add -A && git commit -qm r \
     && git init -q --bare "$RO" && git remote add origin "$RO" && git push -q origin main ) >/dev/null 2>&1
 
@@ -187,6 +197,18 @@ fi
 out="$(relrun)"; rc=$?
 case "$rc:$out" in 1:*"NEXT_VERSION is '9.9.8'"*) pass "a Makefile on another version is refused" ;; *) fail "other version: $out" ;; esac
 ( cd "$RR" && printf 'NEXT_VERSION := %s\n' "$V" > Makefile && git commit -qam v && git push -q origin main ) >/dev/null 2>&1
+
+# flake.nix names the checksum of go.mod and go.sum its vendorHash is for.
+mods="$(cat "$SELF_DIR/go.mod" "$SELF_DIR/go.sum" | sha256_of /dev/stdin)"
+check "flake.nix: its note is the checksum release.sh computes" "$(grep -c "go.mod+go.sum: $mods\$" "$SELF_DIR/flake.nix")" "1"
+( cd "$RR" && cp "$SELF_DIR/go.mod" "$SELF_DIR/go.sum" . && printf '# go.mod+go.sum: %s\n' "$mods" > flake.nix \
+    && git add -A && git commit -qm n && git push -q origin main ) >/dev/null 2>&1
+out="$(relrun)"; rc=$?
+case "$rc:$out" in 0:*"vendorHash is for this go.mod and go.sum"*) pass "a flake.nix for these Go dependencies passes" ;; *) fail "flake.nix: $out" ;; esac
+( cd "$RR" && printf '\n// changed\n' >> go.mod && git commit -qam d && git push -q origin main ) >/dev/null 2>&1
+out="$(relrun)"; rc=$?
+case "$rc:$out" in 1:*"flake.nix's vendorHash is not for this go.mod and go.sum"*) pass "a flake.nix for other Go dependencies is refused" ;; *) fail "stale flake.nix: $out" ;; esac
+( cd "$RR" && cp "$SELF_DIR/go.mod" go.mod && git commit -qam r && git push -q origin main ) >/dev/null 2>&1
 
 # A missing formula stops the run before it tags or publishes anything.
 out="$(AGENT_VM_TAP="$SB/no-tap" relrun)"; rc=$?
@@ -284,8 +306,14 @@ check "real run: the tag is on origin" "$(git -C "$RO" tag)" "v$V"
 check "real run: the latest release (no --latest=false)" "$(grep -c -- '--latest=false' "$SB/gh-edit.log")" "0"
 check "real run: published as the latest release" "$(grep -c -- '--draft=false --latest$' "$SB/gh-edit.log")" "1"
 # Byte order (LC_ALL=C): macOS sorts these differently in its locale.
-check "real run: one tarball per platform, and their sums" "$(LC_ALL=C ls "$SB/assets" | tr '\n' ' ')" \
-  "SHA256SUMS agent-vm-$V-linux-amd64.tar.gz agent-vm-$V-linux-arm64.tar.gz agent-vm-$V-windows-amd64.tar.gz agent-vm-$V-windows-arm64.tar.gz "
+check "real run: one tarball per platform, a .deb and .rpm per Linux one, and their sums" "$(LC_ALL=C ls "$SB/assets" | tr '\n' ' ')" \
+  "SHA256SUMS agent-vm-$V-1.aarch64.rpm agent-vm-$V-1.x86_64.rpm agent-vm-$V-linux-amd64.tar.gz agent-vm-$V-linux-arm64.tar.gz agent-vm-$V-windows-amd64.tar.gz agent-vm-$V-windows-arm64.tar.gz agent-vm_${V}_amd64.deb agent-vm_${V}_arm64.deb "
+check "real run: the tarballs come first in SHA256SUMS" "$(awk '{ print $2 }' "$SB/assets/SHA256SUMS" | tr '\n' ' ' | sed 's/agent-vm-[^ ]*-[a-z]*-[a-z0-9]*\.tar\.gz/T/g')" \
+  "T T T T agent-vm_${V}_arm64.deb agent-vm-$V-1.aarch64.rpm agent-vm_${V}_amd64.deb agent-vm-$V-1.x86_64.rpm "
+check "real run: the arm64 .deb is made from that build" "$(cat "$SB/assets/agent-vm_${V}_arm64.deb")" \
+  "deb arm64 $V qemu-system-arm qemu-system-aarch64-core $(git -C "$RR" log -1 --format=%ct)"
+check "real run: the x86_64 .rpm is made from that build" "$(cat "$SB/assets/agent-vm-$V-1.x86_64.rpm")" \
+  "rpm amd64 $V qemu-system-x86 qemu-system-x86-core $(git -C "$RR" log -1 --format=%ct)"
 check "real run: Windows's is agent-vm.exe" \
   "$(tar -tzf "$SB/assets/agent-vm-$V-windows-arm64.tar.gz" | grep -c "^agent-vm-$V/agent-vm.exe$")" "1"
 if [ -n "$SIGN" ]; then

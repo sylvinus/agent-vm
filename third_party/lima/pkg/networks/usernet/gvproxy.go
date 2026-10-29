@@ -33,6 +33,11 @@ type GVisorNetstackOpts struct {
 	FdSocket   string
 	Endpoint   string
 
+	// DgramConn is one end of a datagram socketpair, whose other end is
+	// QEMU's dgram netdev: one raw Ethernet frame per datagram. The netstack
+	// closes it when its context ends.
+	DgramConn net.Conn
+
 	Subnet string
 
 	Async bool
@@ -160,7 +165,27 @@ func run(ctx context.Context, g *errgroup.Group, configuration *types.Configurat
 			return err
 		}
 	}
+	if opts.DgramConn != nil {
+		serveDgram(ctx, vn, opts.DgramConn)
+	}
 	return nil
+}
+
+// serveDgram serves the netstack on conn, until ctx ends. Frames are the
+// datagrams: there is no length prefix to lose track of, as with QEMU's
+// socket and stream netdevs.
+func serveDgram(ctx context.Context, vn *virtualnetwork.VirtualNetwork, conn net.Conn) {
+	ctx, cancel := context.WithCancel(ctx)
+	go func() {
+		<-ctx.Done()
+		conn.Close()
+	}()
+	go func() {
+		defer cancel()
+		if err := vn.AcceptBess(ctx, &UDPFileConn{Conn: conn}); err != nil && ctx.Err() == nil {
+			logrus.Error("QEMU datagram connection closed with error: ", err)
+		}
+	}()
 }
 
 func listenQEMU(ctx context.Context, vn *virtualnetwork.VirtualNetwork) error {

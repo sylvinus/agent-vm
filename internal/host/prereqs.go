@@ -13,15 +13,33 @@ import (
 )
 
 // qemuBinary is QEMU's emulator for this host's architecture, and the
-// Debian package that has it.
-func qemuBinary() (bin, pkg string) {
-	switch runtime.GOARCH {
-	case "amd64":
-		return "qemu-system-x86_64", "qemu-system-x86"
-	case "arm64":
-		return "qemu-system-aarch64", "qemu-system-arm"
+// way to install it: the command with apt-get's package, or dnf's where there
+// is dnf and no apt-get; a general hint where there is neither (NixOS, Arch).
+func qemuBinary() (bin, install string) {
+	manager := ""
+	if _, err := exec.LookPath("apt-get"); err == nil {
+		manager = "apt-get"
+	} else if _, err := exec.LookPath("dnf"); err == nil {
+		manager = "dnf"
 	}
-	return "qemu-system-" + runtime.GOARCH, "qemu-system"
+	return qemuBinaryFor(runtime.GOARCH, manager)
+}
+
+func qemuBinaryFor(goarch, manager string) (bin, install string) {
+	bin, deb, rpm := "qemu-system-"+goarch, "qemu-system", "qemu-system-"+goarch+"-core"
+	switch goarch {
+	case "amd64":
+		bin, deb, rpm = "qemu-system-x86_64", "qemu-system-x86", "qemu-system-x86-core"
+	case "arm64":
+		bin, deb, rpm = "qemu-system-aarch64", "qemu-system-arm", "qemu-system-aarch64-core"
+	}
+	switch manager {
+	case "dnf":
+		return bin, "sudo dnf install " + rpm + " qemu-img"
+	case "apt-get":
+		return bin, "sudo apt-get install " + deb + " qemu-utils"
+	}
+	return bin, "your distribution's QEMU package (with Nix, 'nix run github:sylvinus/agent-vm' brings its own)"
 }
 
 // WSLVersion is 2 or 1 under WSL, from the kernel release, 0 elsewhere.
@@ -47,10 +65,14 @@ func LinuxPrereqs(w io.Writer) bool {
 		return true
 	}
 	ok := true
-	bin, pkg := qemuBinary()
-	if _, err := exec.LookPath(bin); err != nil {
-		fmt.Fprintf(w, "Error: Lima needs '%s' on PATH (not found).\n  Install with: sudo apt-get install %s\n", bin, pkg)
-		ok = false
+	bin, install := qemuBinary()
+	// Fedora packages qemu-img apart from the emulator, and Lima runs it on
+	// the disk image.
+	for _, b := range []string{bin, "qemu-img"} {
+		if _, err := exec.LookPath(b); err != nil {
+			fmt.Fprintf(w, "Error: Lima needs '%s' on PATH (not found).\n  Install with: %s\n", b, install)
+			ok = false
+		}
 	}
 	_, err := os.Stat("/dev/kvm")
 	switch {

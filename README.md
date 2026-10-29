@@ -12,7 +12,7 @@ One binary with [Lima](https://lima-vm.io/) built in. Ships dev tools, Docker, h
 curl -fsSL https://www.agent-vm.org/install.sh | sh
 ```
 
-Or `brew install sylvinus/tap/agent-vm`. From a clone, with Go (and on macOS the Xcode command line tools): `./agent-vm.sh install` builds it and links it onto your `PATH`; after a `git pull`, run it again. See [Install](https://www.agent-vm.org/#install) for prerequisites.
+Or `brew install sylvinus/tap/agent-vm`; on Linux, the `.deb` or `.rpm` of the [latest release](https://github.com/sylvinus/agent-vm/releases/latest), or `nix run github:sylvinus/agent-vm` (QEMU included). From a clone, with Go (and on macOS the Xcode command line tools): `./agent-vm.sh install` builds it and links it onto your `PATH`; after a `git pull`, run it again. See [Install](https://www.agent-vm.org/#install) for prerequisites.
 
 ## Use
 

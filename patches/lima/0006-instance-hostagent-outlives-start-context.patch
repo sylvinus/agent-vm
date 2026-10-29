@@ -1,0 +1,76 @@
+Subject: [PATCH] instance: do not kill the hostagent when Start's context ends
+
+StartWithPaths starts the hostagent with exec.CommandContext(ctx, ...).
+The hostagent is meant to outlive the call ("leave the hostagent process
+running" when Start returns), but os/exec kills it as soon as ctx is
+done, also long after Start returned.
+
+limactl does not show it: its process exits right after Start, before
+anything cancels the context, and a Ctrl-C kills limactl without
+cancelling it. A Go program that uses pkg/instance does: it cancels the
+context it passed (a deferred cancel, a signal handler, a request scope)
+while it keeps running, and the hostagent is killed then. When the
+cancel comes just before the program exits, os/exec's watcher races the
+exit: the instance breaks sometimes, depending on the machine.
+
+What follows depends on the driver:
+
+- qemu: QEMU is a child of the hostagent, not killed with it. It keeps
+  running, reparented to init, unreachable (no hostagent, so no SSH
+  forward or usernet), and holds the lock on its PID file. The instance
+  is Broken: "qemu driver is running but host agent is not". The next
+  start fails: QEMU exits at once ("cannot create PID file: Cannot lock
+  pid file"), the QEMU driver panics (below), and limactl reports "host
+  agent process has exited: exit status 2". `limactl stop -f` recovers.
+- vz: the VM runs in the hostagent, so it is killed with it, without a
+  shutdown (not tested).
+
+Reproduce, from a Go program, on Linux with the qemu driver:
+
+    ctx, cancel := context.WithCancel(context.Background())
+    err := instance.Start(ctx, inst, false, false) // nil, instance Running
+    cancel()
+    time.Sleep(time.Second)
+    // store.Inspect: Broken; `ps -o ppid= -C qemu-system-x86_64`: 1
+
+Found in agent-vm, which embeds Lima: on Linux hosts its VMs became
+Broken a few seconds to minutes after a start, when the command that
+started them ended (closed terminal, SIGTERM, or a plain exit losing the
+race). Tested there: with this patch the VM stays Running after the
+starting program ends, cancelled context included, and the next start
+works.
+
+The fix: exec.Command. ctx still bounds the wait for the hostagent to
+come up (waitHostAgentStart, watchHostAgentEvents). A start cancelled
+during that wait leaves the hostagent running, as an interrupted limactl
+start does (the hostagent has its own process group,
+BackgroundSysProcAttr, and the terminal's Ctrl-C does not reach it).
+
+No unit test: Lima's unit tests never start a hostagent. agent-vm's e2e
+test (internal/cli/e2e_test.go) fails without it.
+
+Separate bug, to report on its own: the panic of the QEMU driver,
+"panic: send on closed channel" in LimaQemuDriver.Start.func5
+(pkg/driver/qemu/qemu_driver.go). When QEMU exits early, the goroutine
+waiting on it closes qWaitCh and cancels the driver's context; the
+ConfigureDriver goroutine then fails on that context and sends its
+error on the closed qWaitCh. Already seen in #4645 (closed on its
+Colima-specific part, the panic itself left unfixed). Sending with a
+select on a done channel, or one closer for both goroutines, fixes it.
+
+Assisted-by: Claude Opus 5.5 <noreply@anthropic.com>
+---
+diff --git a/pkg/instance/start.go b/pkg/instance/start.go
+--- a/pkg/instance/start.go
++++ b/pkg/instance/start.go
+@@ -291,7 +291,9 @@
+ 			args = append(args, "--progress")
+ 		}
+ 		args = append(args, inst.Name)
+-		haCmd = exec.CommandContext(ctx, limactl, args...)
++		// Not exec.CommandContext: the hostagent outlives this call, and os/exec
++		// would kill it whenever ctx ends, even after Start returned.
++		haCmd = exec.Command(limactl, args...)
+
+ 		haCmd.SysProcAttr = executil.BackgroundSysProcAttr
+

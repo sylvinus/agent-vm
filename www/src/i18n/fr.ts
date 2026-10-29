@@ -109,7 +109,7 @@ export const fr: Dictionary = {
       },
     ],
     methodsTitle: 'Installer la commande',
-    methodsBody: 'Au choix. Chacune met `agent-vm` dans ton `PATH`, sans root.',
+    methodsBody: 'Au choix. Chacune met `agent-vm` dans ton `PATH` ; seuls les paquets Linux demandent root.',
     methodsLabel: 'Méthode d\'installation',
     methods: [
       {
@@ -123,6 +123,18 @@ export const fr: Dictionary = {
         label: 'Homebrew',
         code: 'brew install sylvinus/tap/agent-vm',
         note: 'macOS, ou Linux avec Homebrew. `brew upgrade agent-vm` le met à jour.',
+      },
+      {
+        id: 'linux',
+        label: 'Paquet Linux',
+        code: 'sudo apt install ./agent-vm_X.Y.Z_amd64.deb\nsudo dnf install ./agent-vm-X.Y.Z-1.x86_64.rpm',
+        note: 'Télécharge le `.deb` ou le `.rpm` de ton architecture (`amd64`, `arm64` ; `x86_64`, `aarch64`) depuis les versions publiées sur GitHub. Il installe `agent-vm` dans `/usr/bin` et recommande QEMU et ssh. Pas encore dans un dépôt de paquets : installe le nouveau fichier pour mettre à jour.',
+      },
+      {
+        id: 'nix',
+        label: 'Nix',
+        code: 'nix run github:sylvinus/agent-vm\nnix profile install github:sylvinus/agent-vm',
+        note: 'Linux, NixOS compris. QEMU est fourni ; ssh est celui du système. `nix profile upgrade agent-vm` le met à jour.',
       },
       {
         id: 'git',

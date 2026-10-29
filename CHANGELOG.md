@@ -1,6 +1,39 @@
 # Changelog
 
-## Unreleased
+## 0.3.1
+
+### Added
+
+- Releases have a `.deb` and an `.rpm` for Linux (amd64, arm64): the binary in
+  `/usr/bin` and the docs, with QEMU and ssh recommended. Not in a package
+  repository yet: install the file with `apt install ./agent-vm_X.Y.Z_arm64.deb`
+  or `dnf install ./agent-vm-X.Y.Z-1.aarch64.rpm`.
+- A Nix flake (Linux): `nix run github:sylvinus/agent-vm`. QEMU comes with it,
+  ssh is the system's.
+
+### Fixed
+
+- Linux: VMs turned Broken seconds to minutes after a start. The end of the
+  agent-vm command that started a VM (closing its terminal, a kill, and at
+  random a plain exit) killed Lima's host agent, which left QEMU running
+  without it, cut off, and failing every later start. The host agent now
+  outlives that command. On macOS, the same killed the VM.
+- A VM left in that state is stopped by force, then started again, on the
+  next run; `agent-vm stop` stops it too. `stop` no longer says "VM stopped."
+  for a Broken VM it did not stop.
+- A start that fails (the VM never came up) now stops the VM, which Lima's
+  host agent would otherwise keep running. The force-stop of a VM left without
+  its host agent checks that the process is QEMU first: the PID file of a QEMU
+  that aborted may name another program's process by now.
+- The missing-QEMU hint no longer says `apt-get` where there is neither apt
+  nor dnf (NixOS): it points to the distribution's package, or the Nix flake.
+- Linux: a VM could lose its network and stop in the middle of `agent-vm
+  setup` or any download (`exit status 255`, the VM Stopped), with QEMU
+  10.2 and a KVM host. QEMU aborted on `net_fill_rstate: Assertion 'size ==
+  0' failed`, a bug of its `socket` network backend, which handled a failed
+  read of the stream badly. The VMs' network now goes through QEMU's `dgram`
+  backend (QEMU 7.2 or later): no stream, nothing to lose. An older QEMU keeps
+  the former backend, and so does Windows (it has no unix datagram sockets).
 
 ## 0.3.0
 

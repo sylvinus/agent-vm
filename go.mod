@@ -1,6 +1,6 @@
 module github.com/sylvinus/agent-vm
 
-go 1.26.9
+go 1.26.10
 
 // Lima, sshocker and pkg/sftp are built from third_party/: upstream plus
 // patches/ (see scripts/third-party-sync). These replaces only apply when

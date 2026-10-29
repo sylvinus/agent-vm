@@ -1,0 +1,541 @@
+Subject: [PATCH] qemu: connect the instance's netstack through the dgram netdev
+
+startUsernet gives QEMU its own gvisor-tap-vsock netstack through the
+`socket` netdev (a length-prefixed stream on a unix socket). That netdev,
+like `stream`, aborts QEMU in this case: net_socket_send() and
+net_stream_data_send() ignore a recv() that fails with EWOULDBLOCK, but
+then fall through to net_fill_rstate(rs, buf, size) with size == -1,
+which skips its loop and fails `assert(size == 0)`:
+
+    qemu-system-x86_64: ../net/net.c:2172: net_fill_rstate: Assertion
+    `size == 0' failed.
+
+QEMU exits with SIGABRT, the hostagent stops the instance, and the guest
+loses its network in the middle of what it was doing (an apt install, in
+agent-vm). It happens on Linux hosts with KVM, under sustained traffic,
+with QEMU 10.2.x, to everyone whose guest goes through that netstack
+(Lima's user-v2 network, Colima: qemu-project/qemu#3285,
+estuary/flow#3267). What makes recv() return EAGAIN after poll() said
+readable is not known. The fault is QEMU's: a unix stream socket whose
+only pending data is an out-of-band byte does the same, with no netstack
+(`-netdev socket,fd=N` or `-netdev stream`, the peer sends one MSG_OOB
+byte).
+
+The dgram netdev (QEMU 7.2 or later) returns on any failed recv() and has
+no framing to lose. With it, the netstack is served on a datagram
+socketpair, as vz does for its network (createSockPair, AcceptBess): one
+end is passed to QEMU (-netdev dgram,local.type=fd), the other is
+served by usernet.GVisorNetstackOpts.DgramConn. A unix datagram socket
+keeps frame boundaries and loses nothing: a full buffer blocks the
+sender, and QEMU stops reading until it can write.
+
+Which one QEMU gets is decided by Cmdline, from the netdevs it lists, and
+the netstack starts after it: it listens on the unix socket only for the
+socket netdev, of a QEMU without dgram. Windows has no unix datagram
+sockets and no file descriptor passing: it keeps the stream netdev, so the
+abort remains possible there.
+
+Tests: TestDgramConn (a frame sent as a datagram is answered by the
+netstack; it times out without DgramConn being served), TestDgramPair,
+TestFdDgramTemplate. The netdev choice in Cmdline needs a QEMU binary:
+checked by agent-vm's e2e (internal/vm/lima_e2e_test.go), whose guest
+boots and installs packages through it.
+
+---
+diff --git a/pkg/driver/qemu/dgram_unix.go b/pkg/driver/qemu/dgram_unix.go
+new file mode 100644
+index 00000000..e1be774c
+--- /dev/null
++++ b/pkg/driver/qemu/dgram_unix.go
+@@ -0,0 +1,45 @@
++//go:build !windows
++
++// SPDX-FileCopyrightText: Copyright The Lima Authors
++// SPDX-License-Identifier: Apache-2.0
++
++package qemu
++
++import (
++	"net"
++	"os"
++	"syscall"
++)
++
++// dgramPair returns the two ends of a connected datagram socket, as vz does
++// for its network: ours as a net.Conn for the netstack, and QEMU's as a file
++// to pass to it (-netdev dgram,local.type=fd). A datagram is a frame, and
++// unix datagram sockets neither lose nor reorder them: a full buffer blocks
++// the sender.
++func dgramPair() (ours net.Conn, qemu *os.File, err error) {
++	// The descriptors must not leak into the processes started meanwhile:
++	// QEMU gets its end through ExtraFiles.
++	syscall.ForkLock.RLock()
++	fds, err := syscall.Socketpair(syscall.AF_UNIX, syscall.SOCK_DGRAM, 0)
++	if err == nil {
++		syscall.CloseOnExec(fds[0])
++		syscall.CloseOnExec(fds[1])
++	}
++	syscall.ForkLock.RUnlock()
++	if err != nil {
++		return nil, nil, err
++	}
++	for _, fd := range fds {
++		// Best effort: the kernel caps these (net.core.wmem_max, rmem_max).
++		_ = syscall.SetsockoptInt(fd, syscall.SOL_SOCKET, syscall.SO_SNDBUF, 1<<20)
++		_ = syscall.SetsockoptInt(fd, syscall.SOL_SOCKET, syscall.SO_RCVBUF, 4<<20)
++	}
++	f := os.NewFile(uintptr(fds[0]), "usernet-dgram")
++	defer f.Close()
++	ours, err = net.FileConn(f)
++	if err != nil {
++		syscall.Close(fds[1])
++		return nil, nil, err
++	}
++	return ours, os.NewFile(uintptr(fds[1]), "qemu-dgram"), nil
++}
+diff --git a/pkg/driver/qemu/dgram_unix_test.go b/pkg/driver/qemu/dgram_unix_test.go
+new file mode 100644
+index 00000000..c6b1fb04
+--- /dev/null
++++ b/pkg/driver/qemu/dgram_unix_test.go
+@@ -0,0 +1,56 @@
++//go:build !windows
++
++// SPDX-FileCopyrightText: Copyright The Lima Authors
++// SPDX-License-Identifier: Apache-2.0
++
++package qemu
++
++import (
++	"net"
++	"testing"
++
++	"gotest.tools/v3/assert"
++)
++
++// Each write is one datagram, both ways, and QEMU's end is a file that stays
++// usable once ours is a net.Conn.
++func TestDgramPair(t *testing.T) {
++	ours, qemu, err := dgramPair()
++	assert.NilError(t, err)
++	t.Cleanup(func() { ours.Close(); qemu.Close() })
++	theirs, err := net.FileConn(qemu)
++	assert.NilError(t, err)
++	t.Cleanup(func() { theirs.Close() })
++
++	for _, c := range []struct{ from, to net.Conn }{{ours, theirs}, {theirs, ours}} {
++		_, err = c.from.Write([]byte("abc"))
++		assert.NilError(t, err)
++		_, err = c.from.Write([]byte("defgh"))
++		assert.NilError(t, err)
++		buf := make([]byte, 64)
++		n, err := c.to.Read(buf)
++		assert.NilError(t, err)
++		assert.Equal(t, string(buf[:n]), "abc")
++		n, err = c.to.Read(buf)
++		assert.NilError(t, err)
++		assert.Equal(t, string(buf[:n]), "defgh")
++	}
++}
++
++// fd_dgram hands QEMU the datagram socket as the next file descriptor, after
++// those fd_connect made.
++func TestFdDgramTemplate(t *testing.T) {
++	_, qemu, err := dgramPair()
++	assert.NilError(t, err)
++	t.Cleanup(func() { qemu.Close() })
++
++	a := &qArgTemplateApplier{dgram: qemu}
++	got, err := a.applyTemplate("dgram,id=net0,local.type=fd,local.str={{ fd_dgram }}")
++	assert.NilError(t, err)
++	assert.Equal(t, got, "dgram,id=net0,local.type=fd,local.str=3")
++	assert.DeepEqual(t, len(a.files), 1)
++	assert.Equal(t, a.files[0], qemu)
++
++	_, err = (&qArgTemplateApplier{}).applyTemplate("{{ fd_dgram }}")
++	assert.ErrorContains(t, err, "no datagram socket")
++}
+diff --git a/pkg/driver/qemu/dgram_windows.go b/pkg/driver/qemu/dgram_windows.go
+new file mode 100644
+index 00000000..2f11d288
+--- /dev/null
++++ b/pkg/driver/qemu/dgram_windows.go
+@@ -0,0 +1,16 @@
++// SPDX-FileCopyrightText: Copyright The Lima Authors
++// SPDX-License-Identifier: Apache-2.0
++
++package qemu
++
++import (
++	"errors"
++	"net"
++	"os"
++)
++
++// dgramPair: Windows has no unix datagram sockets, and cannot pass a file
++// descriptor to QEMU.
++func dgramPair() (net.Conn, *os.File, error) {
++	return nil, nil, errors.ErrUnsupported
++}
+diff --git a/pkg/driver/qemu/qemu.go b/pkg/driver/qemu/qemu.go
+index 79318857..bf55ddb3 100644
+--- a/pkg/driver/qemu/qemu.go
++++ b/pkg/driver/qemu/qemu.go
+@@ -50,6 +50,10 @@ type Config struct {
+ 	// UsernetQEMUSock is the QEMU socket of the instance's own gvisor
+ 	// netstack, used instead of slirp when set (see startUsernet).
+ 	UsernetQEMUSock string
++	// UsernetDgram is QEMU's end of a datagram socketpair whose other end the
++	// netstack serves, preferred to UsernetQEMUSock when QEMU has the dgram
++	// netdev (see dgramPair). Nil on Windows.
++	UsernetDgram *os.File
+ }
+ 
+ // minimumQemuVersion returns hardMin and softMin.
+@@ -788,11 +792,22 @@ func Cmdline(ctx context.Context, cfg Config) (exe string, args []string, err er
+ 	case firstUsernetIndex == -1 && cfg.UsernetQEMUSock != "" && runtime.GOOS == "windows":
+ 		// No file descriptor passing there (fd_connect): QEMU connects to the
+ 		// socket itself, which QEMU 7.2 or later can on Windows. The same
+-		// stream as the socket netdev's.
++		// stream as the socket netdev's, so the same abort on EAGAIN (see the
++		// dgram netdev below): Windows has no datagram unix sockets.
+ 		if !strings.Contains(string(features.NetdevHelp), "stream") {
+ 			return "", nil, errors.New("QEMU 7.2 or later is needed (its stream netdev)")
+ 		}
+ 		args = append(args, "-netdev", fmt.Sprintf("stream,id=net0,server=off,addr.type=unix,addr.path=%s", cfg.UsernetQEMUSock))
++	case firstUsernetIndex == -1 && cfg.UsernetDgram != nil && strings.Contains(string(features.NetdevHelp), "dgram"):
++		// Not the socket netdev below: it reads a length-prefixed stream, and
++		// QEMU (10.2.4 at least) aborts with `net_fill_rstate: Assertion
++		// 'size == 0' failed` when its recv() returns EAGAIN, which it
++		// meant to ignore (net_socket_send, and net_stream_data_send for the
++		// stream netdev, fall through to net_fill_rstate with size -1).
++		// Seen on Linux hosts, under sustained guest traffic. The dgram
++		// netdev ignores a failed recv() and has no framing to lose. It
++		// needs QEMU 7.2 or later.
++		args = append(args, "-netdev", "dgram,id=net0,local.type=fd,local.str={{ fd_dgram }}")
+ 	case firstUsernetIndex == -1 && cfg.UsernetQEMUSock != "":
+ 		args = append(args, "-netdev", fmt.Sprintf("socket,id=net0,fd={{ fd_connect %q }}", cfg.UsernetQEMUSock))
+ 	case firstUsernetIndex == -1:
+diff --git a/pkg/driver/qemu/qemu_driver.go b/pkg/driver/qemu/qemu_driver.go
+index 5a68db80..dba82218 100644
+--- a/pkg/driver/qemu/qemu_driver.go
++++ b/pkg/driver/qemu/qemu_driver.go
+@@ -67,40 +67,81 @@ type LimaQemuDriver struct {
+ 	usernetStop   context.CancelFunc
+ }
+ 
+-// startUsernet starts the instance's own gvisor netstack, as vz does: one
+-// network per instance, in the hostagent, where usernet.Outbound applies.
+-func startUsernet(ctx context.Context, inst *limatype.Instance) (client *usernet.Client, qemuSock string, stop context.CancelFunc, err error) {
+-	endpointSock, err := usernet.SockWithDirectory(inst.Dir, "", usernet.EndpointSock)
++// usernetSockets are what connects QEMU to the instance's own gvisor netstack
++// (see startUsernet). QEMU gets the dgram end, or the socket path when its
++// netdevs have no dgram (see Cmdline): the netstack listens on the path only
++// then, as nothing else should be able to connect to it.
++type usernetSockets struct {
++	endpoint string
++	// qemu is the path of the socket netdev's listener.
++	qemu string
++	// dgramConn is the netstack's end of a datagram socketpair, qemuDgram
++	// QEMU's. Both are nil on Windows.
++	dgramConn net.Conn
++	qemuDgram *os.File
++}
++
++func newUsernetSockets(inst *limatype.Instance) (*usernetSockets, error) {
++	endpoint, err := usernet.SockWithDirectory(inst.Dir, "", usernet.EndpointSock)
+ 	if err != nil {
+-		return nil, "", nil, err
++		return nil, err
+ 	}
+-	qemuSock, err = usernet.SockWithDirectory(inst.Dir, "", usernet.QEMUSock)
++	qemu, err := usernet.SockWithDirectory(inst.Dir, "", usernet.QEMUSock)
+ 	if err != nil {
+-		return nil, "", nil, err
++		return nil, err
+ 	}
+-	os.RemoveAll(endpointSock)
+-	os.RemoveAll(qemuSock)
+-	ctx, stop = context.WithCancel(ctx)
+-	err = usernet.StartGVisorNetstack(ctx, &usernet.GVisorNetstackOpts{
+-		MTU:        1500,
+-		Endpoint:   endpointSock,
+-		QemuSocket: qemuSock,
+-		Async:      true,
++	os.RemoveAll(endpoint)
++	os.RemoveAll(qemu)
++	s := &usernetSockets{endpoint: endpoint, qemu: qemu}
++	s.dgramConn, s.qemuDgram, err = dgramPair()
++	if err != nil && !errors.Is(err, errors.ErrUnsupported) {
++		return nil, err
++	}
++	return s, nil
++}
++
++// closeQEMUEnd closes the file given to QEMU: it has its own copy once started.
++func (s *usernetSockets) closeQEMUEnd() {
++	if s.qemuDgram != nil {
++		s.qemuDgram.Close()
++	}
++}
++
++// startUsernet starts the instance's own gvisor netstack, as vz does: one
++// network per instance, in the hostagent, where usernet.Outbound applies.
++// viaDgram says which end QEMU was given.
++func startUsernet(ctx context.Context, inst *limatype.Instance, s *usernetSockets, viaDgram bool) (client *usernet.Client, stop context.CancelFunc, err error) {
++	opts := &usernet.GVisorNetstackOpts{
++		MTU:      1500,
++		Endpoint: s.endpoint,
++		Async:    true,
+ 		DefaultLeases: map[string]string{
+ 			networks.SlirpIPAddress: limayaml.MACAddress(inst.Dir),
+ 		},
+ 		Subnet: networks.SlirpNetwork,
+-	})
+-	if err != nil {
+-		stop()
+-		return nil, "", nil, err
+ 	}
+-	subnetIP, _, err := net.ParseCIDR(networks.SlirpNetwork)
+-	if err != nil {
+-		stop()
+-		return nil, "", nil, err
++	if viaDgram {
++		opts.DgramConn = s.dgramConn
++	} else {
++		opts.QemuSocket = s.qemu
++		if s.dgramConn != nil {
++			s.dgramConn.Close()
++		}
+ 	}
+-	return usernet.NewClient(endpointSock, subnetIP), qemuSock, stop, nil
++	ctx, stop = context.WithCancel(ctx)
++	err = usernet.StartGVisorNetstack(ctx, opts)
++	if err == nil {
++		var subnetIP net.IP
++		subnetIP, _, err = net.ParseCIDR(networks.SlirpNetwork)
++		if err == nil {
++			return usernet.NewClient(s.endpoint, subnetIP), stop, nil
++		}
++	}
++	stop()
++	if viaDgram {
++		s.dgramConn.Close()
++	}
++	return nil, nil, err
+ }
+ 
+ var _ driver.Driver = (*LimaQemuDriver)(nil)
+@@ -365,22 +406,40 @@ func (l *LimaQemuDriver) Start(ctx context.Context) (chan error, error) {
+ 		SSHAddress:   l.Instance.SSHAddress,
+ 		VirtioGA:     l.virtioPort != "",
+ 	}
++	// The netstack starts once Cmdline has chosen how QEMU reaches it.
++	var socks *usernetSockets
+ 	if limayaml.FirstUsernetIndex(l.Instance.Config) == -1 {
+-		client, sock, stop, err := startUsernet(ctx, l.Instance)
++		var err error
++		if socks, err = newUsernetSockets(l.Instance); err != nil {
++			return nil, err
++		}
++		qCfg.UsernetQEMUSock, qCfg.UsernetDgram = socks.qemu, socks.qemuDgram
++		defer socks.closeQEMUEnd()
++	}
++	netstackStarted := false
++	defer func() {
++		if socks != nil && socks.dgramConn != nil && !netstackStarted {
++			socks.dgramConn.Close()
++		}
++	}()
++	qExe, qArgs, err := Cmdline(ctx, qCfg)
++	if err != nil {
++		return nil, err
++	}
++	if socks != nil {
++		viaDgram := slices.ContainsFunc(qArgs, func(a string) bool { return strings.HasPrefix(a, "dgram,id=net0,") })
++		client, stop, err := startUsernet(ctx, l.Instance, socks, viaDgram)
+ 		if err != nil {
+ 			return nil, err
+ 		}
+-		l.usernetClient, l.usernetStop, qCfg.UsernetQEMUSock = client, stop, sock
++		netstackStarted = true
++		l.usernetClient, l.usernetStop = client, stop
+ 		defer func() {
+ 			if l.qCmd == nil {
+ 				stop()
+ 			}
+ 		}()
+ 	}
+-	qExe, qArgs, err := Cmdline(ctx, qCfg)
+-	if err != nil {
+-		return nil, err
+-	}
+ 
+ 	var vhostCmds []*exec.Cmd
+ 	if *l.Instance.Config.MountType == limatype.VIRTIOFS {
+@@ -400,7 +459,7 @@ func (l *LimaQemuDriver) Start(ctx context.Context) (chan error, error) {
+ 	}
+ 
+ 	var qArgsFinal []string
+-	applier := &qArgTemplateApplier{}
++	applier := &qArgTemplateApplier{dgram: qCfg.UsernetDgram}
+ 	for _, unapplied := range qArgs {
+ 		applied, err := applier.applyTemplate(unapplied)
+ 		if err != nil {
+@@ -900,6 +959,8 @@ func (l *LimaQemuDriver) GuestAgentConn(ctx context.Context) (net.Conn, string,
+ 
+ type qArgTemplateApplier struct {
+ 	files []*os.File
++	// dgram is the file fd_dgram passes to QEMU.
++	dgram *os.File
+ }
+ 
+ func (a *qArgTemplateApplier) applyTemplate(qArg string) (string, error) {
+@@ -938,6 +999,13 @@ func (a *qArgTemplateApplier) applyTemplate(qArg string) (string, error) {
+ 			}
+ 			return res
+ 		},
++		"fd_dgram": func() (string, error) {
++			if a.dgram == nil {
++				return "", errors.New("fd_dgram: no datagram socket")
++			}
++			a.files = append(a.files, a.dgram)
++			return strconv.Itoa(len(a.files) + 2), nil
++		},
+ 	}
+ 	tmpl, err := template.New("").Funcs(funcMap).Parse(qArg)
+ 	if err != nil {
+diff --git a/pkg/networks/usernet/dgram_test.go b/pkg/networks/usernet/dgram_test.go
+new file mode 100644
+index 00000000..01782a14
+--- /dev/null
++++ b/pkg/networks/usernet/dgram_test.go
+@@ -0,0 +1,82 @@
++//go:build !windows
++
++// SPDX-FileCopyrightText: Copyright The Lima Authors
++// SPDX-License-Identifier: Apache-2.0
++
++package usernet
++
++import (
++	"bytes"
++	"context"
++	"net"
++	"os"
++	"path/filepath"
++	"syscall"
++	"testing"
++	"time"
++
++	"gotest.tools/v3/assert"
++)
++
++// A frame sent as a datagram is served by the netstack, and the answer comes
++// back as one: an ARP request for the gateway gets its reply.
++func TestDgramConn(t *testing.T) {
++	dir, err := os.MkdirTemp("", "usernet")
++	assert.NilError(t, err)
++	t.Cleanup(func() { os.RemoveAll(dir) })
++
++	fds, err := syscall.Socketpair(syscall.AF_UNIX, syscall.SOCK_DGRAM, 0)
++	assert.NilError(t, err)
++	serverFile, peerFile := os.NewFile(uintptr(fds[0]), "server"), os.NewFile(uintptr(fds[1]), "peer")
++	server, err := net.FileConn(serverFile)
++	assert.NilError(t, err)
++	peer, err := net.FileConn(peerFile)
++	assert.NilError(t, err)
++	serverFile.Close()
++	peerFile.Close()
++	t.Cleanup(func() { peer.Close() })
++
++	ctx, cancel := context.WithCancel(context.Background())
++	t.Cleanup(cancel)
++	err = StartGVisorNetstack(ctx, &GVisorNetstackOpts{
++		MTU:       1500,
++		Endpoint:  filepath.Join(dir, "ep.sock"),
++		DgramConn: server,
++		Async:     true,
++		Subnet:    "192.168.5.0/24",
++	})
++	assert.NilError(t, err)
++
++	guestMAC := net.HardwareAddr{0x52, 0x54, 0x00, 0x00, 0x00, 0x01}
++	gatewayMAC, err := net.ParseMAC(gatewayMacAddr)
++	assert.NilError(t, err)
++	arp := bytes.Join([][]byte{
++		{0xff, 0xff, 0xff, 0xff, 0xff, 0xff}, guestMAC, {0x08, 0x06}, // Ethernet: broadcast, ARP
++		{0x00, 0x01, 0x08, 0x00, 0x06, 0x04, 0x00, 0x01}, // Ethernet, IPv4, request
++		guestMAC, {192, 168, 5, 15},
++		make([]byte, 6), {192, 168, 5, 2}, // who has the gateway
++	}, nil)
++	_, err = peer.Write(arp)
++	assert.NilError(t, err)
++
++	buf := make([]byte, 2048)
++	assert.NilError(t, peer.SetReadDeadline(time.Now().Add(10*time.Second)))
++	n, err := peer.Read(buf)
++	assert.NilError(t, err)
++	reply := buf[:n]
++	assert.Assert(t, n >= 42, "frame of %d bytes", n)
++	assert.DeepEqual(t, reply[0:6], []byte(guestMAC))
++	assert.DeepEqual(t, reply[6:12], []byte(gatewayMAC))
++	assert.DeepEqual(t, reply[12:14], []byte{0x08, 0x06})
++	assert.DeepEqual(t, reply[20:22], []byte{0x00, 0x02}) // ARP reply
++
++	// The connection ends with the netstack's context.
++	cancel()
++	assert.NilError(t, peer.SetWriteDeadline(time.Now().Add(10*time.Second)))
++	_, err = peer.Write(arp)
++	for i := 0; err == nil && i < 100; i++ {
++		time.Sleep(50 * time.Millisecond)
++		_, err = peer.Write(arp)
++	}
++	assert.ErrorContains(t, err, "")
++}
+diff --git a/pkg/networks/usernet/gvproxy.go b/pkg/networks/usernet/gvproxy.go
+index 05c30cad..1ce63e30 100644
+--- a/pkg/networks/usernet/gvproxy.go
++++ b/pkg/networks/usernet/gvproxy.go
+@@ -33,6 +33,11 @@ type GVisorNetstackOpts struct {
+ 	FdSocket   string
+ 	Endpoint   string
+ 
++	// DgramConn is one end of a datagram socketpair, whose other end is
++	// QEMU's dgram netdev: one raw Ethernet frame per datagram. The netstack
++	// closes it when its context ends.
++	DgramConn net.Conn
++
+ 	Subnet string
+ 
+ 	Async bool
+@@ -160,9 +165,29 @@ func run(ctx context.Context, g *errgroup.Group, configuration *types.Configurat
+ 			return err
+ 		}
+ 	}
++	if opts.DgramConn != nil {
++		serveDgram(ctx, vn, opts.DgramConn)
++	}
+ 	return nil
+ }
+ 
++// serveDgram serves the netstack on conn, until ctx ends. Frames are the
++// datagrams: there is no length prefix to lose track of, as with QEMU's
++// socket and stream netdevs.
++func serveDgram(ctx context.Context, vn *virtualnetwork.VirtualNetwork, conn net.Conn) {
++	ctx, cancel := context.WithCancel(ctx)
++	go func() {
++		<-ctx.Done()
++		conn.Close()
++	}()
++	go func() {
++		defer cancel()
++		if err := vn.AcceptBess(ctx, &UDPFileConn{Conn: conn}); err != nil && ctx.Err() == nil {
++			logrus.Error("QEMU datagram connection closed with error: ", err)
++		}
++	}()
++}
++
+ func listenQEMU(ctx context.Context, vn *virtualnetwork.VirtualNetwork) error {
+ 	var lc net.ListenConfig
+ 	listener, err := lc.Listen(ctx, "unix", opts.QemuSocket)

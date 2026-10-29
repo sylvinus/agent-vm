@@ -143,6 +143,29 @@ func TestStartNewVM(t *testing.T) {
 	}
 }
 
+// A VM left running without Lima's hostagent is stopped by force, then
+// started again.
+func TestStartOrphaned(t *testing.T) {
+	se := newStartEnv(t)
+	se.base()
+	name := vmname.Name(se.proj)
+	if code := se.run("run", "true"); code != 0 {
+		t.Fatalf("run: %d %s", code, se.out())
+	}
+	v := se.fake.VMs[name]
+	v.Status, v.Orphaned = vm.Broken, true
+	if se.run("run", "true") != 0 || !strings.Contains(se.out(), "left running without Lima's host agent") ||
+		!strings.HasPrefix(se.fake.CallLog(), "stop "+name) || !strings.Contains(se.fake.CallLog(), "start "+name) || v.Status != vm.Running {
+		t.Errorf("orphaned: %s\n%s", se.out(), se.fake.CallLog())
+	}
+	// One that does not stop: no start.
+	v.Status, v.Orphaned = vm.Broken, true
+	se.fake.Sticky[name] = true
+	if se.run("run", "true") != 1 || !strings.Contains(se.out(), "could not stop VM") || strings.Contains(se.fake.CallLog(), "start") {
+		t.Errorf("orphaned, stop failed: %s\n%s", se.out(), se.fake.CallLog())
+	}
+}
+
 // The resources asked against the VM's: in bytes, the disk one way (it
 // only grows), a VM that cannot be read counts as a change.
 func TestResourcesDiffer(t *testing.T) {
@@ -208,6 +231,28 @@ func TestStartSSHPort(t *testing.T) {
 	se.fake.VMs[name].Status = vm.Stopped
 	if se.run("--ssh-port", "0", "run", "true") != 0 || se.fake.VMs[name].SSHPortConfig != 0 {
 		t.Errorf("0: %s\n%s", se.out(), se.fake.CallLog())
+	}
+}
+
+// A start that fails stops the VM: the hostagent would outlive the command.
+// An interrupted one is left to finish in the background.
+func TestStartFailedStops(t *testing.T) {
+	se := newStartEnv(t)
+	se.base()
+	name := vmname.Name(se.proj)
+	se.fake.FailOn = map[string]error{"start": errors.New("boom")}
+	if se.run("run", "true") != 1 || !strings.HasSuffix(se.fake.CallLog(), "start "+name+"\nstop "+name) {
+		t.Errorf("start fails: %s\n%s", se.out(), se.fake.CallLog())
+	}
+	e, err := newApp(IO{Stdin: strings.NewReader(""), Stdout: io.Discard, Stderr: io.Discard})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	n := len(se.fake.Calls)
+	if err := e.startVM(ctx, se.fake, name, io.Discard); err == nil || strings.Contains(strings.Join(se.fake.Calls[n:], "\n"), "stop") {
+		t.Errorf("interrupted: %v\n%s", err, se.fake.CallLog())
 	}
 }
 

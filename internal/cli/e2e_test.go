@@ -1,4 +1,4 @@
-//go:build e2e
+//go:build e2e && !windows
 
 package cli
 
@@ -9,11 +9,17 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
 	"github.com/lima-vm/lima/v2/pkg/instance"
+
+	"github.com/sylvinus/agent-vm/internal/state"
+	"github.com/sylvinus/agent-vm/internal/vm"
+	"github.com/sylvinus/agent-vm/internal/vmname"
 )
 
 // agent-vm as a user runs it, on real VMs: setup, then a command in a
@@ -93,6 +99,9 @@ func TestE2E(t *testing.T) {
 	if b, _ := os.ReadFile(filepath.Join(proj, "from-vm")); string(b) != "hi\na\n" {
 		t.Errorf("on the host: %q", b)
 	}
+	// The run that started the VM is over and its context cancelled: the VM
+	// runs on (Lima once killed its hostagent then).
+	time.Sleep(2 * time.Second)
 	if code, out := run(proj, "info"); code != 0 || !strings.Contains(out, "vm_running=1") || !strings.Contains(out, "git_protected=1") {
 		t.Errorf("info: %s", out)
 	}
@@ -113,7 +122,57 @@ func TestE2E(t *testing.T) {
 	if code != 0 || !strings.Contains(out, "the project share is not mounted") || !strings.Contains(out, "v2, longer") {
 		t.Errorf("lost share: %d %s", code, out)
 	}
+	// The hostagent killed under the VM: with QEMU, the VM runs on, cut off.
+	// The next run stops it and starts it again; so does stop. With vz, the
+	// VM goes with the hostagent.
+	st := state.Dir(filepath.Join(home, ".agent-vm"))
+	b, err := vm.NewLima(LimaHome(st), string(st))
+	if err != nil {
+		t.Fatal(err)
+	}
+	name := vmname.Name(proj)
+	orphan := func() (driver int) {
+		t.Helper()
+		inst, err := b.Get(ctx, name)
+		if err != nil || inst.Status != vm.Running {
+			t.Fatalf("before the kill: %+v %v", inst, err)
+		}
+		pid := func(f string) int {
+			b, _ := os.ReadFile(filepath.Join(inst.Dir, f))
+			n, _ := strconv.Atoi(strings.TrimSpace(string(b)))
+			return n
+		}
+		driver = pid(inst.VMType + ".pid")
+		if err := syscall.Kill(pid("ha.pid"), syscall.SIGKILL); err != nil {
+			t.Fatal(err)
+		}
+		// Broken without more until the hostagent is reaped.
+		for range 100 {
+			if inst, err = b.Get(ctx, name); err == nil && (inst.Orphaned || inst.Status == vm.Stopped) {
+				break
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+		if !inst.Orphaned {
+			t.Logf("not orphaned by the kill: %s", inst.Status)
+			return 0
+		}
+		return driver
+	}
+	orphaned := orphan() != 0
+	if code, out := run(proj, "run", "true"); code != 0 || orphaned != strings.Contains(out, "left running without Lima's host agent") {
+		t.Errorf("run on an orphaned VM: %d %s", code, out)
+	}
+	driver := orphan()
 	if code, out := run(proj, "stop"); code != 0 || !strings.Contains(out, "VM stopped.") {
 		t.Errorf("stop: %s", out)
+	}
+	// Killed, then reaped by init.
+	for i := 0; driver != 0 && syscall.Kill(driver, 0) == nil; i++ {
+		if i == 50 {
+			t.Errorf("the orphaned driver %d still runs", driver)
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
 	}
 }

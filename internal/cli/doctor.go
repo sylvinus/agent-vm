@@ -301,6 +301,10 @@ func (d *doctor) directory(ctx context.Context, dir string, protects bool, getVM
 		case inst.Status == vm.Running:
 			d.line("warn", "running with a share the host does not confine: "+confined.Error(),
 				"The next start (after 'agent-vm stop') sets its shares back.")
+		case inst.Orphaned:
+			d.line("warn", "running without Lima's host agent, cut off", "'agent-vm stop' stops it, and so does the next agent-vm command here that starts a VM.")
+		case inst.Status == vm.Broken:
+			d.line("warn", "Broken: Lima cannot say whether it runs")
 		default:
 			d.line("info", "stopped")
 		}
