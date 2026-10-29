@@ -1,7 +1,7 @@
 // `go test -fuzz` only fuzzes the main modules: this workspace makes the
 // vendored sshocker and pkg/sftp ones too (make fuzz). Not Lima: as a main
 // module, its own requirements (its MCP server's) would take part in the build.
-go 1.26.9
+go 1.26.10
 
 use (
 	../..
