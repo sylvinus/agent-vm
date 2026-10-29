@@ -228,7 +228,7 @@ func fromLima(inst *limatype.Instance) *Instance {
 	// of one that aborted may name another program's process now: Stop kills
 	// this one.
 	out.Orphaned = out.Status == Broken && inst.Config != nil && inst.HostAgentPID == 0 && inst.DriverPID > 0 &&
-		inst.VMType == limatype.QEMU && isQEMU(inst.DriverPID)
+		inst.VMType == limatype.QEMU && isQEMU(inst.DriverPID, inst.Dir, inst.Name)
 	if c := inst.Config; c != nil {
 		if c.SSH.LocalPort != nil {
 			out.SSHPortConfig = *c.SSH.LocalPort

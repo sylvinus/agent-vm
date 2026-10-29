@@ -37,7 +37,7 @@ func qemuBinaryFor(goarch, manager string) (bin, install string) {
 	case "dnf":
 		return bin, "sudo dnf install " + rpm + " qemu-img"
 	case "apt-get":
-		return bin, "sudo apt-get install " + deb
+		return bin, "sudo apt-get install " + deb + " qemu-utils"
 	}
 	return bin, "your distribution's QEMU package (with Nix, 'nix run github:sylvinus/agent-vm' brings its own)"
 }

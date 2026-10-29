@@ -315,17 +315,19 @@ func TestLimaStopOrphaned(t *testing.T) {
 	if inst.VMType != "qemu" {
 		t.Skip("only QEMU outlives the hostagent")
 	}
-	// sleep, under the name of a program: QEMU's, or any other.
-	spawn := func(name string) ([]byte, chan struct{}) {
-		sleep, err := exec.LookPath("sleep")
+	// A shell idling, under the name of a program and with the options of a
+	// QEMU: of this VM's, or any other.
+	spawn := func(name, vmName string) ([]byte, chan struct{}) {
+		sh, err := exec.LookPath("sh")
 		if err != nil {
 			t.Skip(err)
 		}
 		exe := filepath.Join(t.TempDir(), name)
-		if err := os.Symlink(sleep, exe); err != nil {
+		if err := os.Symlink(sh, exe); err != nil {
 			t.Fatal(err)
 		}
-		cmd := exec.Command(exe, "60")
+		cmd := exec.Command(exe, "-c", "while :; do sleep 1; done", "-name", "lima-"+vmName,
+			"-pidfile", filepath.Join(inst.Dir, filenames.PIDFile(inst.VMType)))
 		if err := cmd.Start(); err != nil {
 			t.Fatal(err)
 		}
@@ -334,7 +336,7 @@ func TestLimaStopOrphaned(t *testing.T) {
 		t.Cleanup(func() { cmd.Process.Kill(); <-done })
 		return []byte(strconv.Itoa(cmd.Process.Pid)), done
 	}
-	pid, exited := spawn("qemu-system-fake")
+	pid, exited := spawn("qemu-system-fake", "o")
 
 	ha := filepath.Join(inst.Dir, filenames.HostAgentPID)
 	os.WriteFile(ha, pid, 0o644)
@@ -351,17 +353,20 @@ func TestLimaStopOrphaned(t *testing.T) {
 
 	// A PID file left by a QEMU that aborted, its number another program's
 	// now: not orphaned, and Stop leaves it alone.
-	other, otherExited := spawn("not-a-vm")
 	driverPID := filepath.Join(inst.Dir, filenames.PIDFile(inst.VMType))
-	os.WriteFile(driverPID, other, 0o644)
-	if got, _ := l.Get(ctx, "o"); got.Orphaned {
-		t.Fatalf("another program's process: %+v", got)
-	}
-	l.Stop(ctx, "o")
-	select {
-	case <-otherExited:
-		t.Fatal("Stop killed a process that is not QEMU")
-	case <-time.After(200 * time.Millisecond):
+	// Or another VM's QEMU.
+	for _, c := range []struct{ prog, vm string }{{"not-a-vm", "o"}, {"qemu-system-fake", "other"}} {
+		other, otherExited := spawn(c.prog, c.vm)
+		os.WriteFile(driverPID, other, 0o644)
+		if got, _ := l.Get(ctx, "o"); got.Orphaned {
+			t.Fatalf("%s of %s: %+v", c.prog, c.vm, got)
+		}
+		l.Stop(ctx, "o")
+		select {
+		case <-otherExited:
+			t.Fatalf("Stop killed %s of %s", c.prog, c.vm)
+		case <-time.After(200 * time.Millisecond):
+		}
 	}
 
 	os.WriteFile(driverPID, pid, 0o644)

@@ -175,12 +175,13 @@ func run(ctx context.Context, g *errgroup.Group, configuration *types.Configurat
 // datagrams: there is no length prefix to lose track of, as with QEMU's
 // socket and stream netdevs.
 func serveDgram(ctx context.Context, vn *virtualnetwork.VirtualNetwork, conn net.Conn) {
+	ctx, cancel := context.WithCancel(ctx)
 	go func() {
 		<-ctx.Done()
 		conn.Close()
 	}()
 	go func() {
-		defer conn.Close()
+		defer cancel()
 		if err := vn.AcceptBess(ctx, &UDPFileConn{Conn: conn}); err != nil && ctx.Err() == nil {
 			logrus.Error("QEMU datagram connection closed with error: ", err)
 		}
