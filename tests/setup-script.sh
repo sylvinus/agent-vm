@@ -109,12 +109,13 @@ check "sshfs wrapper: an older sshfs gets the arguments unchanged" \
 # An agent is there as a command, as an extension, or both: either way its
 # config (managed settings, MCP servers) is written. The lines setup derives
 # it with, run as setup does.
-has_block="$(awk '/^HAS_CLAUDE=0 HAS_CODEX=0 HAS_VIBE=0$/,/HAS_VIBE=1$/' "$SETUP_SH")"
+has_block="$(awk '/^HAS_CLAUDE=0 HAS_OPENCODE=0 HAS_CODEX=0 HAS_VIBE=0$/,/HAS_VIBE=1$/' "$SETUP_SH")"
+# has derives the HAS_* flags for the given set of agent install flags.
 # shellcheck disable=SC2034 # read by the eval'd block
-has() { ( INSTALL_CLAUDE="$1" INSTALL_CODE_CLAUDE="$2" INSTALL_CODEX="$3" INSTALL_CODE_CODEX="$4" INSTALL_VIBE="$5" INSTALL_CODE_VIBE="$6"
-          eval "$has_block"; echo "$HAS_CLAUDE$HAS_CODEX$HAS_VIBE" ); }
+has() { ( INSTALL_CLAUDE="$1" INSTALL_CODE_CLAUDE="$2" INSTALL_OPENCODE="$3" INSTALL_CODE_OPENCODE="$4" INSTALL_CODEX="$5" INSTALL_CODE_CODEX="$6" INSTALL_VIBE="$7" INSTALL_CODE_VIBE="$8"
+          eval "$has_block"; echo "$HAS_CLAUDE$HAS_OPENCODE$HAS_CODEX$HAS_VIBE" ); }
 check "setup: the agents' config, for a command or an extension" \
-  "$(has 1 0 0 0 0 0) $(has 0 1 0 0 0 0) $(has 0 0 0 1 0 0) $(has 0 0 0 0 1 1) $(has 0 0 0 0 0 0)" "100 100 010 001 000"
+  "$(has 1 0 0 0 0 0 0 0) $(has 0 1 0 0 0 0 0 0) $(has 0 0 1 0 0 0 0 0) $(has 0 0 0 1 0 0 0 0) $(has 0 0 0 0 1 0 0 0) $(has 0 0 0 0 0 1 0 0) $(has 0 0 0 0 0 0 1 1) $(has 0 0 0 0 0 0 0 0)" "1000 1000 0100 0100 0010 0010 0001 0000"
 
 # =============================================================================
 section "MCP config writer"
@@ -128,7 +129,7 @@ else
   (
     HOME="$MCPHOME"
     eval "$(awk '/^configure_mcp\(\) \{/,/^\}/' "$SETUP_SH")"
-    HAS_CLAUDE=1 INSTALL_OPENCODE=1 HAS_VIBE=1 HAS_CODEX=1
+    HAS_CLAUDE=1 HAS_OPENCODE=1 HAS_VIBE=1 HAS_CODEX=1
     for _ in 1 2; do   # twice: the writer must be idempotent
       configure_mcp chrome-devtools npx -y chrome-devtools-mcp@latest --headless=true
       configure_mcp playwright env PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npx -y @playwright/mcp@latest
@@ -253,7 +254,7 @@ else
   cs_block="$(awk '/^toml_prepend\(\) \{/,/^\}/' "$SETUP_SH")
 $(awk '/^if \[\[ "\$INSTALL_CODE_SERVER" == "1" \]\]; then/,/^fi$/' "$SETUP_SH")
 $(awk '/^configure_mcp\(\) \{/,/^\}/' "$SETUP_SH")"
-  # <home> <claude> <codex> <vibe>: the extensions asked for.
+  # <home> <claude> <opencode> <codex> <vibe>: the extensions asked for.
   # Under set -e, as the script runs: a failing step must show here. Twice:
   # what it writes must not pile up when it runs again in the same VM. The
   # first run's state is kept in <home>/first.
@@ -261,8 +262,8 @@ $(awk '/^configure_mcp\(\) \{/,/^\}/' "$SETUP_SH")"
   run_cs_block() {
     mkdir -p "$1/.config/code-server"; echo "password: from-the-base" > "$1/.config/code-server/config.yaml"
     ( set -e
-      HOME="$1"; INSTALL_CODE_SERVER=1 INSTALL_CODE_CLAUDE="$2" INSTALL_CODE_CODEX="$3" INSTALL_CODE_VIBE="$4"
-      HAS_CLAUDE="$2" HAS_CODEX="$3" HAS_VIBE="$4" INSTALL_OPENCODE=0
+      HOME="$1"; INSTALL_CODE_SERVER=1 INSTALL_CODE_CLAUDE="$2" INSTALL_CODE_OPENCODE="$3" INSTALL_CODE_CODEX="$4" INSTALL_CODE_VIBE="$5"
+      HAS_CLAUDE="$2" HAS_OPENCODE="$3" HAS_CODEX="$4" HAS_VIBE="$5"
       curl() { echo "curl $*" >> "$HOME/calls.log"; }
       code-server() { echo "code-server $*" >> "$HOME/calls.log"; }
       code_server_schemas() { echo "schemas $*" >> "$HOME/calls.log"; mkdir -p "$(dirname "$2")"; echo '{"json.schemas":[]}' > "$2"; }
@@ -275,7 +276,7 @@ $(awk '/^configure_mcp\(\) \{/,/^\}/' "$SETUP_SH")"
       echo 'done' > "$HOME/finished" ) >/dev/null 2>&1
   }
   CSB="$SB/cs-bare"; mkdir -p "$CSB"
-  run_cs_block "$CSB" 0 0 0
+  run_cs_block "$CSB" 0 0 0 0
   check "code-server alone: no extension installed" "$(grep -c '^code-server' "$CSB/calls.log")" "0"
   check "code-server alone: Copilot off" \
     "$(jq -r '."chat.disableAIFeatures"' "$CSB/.local/share/code-server/User/settings.json")" "true"
@@ -297,14 +298,14 @@ $(awk '/^configure_mcp\(\) \{/,/^\}/' "$SETUP_SH")"
   check "code-server alone: runs to the end under set -e" "$(cat "$CSB/finished" 2>/dev/null)" "done"
 
   CSA="$SB/cs-all"; mkdir -p "$CSA"
-  run_cs_block "$CSA" 1 1 1
+  run_cs_block "$CSA" 1 1 1 1
   check "with the extensions: runs to the end under set -e" "$(cat "$CSA/finished" 2>/dev/null)" "done"
   check "codex: written on a fresh home" "$(head -n 2 "$CSA/first/.codex" 2>/dev/null | sort | tr '\n' ' ')" \
     'approval_policy = "never" sandbox_mode = "danger-full-access" '
   check "vibe: written on a fresh home" "$(cat "$CSA/first/.vibe" 2>/dev/null)" 'default_agent = "auto-approve"'
-  check "the three extensions, in one call" \
+  check "the four extensions, in one call" \
     "$(grep '^code-server' "$CSA/calls.log" | head -n 1)" \
-    "code-server --install-extension anthropic.claude-code --install-extension openai.chatgpt --install-extension mistralai.mistral-vibe-code"
+    "code-server --install-extension anthropic.claude-code --install-extension sst-dev.opencode --install-extension openai.chatgpt --install-extension mistralai.mistral-vibe-code"
   # The permission keys are machine-scoped: code-server reads them from the
   # machine settings only.
   check "claude: bypass mode allowed and picked, in the machine settings" \

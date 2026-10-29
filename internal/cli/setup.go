@@ -49,14 +49,15 @@ Options:
                         python, node, ruby, rust, golang, docker, chromium,
                         gh, claude, opencode, codex, vibe, pi, mcp-chrome,
                         mcp-playwright, code-server, code-claude,
-                        code-codex, code-vibe
+                        code-opencode, code-codex, code-vibe
                       'code-server' is VS Code in the browser, for
                       'agent-vm code', with GitHub Copilot turned off.
-                      'code-claude', 'code-codex' and 'code-vibe' add that
+                      'code-claude', 'code-opencode', 'code-codex' and 'code-vibe' add that
                       agent's extension, and code-server with it. Each
                       extension brings its own copy of the agent: 'claude',
                       'codex' and 'vibe' are the command-line ones, for
-                      'agent-vm claude' and the others.
+                      'agent-vm claude' and the others (OpenCode's extension
+                      requires its command-line tool, which is installed with it).
                       Selecting codex or pi also installs node (npm). So does
                       mcp-chrome when chromium and an agent are selected
                       (npx). mcp-playwright does not: list node yourself.
@@ -81,7 +82,7 @@ Options:
 // The software of the base, as agent-vm.setup.sh names it
 // (AGENT_VM_INSTALL_<NAME>).
 var software = []string{"python", "node", "ruby", "rust", "golang", "docker", "chromium", "gh", "claude", "opencode", "codex", "vibe", "pi",
-	"code-server", "code-claude", "code-codex", "code-vibe", "mcp-chrome", "mcp-playwright"}
+	"code-server", "code-claude", "code-opencode", "code-codex", "code-vibe", "mcp-chrome", "mcp-playwright"}
 
 // The default set. Opt-in: Ruby, Rust, Go, Pi (released several times a
 // week), Playwright MCP (a second browser-driving server, whose tools cost
@@ -108,7 +109,7 @@ func (in install) nodeNeededBy() string {
 		return "Codex CLI requires npm"
 	case in["pi"]:
 		return "Pi requires npm"
-	case in["chromium"] && in["mcp-chrome"] && (in["claude"] || in["opencode"] || in["vibe"] || in["code-claude"] || in["code-codex"] || in["code-vibe"]):
+	case in["chromium"] && in["mcp-chrome"] && (in["claude"] || in["opencode"] || in["vibe"] || in["code-claude"] || in["code-opencode"] || in["code-codex"] || in["code-vibe"]):
 		return "Chrome DevTools MCP uses npx"
 	}
 	return ""
@@ -195,6 +196,9 @@ func (e *app) setupCmd(ctx context.Context, args []string) int {
 			case f == "code-claude" || f == "code-codex" || f == "code-vibe":
 				// An extension needs the editor.
 				in.set(f, "code-server")
+			case f == "code-opencode":
+				// OpenCode's extension requires both the editor and the OpenCode CLI.
+				in.set(f, "code-server", "opencode")
 			case contains(software, f):
 				in.set(f)
 			default:
@@ -343,7 +347,12 @@ func (e *app) askCodeExtensions(in install) {
 		return
 	}
 	var names []string
-	for _, a := range []struct{ key, name string }{{"claude", "Claude Code"}, {"codex", "Codex"}, {"vibe", "Mistral Vibe"}} {
+	for _, a := range []struct{ key, name string }{
+		{"claude", "Claude Code"},
+		{"opencode", "OpenCode"},
+		{"codex", "Codex"},
+		{"vibe", "Mistral Vibe"},
+	} {
 		if in[a.key] {
 			names = append(names, a.name)
 		}
@@ -352,11 +361,15 @@ func (e *app) askCodeExtensions(in install) {
 		return
 	}
 	fmt.Fprintf(e.io.Stderr, "  %s in the editor:\n", strings.Join(names, ", "))
-	choice := e.ui.AskChoice("Pick one", 1, "Extension and command line (agent-vm claude...)", "Extension only", "Command line only")
+	promptExtOnly := "Extension only"
+	if in["opencode"] {
+		promptExtOnly = "Extension only (OpenCode keeps the CLI, required by its extension)"
+	}
+	choice := e.ui.AskChoice("Pick one", 1, "Extension and command line (agent-vm claude...)", promptExtOnly, "Command line only")
 	if choice == 3 {
 		return
 	}
-	in["code-claude"], in["code-codex"], in["code-vibe"] = in["claude"], in["codex"], in["vibe"]
+	in["code-claude"], in["code-opencode"], in["code-codex"], in["code-vibe"] = in["claude"], in["opencode"], in["codex"], in["vibe"]
 	if choice == 2 {
 		in["claude"], in["codex"], in["vibe"] = false, false, false
 	}
