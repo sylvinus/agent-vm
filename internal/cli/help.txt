@@ -21,7 +21,7 @@ Commands:
                      address and the password, made in each VM, are
                      printed: open it in your browser. Opt-in at setup, with the agents'
                      extensions or without: --preinstall=default,code-claude
-                     (or code-codex, code-vibe, code-server)
+                     (or code-opencode, code-codex, code-vibe, code-server)
   stop [vm-name]     Stop the VM for the current directory, or the named one
   rm [vm-name]       Stop and delete the VM for the current directory, or the
                      named one. Pass a name from 'agent-vm list' to reach a VM

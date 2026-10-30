@@ -10,6 +10,10 @@
   or `dnf install ./agent-vm-X.Y.Z-1.aarch64.rpm`.
 - A Nix flake (Linux): `nix run github:sylvinus/agent-vm`. QEMU comes with it,
   ssh is the system's.
+- `agent-vm setup --preinstall=code-opencode`: the OpenCode extension
+  (`sst-dev.opencode`) in code-server (#37). Unlike the other extensions it
+  runs the `opencode` command, so `opencode` is installed with it, and its
+  config allows every tool, as `agent-vm opencode` does with `--auto`.
 
 ### Fixed
 
@@ -34,8 +38,6 @@
   read of the stream badly. The VMs' network now goes through QEMU's `dgram`
   backend (QEMU 7.2 or later): no stream, nothing to lose. An older QEMU keeps
   the former backend, and so does Windows (it has no unix datagram sockets).
-
-- `agent-vm setup`: Added `code-opencode` preinstall option to install the OpenCode VS Code extension (`sst-dev.opencode`) into code-server (#37).
 
 ## 0.3.0
 

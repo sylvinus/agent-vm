@@ -52,12 +52,13 @@ Options:
                         code-opencode, code-codex, code-vibe
                       'code-server' is VS Code in the browser, for
                       'agent-vm code', with GitHub Copilot turned off.
-                      'code-claude', 'code-opencode', 'code-codex' and 'code-vibe' add that
-                      agent's extension, and code-server with it. Each
-                      extension brings its own copy of the agent: 'claude',
-                      'codex' and 'vibe' are the command-line ones, for
-                      'agent-vm claude' and the others (OpenCode's extension
-                      requires its command-line tool, which is installed with it).
+                      'code-claude', 'code-opencode', 'code-codex' and
+                      'code-vibe' add that agent's extension, and code-server
+                      with it. The Claude, Codex and Vibe extensions bring
+                      their own copy of the agent: 'claude', 'codex' and
+                      'vibe' are the command-line ones, for 'agent-vm claude'
+                      and the others. OpenCode's does not: 'code-opencode'
+                      also installs 'opencode'.
                       Selecting codex or pi also installs node (npm). So does
                       mcp-chrome when chromium and an agent are selected
                       (npx). mcp-playwright does not: list node yourself.
@@ -109,7 +110,7 @@ func (in install) nodeNeededBy() string {
 		return "Codex CLI requires npm"
 	case in["pi"]:
 		return "Pi requires npm"
-	case in["chromium"] && in["mcp-chrome"] && (in["claude"] || in["opencode"] || in["vibe"] || in["code-claude"] || in["code-opencode"] || in["code-codex"] || in["code-vibe"]):
+	case in["chromium"] && in["mcp-chrome"] && (in["claude"] || in["opencode"] || in["vibe"] || in["code-claude"] || in["code-codex"] || in["code-vibe"]):
 		return "Chrome DevTools MCP uses npx"
 	}
 	return ""
@@ -361,11 +362,10 @@ func (e *app) askCodeExtensions(in install) {
 		return
 	}
 	fmt.Fprintf(e.io.Stderr, "  %s in the editor:\n", strings.Join(names, ", "))
-	promptExtOnly := "Extension only"
 	if in["opencode"] {
-		promptExtOnly = "Extension only (OpenCode keeps the CLI, required by its extension)"
+		fmt.Fprintln(e.io.Stderr, "  (OpenCode's extension needs its command line: it stays installed.)")
 	}
-	choice := e.ui.AskChoice("Pick one", 1, "Extension and command line (agent-vm claude...)", promptExtOnly, "Command line only")
+	choice := e.ui.AskChoice("Pick one", 1, "Extension and command line (agent-vm claude...)", "Extension only", "Command line only")
 	if choice == 3 {
 		return
 	}

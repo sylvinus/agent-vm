@@ -110,7 +110,6 @@ check "sshfs wrapper: an older sshfs gets the arguments unchanged" \
 # config (managed settings, MCP servers) is written. The lines setup derives
 # it with, run as setup does.
 has_block="$(awk '/^HAS_CLAUDE=0 HAS_OPENCODE=0 HAS_CODEX=0 HAS_VIBE=0$/,/HAS_VIBE=1$/' "$SETUP_SH")"
-# has derives the HAS_* flags for the given set of agent install flags.
 # shellcheck disable=SC2034 # read by the eval'd block
 has() { ( INSTALL_CLAUDE="$1" INSTALL_CODE_CLAUDE="$2" INSTALL_OPENCODE="$3" INSTALL_CODE_OPENCODE="$4" INSTALL_CODEX="$5" INSTALL_CODE_CODEX="$6" INSTALL_VIBE="$7" INSTALL_CODE_VIBE="$8"
           eval "$has_block"; echo "$HAS_CLAUDE$HAS_OPENCODE$HAS_CODEX$HAS_VIBE" ); }
@@ -178,6 +177,23 @@ else
   run_pi_block "$PIH0" 0
   check "pi: skipped without node" "$( [ -e "$PIH0/sudo.log" ] || [ -e "$PIH0/.pi" ]; echo $?)" "1"
 fi
+
+# =============================================================================
+section "OpenCode install block"
+# =============================================================================
+# The extension needs the command line: either flag installs it.
+oc_block="$(awk '/^if \[\[ "\$INSTALL_OPENCODE" == "1" \|\| "\$INSTALL_CODE_OPENCODE" == "1" \]\]; then/,/^fi$/' "$SETUP_SH")"
+# shellcheck disable=SC2034 # read by the eval'd block
+run_oc_block() {
+  ( HOME="$SB/oc-home"; mkdir -p "$HOME"; rm -f "$HOME/curl.log"
+    INSTALL_OPENCODE="$1" INSTALL_CODE_OPENCODE="$2"
+    curl() { echo "curl $*" >> "$HOME/curl.log"; }
+    eval "$oc_block" ) >/dev/null 2>&1
+  cat "$SB/oc-home/curl.log" 2>/dev/null
+}
+check "opencode: installed for the command line" "$(run_oc_block 1 0)" "curl -fsSL https://opencode.ai/install"
+check "opencode: installed for the extension alone" "$(run_oc_block 0 1)" "curl -fsSL https://opencode.ai/install"
+check "opencode: not installed for neither" "$(run_oc_block 0 0)" ""
 
 # =============================================================================
 section "code-server JSON schemas"
@@ -322,6 +338,9 @@ $(awk '/^configure_mcp\(\) \{/,/^\}/' "$SETUP_SH")"
   check "vibe: auto-approve, once, before any table" \
     "$(head -n 1 "$CSA/.vibe/config.toml"; grep -c '^default_agent' "$CSA/.vibe/config.toml")" \
     "$(printf 'default_agent = "auto-approve"\n1')"
+  check "opencode: everything allowed, next to the MCP server, written twice" \
+    "$(jq -r '[.permission, (.mcp | keys | join(","))] | join(" ")' "$CSA/.config/opencode/opencode.json")" "allow chrome-devtools"
+  check "code-server alone: no OpenCode config" "$([ -e "$CSB/.config/opencode" ]; echo $?)" "1"
   if python3 -c 'import tomllib' 2>/dev/null; then
     check "codex: the file parses, keys at the top level" \
       "$(python3 -c 'import sys,tomllib; d=tomllib.load(open(sys.argv[1],"rb")); print(d["approval_policy"], "chrome-devtools" in d["mcp_servers"])' "$CSA/.codex/config.toml")" \

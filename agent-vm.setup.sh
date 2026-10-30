@@ -496,6 +496,14 @@ if [[ "$INSTALL_CODE_SERVER" == "1" ]]; then
   if [[ "$INSTALL_CODE_VIBE" == "1" ]]; then
     toml_prepend "$HOME/.vibe/config.toml" default_agent '"auto-approve"'
   fi
+  # OpenCode's extension runs `opencode` in a terminal, without the --auto of
+  # `agent-vm opencode`: its config allows everything instead.
+  if [[ "$INSTALL_CODE_OPENCODE" == "1" ]]; then
+    mkdir -p "$HOME/.config/opencode"
+    oc_config="$HOME/.config/opencode/opencode.json"
+    [ -f "$oc_config" ] || echo '{"$schema": "https://opencode.ai/config.json"}' > "$oc_config"
+    jq '.permission = "allow"' "$oc_config" > "$oc_config.tmp" && mv "$oc_config.tmp" "$oc_config"
+  fi
   # Written by code-server on its first run, with a password of its own.
   rm -rf "$HOME/.config/code-server"
 fi

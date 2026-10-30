@@ -70,7 +70,6 @@ func on(m map[string]string) string {
 	return strings.Join(out, ",")
 }
 
-// TestSetupPreinstall verifies --preinstall flag combinations.
 func TestSetupPreinstall(t *testing.T) {
 	for _, c := range []struct {
 		args []string
@@ -134,7 +133,6 @@ func wizardRun(t *testing.T, answers ...string) (*testEnv, []string) {
 	return te, stdin
 }
 
-// TestSetupWizard verifies interactive setup wizard choices and defaults.
 func TestSetupWizard(t *testing.T) {
 	// Enter everywhere: the default set and resources.
 	te, stdin := wizardRun(t)
@@ -170,7 +168,7 @@ func TestSetupWizard(t *testing.T) {
 
 	// OpenCode as extension only (keeps the required OpenCode CLI)
 	te, stdin = wizardRun(t,
-		"n",                     // the default set
+		"n",                    // the default set
 		"n", "y", "n", "n", "", // Claude, OpenCode, Codex, Vibe, Pi
 		"y", "2", // code-server, extension only
 		"n", "n", "n", // Docker, Chromium, gh
@@ -180,8 +178,8 @@ func TestSetupWizard(t *testing.T) {
 	if got := on(exportsOf(t, stdin)); got != "opencode,code-server,code-opencode" {
 		t.Errorf("opencode extension: %s", got)
 	}
-	if !strings.Contains(te.out(), "Extension only (OpenCode keeps the CLI, required by its extension)") {
-		t.Errorf("prompt not shown: %s", te.out())
+	if !strings.Contains(te.out(), "OpenCode's extension needs its command line: it stays installed.") {
+		t.Errorf("note not shown: %s", te.out())
 	}
 }
 

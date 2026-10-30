@@ -88,6 +88,8 @@ func TestHelp(t *testing.T) {
 	}
 	strip := func(s string) string {
 		s = strings.Replace(s, "agent-vm rm agent-vm-old-name-1a2b3c4d     ", "agent-vm rm old-name-1a2b3c4d              ", 1)
+		// code-opencode is new.
+		s = strings.Replace(s, "(or code-opencode, code-codex", "(or code-codex", 1)
 		for _, cut := range []string{
 			"AGENT_VM_BIN_DIR). Run it from the clone:\n                     ./agent-vm.sh install\n",
 			"AGENT_VM_BIN_DIR)\n",
