@@ -678,13 +678,14 @@ export const en = {
       ['Containers', 'Docker Engine, Docker Compose', 'docker', 'yes'],
       ['AI agents', 'Claude Code, OpenCode, Codex CLI, Mistral Vibe', 'claude, opencode, codex, vibe', 'yes'],
       ['AI agents', 'Pi', 'pi', 'no'],
+      ['Terminal workspaces', 'Herdr (run with `agent-vm run --tty herdr`)', 'herdr', 'no'],
       ['MCP', 'Chrome DevTools MCP, wired into every installed agent but Pi (no MCP support)', 'mcp-chrome', 'yes'],
       ['MCP', 'Playwright MCP, reusing the same Chromium', 'mcp-playwright', 'no'],
       ['Editor', 'code-server (VS Code in the browser, for `agent-vm code`), dark theme, GitHub Copilot off, no telemetry', 'code-server', 'no'],
       ['Editor', 'The Claude Code, OpenCode, Codex or Mistral Vibe extension, each starting with no permission prompts, with code-server', 'code-claude, code-opencode, code-codex, code-vibe', 'no'],
     ],
     contentsCode:
-      'agent-vm setup --preinstall=default                  # no prompts\nagent-vm setup --preinstall=default,rust             # plus Rust\nagent-vm setup --preinstall=python,docker,claude     # minimal Claude setup\nagent-vm setup --preinstall=default,code-claude      # plus the editor\nagent-vm setup --disk 50 --memory 16 --cpus 8        # a bigger template',
+      'agent-vm setup --preinstall=default                  # no prompts\nagent-vm setup --preinstall=default,rust             # plus Rust\nagent-vm setup --preinstall=python,docker,claude     # minimal Claude setup\nagent-vm setup --preinstall=default,code-claude      # plus the editor\nagent-vm setup --preinstall=default,herdr            # plus Herdr\nagent-vm run --tty herdr                            # terminal workspaces\nagent-vm setup --disk 50 --memory 16 --cpus 8        # a bigger template',
     contentsNote:
       '`codex` and `pi` pull in `node`, and so does `mcp-chrome` with `chromium` and an agent. Both MCP servers are skipped without `node` and `chromium`. The Claude, Codex and Mistral Vibe extensions ship their own copy of their agent (200 to 600 MB): the wizard asks whether to keep the command-line one too. Without it, `agent-vm claude` says it is not installed. OpenCode’s extension does not: it runs the `opencode` command, so `code-opencode` always installs it. This is only what the template ships: the agent is root in the VM and reaches the internet, so it installs whatever else it needs.',
     dockerTitle: 'Why not Docker',

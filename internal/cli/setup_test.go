@@ -79,6 +79,8 @@ func TestSetupPreinstall(t *testing.T) {
 		{[]string{"--preinstall", "--disk", "20"}, "python,node,docker,chromium,gh,claude,opencode,codex,vibe,mcp-chrome"},
 		{[]string{"--preinstall=none"}, ""},
 		{[]string{"--preinstall=all"}, strings.Join(software, ",")},
+		{[]string{"--preinstall=herdr"}, "herdr"},
+		{[]string{"--preinstall=default,herdr"}, "python,node,docker,chromium,gh,herdr,claude,opencode,codex,vibe,mcp-chrome"},
 		{[]string{"--preinstall=python, docker,claude"}, "python,docker,claude"},
 		{[]string{"--preinstall=code-opencode"}, "opencode,code-server,code-opencode"},
 		{[]string{"--preinstall=code-vibe"}, "code-server,code-vibe"},
@@ -89,8 +91,19 @@ func TestSetupPreinstall(t *testing.T) {
 		if code != 0 {
 			t.Fatalf("%q: %d %s", c.args, code, te.out())
 		}
-		if got := on(exportsOf(t, stdin)); got != c.want {
+		m := exportsOf(t, stdin)
+		if got := on(m); got != c.want {
 			t.Errorf("%q: %s, want %s", c.args, got, c.want)
+		}
+		wantHerdr := "0"
+		if contains(strings.Split(c.want, ","), "herdr") {
+			wantHerdr = "1"
+		}
+		if m["HERDR"] != wantHerdr {
+			t.Errorf("%q: HERDR=%q, want %s", c.args, m["HERDR"], wantHerdr)
+		}
+		if strings.Contains(te.stdout.String(), "  agent-vm run --tty herdr\n") != (wantHerdr == "1") {
+			t.Errorf("%q: Herdr usage hint: %s", c.args, te.stdout.String())
 		}
 		if c.want == "node,codex" && !strings.Contains(te.out(), "Enabling Node.js because Codex CLI requires npm.") {
 			t.Errorf("node not said: %s", te.out())
@@ -152,7 +165,7 @@ func TestSetupWizard(t *testing.T) {
 		"n",                   // the default set
 		"", "n", "y", "n", "", // Claude, OpenCode, Codex, Vibe, Pi
 		"y", "2", // code-server, extension only
-		"n", "y", "n", "y", "", // Docker, Chromium, gh, Chrome MCP, Playwright MCP
+		"n", "y", "n", "", "y", "", // Docker, Chromium, gh, Herdr, Chrome MCP, Playwright MCP
 		"n", "y", "", "", // Python, Ruby, Rust, Go
 		"n", "15", "", "3") // resources
 	if got := on(exportsOf(t, stdin)); got != "node,ruby,chromium,code-server,code-claude,code-codex,mcp-chrome" {
@@ -171,7 +184,7 @@ func TestSetupWizard(t *testing.T) {
 		"n",                    // the default set
 		"n", "y", "n", "n", "", // Claude, OpenCode, Codex, Vibe, Pi
 		"y", "2", // code-server, extension only
-		"n", "n", "n", // Docker, Chromium, gh
+		"n", "n", "n", "", // Docker, Chromium, gh, Herdr
 		"n", "n", "", "", "", // Python, Node, Ruby, Rust, Go
 		"", // resources
 	)
@@ -180,6 +193,22 @@ func TestSetupWizard(t *testing.T) {
 	}
 	if !strings.Contains(te.out(), "OpenCode's extension needs its command line: it stays installed.") {
 		t.Errorf("note not shown: %s", te.out())
+	}
+
+	// Herdr alone needs neither an agent nor an optional language runtime.
+	te, stdin = wizardRun(t,
+		"n",                     // the default set
+		"n", "n", "n", "n", "n", // Claude, OpenCode, Codex, Vibe, Pi
+		"n",                // code-server
+		"n", "n", "n", "y", // Docker, Chromium, gh, Herdr
+		"n", "n", "n", "n", "n", // Python, Node, Ruby, Rust, Go
+		"", // resources
+	)
+	if got := on(exportsOf(t, stdin)); got != "herdr" {
+		t.Errorf("Herdr alone: %s", got)
+	}
+	if !strings.Contains(te.stdout.String(), "  agent-vm run --tty herdr\n") {
+		t.Errorf("Herdr hint not shown: %s", te.out())
 	}
 }
 

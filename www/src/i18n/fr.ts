@@ -680,13 +680,14 @@ export const fr: Dictionary = {
       ['Conteneurs', 'Docker Engine, Docker Compose', 'docker', 'oui'],
       ['Agents IA', 'Claude Code, OpenCode, Codex CLI, Mistral Vibe', 'claude, opencode, codex, vibe', 'oui'],
       ['Agents IA', 'Pi', 'pi', 'non'],
+      ['Espaces de travail en terminal', 'Herdr (lancer avec `agent-vm run --tty herdr`)', 'herdr', 'non'],
       ['MCP', 'Chrome DevTools MCP, câblé dans chaque agent installé sauf Pi (pas de support MCP)', 'mcp-chrome', 'oui'],
       ['MCP', 'Playwright MCP, réutilisant le même Chromium', 'mcp-playwright', 'non'],
       ['Éditeur', 'code-server (VS Code dans le navigateur, pour `agent-vm code`), thème sombre, GitHub Copilot désactivé, sans télémétrie', 'code-server', 'non'],
       ['Éditeur', 'L\'extension Claude Code, OpenCode, Codex ou Mistral Vibe, chacune démarrant sans demande de permission, avec code-server', 'code-claude, code-opencode, code-codex, code-vibe', 'non'],
     ],
     contentsCode:
-      'agent-vm setup --preinstall=default                  # sans question\nagent-vm setup --preinstall=default,rust             # avec Rust en plus\nagent-vm setup --preinstall=python,docker,claude     # Claude seul, minimal\nagent-vm setup --preinstall=default,code-claude      # avec l\'éditeur\nagent-vm setup --disk 50 --memory 16 --cpus 8        # une image plus grosse',
+      'agent-vm setup --preinstall=default                  # sans question\nagent-vm setup --preinstall=default,rust             # avec Rust en plus\nagent-vm setup --preinstall=python,docker,claude     # Claude seul, minimal\nagent-vm setup --preinstall=default,code-claude      # avec l\'éditeur\nagent-vm setup --preinstall=default,herdr            # avec Herdr\nagent-vm run --tty herdr                            # espaces de travail en terminal\nagent-vm setup --disk 50 --memory 16 --cpus 8        # une image plus grosse',
     contentsNote:
       '`codex` et `pi` entraînent `node`, tout comme `mcp-chrome` avec `chromium` et un agent. Les deux serveurs MCP sont ignorés sans `node` et `chromium`. Les extensions Claude, Codex et Mistral Vibe apportent leur propre copie de leur agent (200 à 600 Mo) : l\'assistant demande s\'il faut garder aussi celle en ligne de commande. Sans elle, `agent-vm claude` dit qu\'il n\'est pas installé. Celle d\'OpenCode non : elle lance la commande `opencode`, donc `code-opencode` l\'installe toujours. Ce n\'est que ce que l\'image contient au départ : l\'agent est root dans la VM et atteint Internet, il installe lui-même ce qui lui manque.',
     dockerTitle: 'Pourquoi pas Docker',
