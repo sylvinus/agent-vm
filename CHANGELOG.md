@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Optional Herdr preinstallation: `agent-vm setup --preinstall=default,herdr`,
+  or select it in the setup wizard. Run its terminal workspace manager with
+  `agent-vm run --tty herdr`.
+
 ## 0.3.1
 
 ### Added

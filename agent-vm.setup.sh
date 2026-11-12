@@ -30,9 +30,9 @@ apt_get() {
 
 # Component toggles. The host wizard prepends `export` lines for these before
 # piping the script in. Members of the default install set (everything except
-# Ruby/Rust/Go/Pi/Playwright MCP/code-server and its extensions) default to 1 so running this
-# script standalone (without the wizard) produces the same install you'd get from
-# `agent-vm setup --preinstall=default`.
+# Ruby/Rust/Go/Pi/Herdr/Playwright MCP/code-server and its extensions) default
+# to 1 so running this script standalone (without the wizard) produces the
+# same install you'd get from `agent-vm setup --preinstall=default`.
 INSTALL_PYTHON="${AGENT_VM_INSTALL_PYTHON:-1}"
 INSTALL_NODE="${AGENT_VM_INSTALL_NODE:-1}"
 INSTALL_RUBY="${AGENT_VM_INSTALL_RUBY:-0}"
@@ -41,6 +41,7 @@ INSTALL_GOLANG="${AGENT_VM_INSTALL_GOLANG:-0}"
 INSTALL_DOCKER="${AGENT_VM_INSTALL_DOCKER:-1}"
 INSTALL_CHROMIUM="${AGENT_VM_INSTALL_CHROMIUM:-1}"
 INSTALL_GH="${AGENT_VM_INSTALL_GH:-1}"
+INSTALL_HERDR="${AGENT_VM_INSTALL_HERDR:-0}"
 INSTALL_CLAUDE="${AGENT_VM_INSTALL_CLAUDE:-1}"
 INSTALL_OPENCODE="${AGENT_VM_INSTALL_OPENCODE:-1}"
 INSTALL_CODEX="${AGENT_VM_INSTALL_CODEX:-1}"
@@ -311,6 +312,14 @@ if [[ "$INSTALL_PI" == "1" ]]; then
 }
 JSON
   fi
+fi
+
+if [[ "$INSTALL_HERDR" == "1" ]]; then
+  echo "Installing Herdr..."
+  # The installer downloads and verifies a prebuilt binary; no Rust needed.
+  # Its stdin is the downloaded script, separate from this script's stdin.
+  curl -fsSL --connect-timeout 10 --max-time 120 https://herdr.dev/install.sh | HERDR_INSTALL_DIR="$HOME/.local/bin" sh
+  "$HOME/.local/bin/herdr" --version </dev/null
 fi
 
 # A top-level TOML key as the first line of <file>, where the tables the MCP

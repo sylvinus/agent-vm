@@ -175,8 +175,58 @@ else
     "$(jq -r .enableInstallTelemetry "$PIH/.pi/agent/settings.json" 2>/dev/null)" "false"
   PIH0="$SB/pi-home-nonode"; mkdir -p "$PIH0"
   run_pi_block "$PIH0" 0
-  check "pi: skipped without node" "$( [ -e "$PIH0/sudo.log" ] || [ -e "$PIH0/.pi" ]; echo $?)" "1"
+  check "pi: skipped without node" "$(if [ -e "$PIH0/sudo.log" ] || [ -e "$PIH0/.pi" ]; then echo present; fi)" ""
 fi
+
+# =============================================================================
+section "Herdr install block"
+# =============================================================================
+herdr_block="$(awk '/^if \[\[ "\$INSTALL_HERDR" == "1" \]\]; then/,/^fi$/' "$SETUP_SH")"
+mkdir -p "$SB/herdr-bin"
+cat > "$SB/herdr-bin/curl" <<'CURL'
+#!/bin/sh
+printf '%s\n' "$*" >> "$HOME/curl.log"
+[ "$HERDR_TEST_FAILURE" != download ] || exit 22
+cat <<'INSTALL'
+[ "$HERDR_TEST_FAILURE" != installer ] || exit 42
+mkdir -p "$HERDR_INSTALL_DIR"
+cat > "$HERDR_INSTALL_DIR/herdr" <<'BIN'
+#!/bin/sh
+printf '%s\n' "$*" >> "$HOME/version.log"
+# A version check must not consume the provisioning commands after it.
+cat >/dev/null
+[ "$HERDR_TEST_FAILURE" != version ] || exit 43
+BIN
+chmod +x "$HERDR_INSTALL_DIR/herdr"
+INSTALL
+CURL
+chmod +x "$SB/herdr-bin/curl"
+run_herdr_block() {
+  mkdir -p "$SB/herdr-$1"
+  { printf '%s\n' "$herdr_block"; echo 'echo after > "$HOME/after"'; } |
+    env HOME="$SB/herdr-$1" PATH="$SB/herdr-bin:$PATH" \
+      INSTALL_HERDR="$2" HERDR_INSTALL_DIR="$SB/other-bin" \
+      HERDR_TEST_FAILURE="${3:-}" bash -euo pipefail >"$SB/herdr-$1.log" 2>&1
+}
+run_herdr_block enabled 1
+check "herdr: install succeeds" "$?" "0"
+check "herdr: official installer" "$(cat "$SB/herdr-enabled/curl.log" 2>/dev/null)" \
+  "-fsSL --connect-timeout 10 --max-time 120 https://herdr.dev/install.sh"
+check "herdr: installed in the guest's local bin" \
+  "$(test -x "$SB/herdr-enabled/.local/bin/herdr" && echo yes)" "yes"
+check "herdr: install directory override ignored" "$(test -e "$SB/other-bin" && echo present)" ""
+check "herdr: version checked" "$(cat "$SB/herdr-enabled/version.log" 2>/dev/null)" "--version"
+check "herdr: remaining provisioning commands run" "$(cat "$SB/herdr-enabled/after" 2>/dev/null)" "after"
+run_herdr_block disabled 0
+check "herdr: disabled succeeds" "$?" "0"
+check "herdr: disabled skips download" "$(test -e "$SB/herdr-disabled/curl.log" && echo present)" ""
+check "herdr: disabled skips version check" "$(test -e "$SB/herdr-disabled/version.log" && echo present)" ""
+for herdr_failure in download installer version; do
+  case "$herdr_failure" in download) herdr_status=22 ;; installer) herdr_status=42 ;; version) herdr_status=43 ;; esac
+  run_herdr_block "$herdr_failure" 1 "$herdr_failure"
+  check "herdr: $herdr_failure failure propagated" "$?" "$herdr_status"
+  check "herdr: $herdr_failure failure stops provisioning" "$(test -e "$SB/herdr-$herdr_failure/after" && echo present)" ""
+done
 
 # =============================================================================
 section "OpenCode install block"

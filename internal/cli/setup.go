@@ -26,8 +26,8 @@ const setupHelp = `Usage: agent-vm setup [options]
 
 Create a base VM template with dev tools and agents pre-installed. Runs an
 interactive wizard by default; the first prompt offers a "default install"
-(everything except the opt-in Ruby, Rust, Go, Pi, Playwright MCP, code-server
-and its extensions). Answer 'n' for per-component prompts. Pass
+(everything except the opt-in Ruby, Rust, Go, Pi, Herdr, Playwright MCP,
+code-server and its extensions). Answer 'n' for per-component prompts. Pass
 --preinstall=... to skip the wizard and pick a specific subset
 non-interactively. When no terminal can be asked on (no controlling
 terminal, or stderr redirected, as in CI), the wizard is skipped
@@ -41,17 +41,19 @@ Options:
                       VM image (skips the wizard). Anything not listed is
                       skipped. Use:
                         'default' for the default set
-                                  (everything except Ruby, Rust, Go, Pi,
+                                  (everything except Ruby, Rust, Go, Pi, Herdr,
                                   mcp-playwright, code-server, code-*),
                         'all' for everything,
                         'none' for nothing.
                       Available names:
                         python, node, ruby, rust, golang, docker, chromium,
-                        gh, claude, opencode, codex, vibe, pi, mcp-chrome,
+                        gh, herdr, claude, opencode, codex, vibe, pi, mcp-chrome,
                         mcp-playwright, code-server, code-claude,
                         code-opencode, code-codex, code-vibe
                       'code-server' is VS Code in the browser, for
                       'agent-vm code', with GitHub Copilot turned off.
+                      'herdr' is a terminal workspace manager for agents;
+                      run it with 'agent-vm run --tty herdr'.
                       'code-claude', 'code-opencode', 'code-codex' and
                       'code-vibe' add that agent's extension, and code-server
                       with it. The Claude, Codex and Vibe extensions bring
@@ -74,6 +76,7 @@ Options:
                       managed per project rather than baked into the image.
                       Examples:
                         --preinstall=default,rust       # default set plus Rust
+                        --preinstall=default,herdr      # plus Herdr
                         --preinstall=python,docker,claude
                         --preinstall=node,chromium,opencode   # no chrome MCP
                         --preinstall=default,code-claude      # plus the editor
@@ -82,11 +85,11 @@ Options:
 
 // The software of the base, as agent-vm.setup.sh names it
 // (AGENT_VM_INSTALL_<NAME>).
-var software = []string{"python", "node", "ruby", "rust", "golang", "docker", "chromium", "gh", "claude", "opencode", "codex", "vibe", "pi",
+var software = []string{"python", "node", "ruby", "rust", "golang", "docker", "chromium", "gh", "herdr", "claude", "opencode", "codex", "vibe", "pi",
 	"code-server", "code-claude", "code-opencode", "code-codex", "code-vibe", "mcp-chrome", "mcp-playwright"}
 
 // The default set. Opt-in: Ruby, Rust, Go, Pi (released several times a
-// week), Playwright MCP (a second browser-driving server, whose tools cost
+// week), Herdr, Playwright MCP (a second browser-driving server, whose tools cost
 // context in every agent), and code-server with its extensions (an editor
 // most use on the host).
 var defaultSoftware = []string{"python", "node", "docker", "chromium", "gh", "claude", "opencode", "codex", "vibe", "mcp-chrome"}
@@ -293,7 +296,7 @@ func (e *app) wizard(in install, disk, memory, cpus int, memorySeen bool) (int, 
 		"  Agents:   Claude Code, OpenCode, Codex CLI, Mistral Vibe\n"+
 		"  Tools:    Python, Node.js, Docker, Chromium, gh,\n"+
 		"            Chrome DevTools MCP\n"+
-		"  Skip:     Pi, Ruby, Rust, Go, Playwright MCP, code-server\n\n")
+		"  Skip:     Pi, Herdr, Ruby, Rust, Go, Playwright MCP, code-server\n\n")
 	if !yn("Use this default", true) {
 		fmt.Fprint(w, "\nAI coding agents\n────────────────\n")
 		in["claude"] = yn("Claude Code", true)
@@ -308,6 +311,7 @@ func (e *app) wizard(in install, disk, memory, cpus int, memorySeen bool) (int, 
 		in["docker"] = yn("Docker", true)
 		in["chromium"] = yn("Chromium (headless browser)", true)
 		in["gh"] = yn("GitHub CLI (gh)", true)
+		in["herdr"] = yn("Herdr (terminal workspace manager for agents)", false)
 		in["mcp-chrome"], in["mcp-playwright"] = false, false
 		if in["chromium"] {
 			in["mcp-chrome"] = yn("Chrome DevTools MCP (wired into each agent's config)", true)
@@ -507,6 +511,12 @@ func (e *app) buildBase(ctx context.Context, in install, disk, memory, cpus int)
 		if in[a] {
 			fmt.Fprintf(e.io.Stdout, "  agent-vm %s\n", a)
 		}
+	}
+	if in["herdr"] {
+		fmt.Fprintln(e.io.Stdout, "  agent-vm run --tty herdr")
+		fmt.Fprint(e.io.Stdout, "  After unsetting an environment variable, run 'agent-vm run herdr server stop',\n"+
+			"  then start Herdr again so new panes do not inherit the removed value.\n"+
+			"  Stopping the server also stops its existing panes.\n")
 	}
 	if in["code-server"] {
 		fmt.Fprintln(e.io.Stdout, "  agent-vm code")

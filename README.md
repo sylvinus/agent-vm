@@ -31,6 +31,15 @@ agent-vm doctor                # what is wrong, and what to run
 
 Everyday use: [Usage](https://www.agent-vm.org/#usage). Every command, option, file and variable: [Reference](https://www.agent-vm.org/#reference).
 
+To manage agents in [Herdr](https://github.com/herdrdev/herdr)'s terminal workspaces, opt in when building the base template:
+
+```bash
+agent-vm setup --preinstall=default,herdr
+agent-vm run --tty herdr
+```
+
+Existing project VMs keep their installed tools. Use `agent-vm --reset run --tty herdr` to re-clone one from the new base; this deletes that VM's contents, including its installed tools and credentials, while keeping the shared project directory.
+
 ## Security
 
 The agent is root in its VM and has the network. What it can reach on your machine is what crosses the shares:
