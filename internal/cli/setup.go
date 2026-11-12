@@ -514,6 +514,9 @@ func (e *app) buildBase(ctx context.Context, in install, disk, memory, cpus int)
 	}
 	if in["herdr"] {
 		fmt.Fprintln(e.io.Stdout, "  agent-vm run --tty herdr")
+		fmt.Fprint(e.io.Stdout, "  After unsetting an environment variable, run 'agent-vm run herdr server stop',\n"+
+			"  then start Herdr again so new panes do not inherit the removed value.\n"+
+			"  Stopping the server also stops its existing panes.\n")
 	}
 	if in["code-server"] {
 		fmt.Fprintln(e.io.Stdout, "  agent-vm code")

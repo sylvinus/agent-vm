@@ -211,7 +211,7 @@ run_herdr_block() {
 run_herdr_block enabled 1
 check "herdr: install succeeds" "$?" "0"
 check "herdr: official installer" "$(cat "$SB/herdr-enabled/curl.log" 2>/dev/null)" \
-  "-fsSL https://herdr.dev/install.sh"
+  "-fsSL --connect-timeout 10 --max-time 120 https://herdr.dev/install.sh"
 check "herdr: installed in the guest's local bin" \
   "$(test -x "$SB/herdr-enabled/.local/bin/herdr" && echo yes)" "yes"
 check "herdr: install directory override ignored" "$(test -e "$SB/other-bin" && echo present)" ""

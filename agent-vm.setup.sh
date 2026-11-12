@@ -318,7 +318,7 @@ if [[ "$INSTALL_HERDR" == "1" ]]; then
   echo "Installing Herdr..."
   # The installer downloads and verifies a prebuilt binary; no Rust needed.
   # Its stdin is the downloaded script, separate from this script's stdin.
-  curl -fsSL https://herdr.dev/install.sh | HERDR_INSTALL_DIR="$HOME/.local/bin" sh
+  curl -fsSL --connect-timeout 10 --max-time 120 https://herdr.dev/install.sh | HERDR_INSTALL_DIR="$HOME/.local/bin" sh
   "$HOME/.local/bin/herdr" --version </dev/null
 fi
 
