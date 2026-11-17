@@ -165,9 +165,8 @@ alone: every port). 'domain github.com' lines make those domains,
 subdomains included, the only names of the internet the VMs reach.
 AGENT_VM_UNSAFE_OPEN_NETWORK=1 in your shell turns isolation off. A port a
 VM listens on is forwarded to this machine's loopback, unless a program here
-uses it: a desktop notification says which (none with AGENT_VM_NOTIFY=0).
-Ports 32768-60999, those the guest hands out to whoever asks for any free
-one, are not forwarded.
+uses it. Ports 32768-60999, those the guest hands out to whoever asks for
+any free one, are not forwarded.
 
 Before a VM writes a file this machine runs on its own (.envrc,
 .vscode/tasks.json, .pre-commit-config.yaml, mise.toml...), a dialog asks

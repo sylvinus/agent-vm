@@ -81,9 +81,6 @@ func Run(args []string) bool {
 	root.PersistentFlags().Bool("debug", false, "debug mode")
 	root.AddCommand(newHostagentCommand())
 	root.SetArgs(args)
-	// Its events, as limactl's, and a notice for each port it forwards. The
-	// instance is the last argument.
-	root.SetOut(newEventWatch(os.Stdout, args[len(args)-1]))
 	err = root.Execute()
 	server.Disconnect()
 	osutil.HandleExitError(err)

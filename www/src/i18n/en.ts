@@ -55,7 +55,7 @@ export const en = {
       },
       {
         title: 'Ports are forwarded for you',
-        body: 'A dev server started in the VM answers on localhost at the same port, with a notification, and no flag or config. A port a program of yours already uses is left to it.',
+        body: 'A dev server started in the VM answers on localhost at the same port, with no flag or config. A port a program of yours already uses is left to it.',
       },
       {
         title: 'Batteries included, root for the rest',
@@ -175,7 +175,7 @@ export const en = {
       },
       {
         title: 'Reach the dev server',
-        body: 'Every port opened in the VM is forwarded to the same port on your localhost, so a dev server opens in your browser as usual, and a notification says so. A port a program of yours already listens on is not taken: the notification says that too. Ports 32768-60999, which the VM hands out to programs asking for any free port, are not forwarded. Treat the forwarded ports as the agent’s.',
+        body: 'Every port opened in the VM is forwarded to the same port on your localhost, so a dev server opens in your browser as usual. A port a program of yours already listens on is not taken. Ports 32768-60999, which the VM hands out to programs asking for any free port, are not forwarded. Treat the forwarded ports as the agent’s.',
         code: 'agent-vm run npm run dev         # then open localhost:5173\nagent-vm run docker compose up',
       },
       {
@@ -297,7 +297,6 @@ export const en = {
       ['AGENT_VM_HOST_SHARE', 'CPU and memory per VM are capped at the host’s divided by this. `1`: the whole host.', '2'],
       ['AGENT_VM_BIN_DIR', 'Where `install` links `agent-vm`.', '~/.local/bin'],
       ['AGENT_VM_SSHFS_CACHE', '`1`: sshfs caches the writable shares too, faster on many files (`git status`, `find`); the VM may then see a file as it was up to 20 seconds before, and write that back. Applies when a VM is next started.', 'unset'],
-      ['AGENT_VM_NOTIFY', '`0`: no desktop notification when a port is forwarded, or left to a program of yours.', 'unset'],
       ['AGENT_VM_GUARDED_WRITES', '`deny`: refuse the VM’s writes to [guarded files](#guarded-files) without asking, for a machine with no one at the screen.', 'unset'],
       ['AGENT_VM_UNSAFE_OPEN_NETWORK', '`1`: no [network isolation](#network-and-ports): the VMs reach your machine and your local networks. Applies when a VM is next started.', 'unset'],
       ['AGENT_VM_UNSAFE_WRITABLE_GIT', '`1`: same as `--unsafe-writable-git`.', 'unset'],
@@ -607,7 +606,7 @@ export const en = {
               'A VM reaches the internet, not your machine: its loopback (where the other VMs’ ports are forwarded), its own addresses and your local networks (private, link-local and carrier-grade NAT ranges) are refused, on your machine, by the network stack agent-vm runs for each VM. Root in the VM cannot lift it.',
               'There is no `~/.agent-vm/network` by default, and none is needed: without it, the VMs reach the whole internet and nothing of your machine or local networks. Write one to open holes, read when a VM starts, one line each: `allow` an address (`192.168.1.20`), an address and port (`192.168.1.20:5432`, `[fd00::5]:80`), a network (`10.8.0.0/16`), or a service on your machine’s loopback, `localhost:PORT` (`localhost` alone opens every port), which the VM reaches at `192.168.5.2`. An `allow` line covers TCP and UDP.',
               '`domain` lines restrict the internet itself: those domains and their subdomains (`domain github.com` covers `api.github.com`; `*.github.com` means the same) become the only names the VMs resolve, and an address is reachable once agent-vm’s DNS gave it for one of them. `allow` lines still apply. A line it cannot read stops the start, named; `doctor` checks the file. `AGENT_VM_UNSAFE_OPEN_NETWORK=1` in your shell turns isolation off.',
-              'Each port a VM listens on is forwarded to your `127.0.0.1`, and a notification says so, except 32768-60999: the guest gives those to programs asking for any free port (Chromium’s DevTools port, language servers), and they stay inside the VM. A port a program of yours listens on is left to it, with a notification too: on macOS, a VM listening first on 5432 would otherwise receive the connections, and passwords, meant for your local Postgres. On a free port, what you send goes to the VM: check the notification.',
+              'Each port a VM listens on is forwarded to your `127.0.0.1`, except 32768-60999: the guest gives those to programs asking for any free port (Chromium’s DevTools port, language servers), and they stay inside the VM. A port a program of yours listens on is left to it: on macOS, a VM listening first on 5432 would otherwise receive the connections, and passwords, meant for your local Postgres. On a free port, what you send goes to the VM.',
               'No VM reaches the editor of another one any more, but `agent-vm code` still gives each its own password, made in that VM, and its own host name, `<vm-name>.localhost`. A VM can serve a page on a forwarded port and send your browser to another VM’s host name on that port; browsers keep cookies per host name and not per port, so the browser hands it that editor’s cookie. The VM cannot use it against the editor itself, being refused your loopback, but stop `agent-vm code` (Ctrl-C) when you are not using it. Chrome and Firefox resolve `*.localhost` themselves; Safari may not, and then `127.0.0.1` in a private window kept for the editor does the same.',
             ],
             list: [],

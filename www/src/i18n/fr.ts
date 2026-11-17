@@ -57,7 +57,7 @@ export const fr: Dictionary = {
       },
       {
         title: 'Les ports sont redirigés automatiquement',
-        body: 'Un serveur de dev lancé dans la VM répond sur localhost, au même port, avec une notification, sans option ni configuration. Un port déjà pris par un de tes programmes lui est laissé.',
+        body: 'Un serveur de dev lancé dans la VM répond sur localhost, au même port, sans option ni configuration. Un port déjà pris par un de tes programmes lui est laissé.',
       },
       {
         title: 'Tout est prêt, et root pour le reste',
@@ -177,7 +177,7 @@ export const fr: Dictionary = {
       },
       {
         title: 'Accéder au serveur de dev',
-        body: 'Chaque port ouvert dans la VM est redirigé vers le même port de ton localhost : un serveur de dev s\'ouvre dans ton navigateur comme d\'habitude, et une notification le signale. Un port sur lequel écoute déjà un de tes programmes n\'est pas pris : la notification le dit aussi. Les ports 32768-60999, que la VM attribue aux programmes qui demandent un port libre quelconque, ne sont pas redirigés. Considère les ports redirigés comme ceux de l\'agent.',
+        body: 'Chaque port ouvert dans la VM est redirigé vers le même port de ton localhost : un serveur de dev s\'ouvre dans ton navigateur comme d\'habitude. Un port sur lequel écoute déjà un de tes programmes n\'est pas pris. Les ports 32768-60999, que la VM attribue aux programmes qui demandent un port libre quelconque, ne sont pas redirigés. Considère les ports redirigés comme ceux de l\'agent.',
         code: 'agent-vm run npm run dev         # puis ouvre localhost:5173\nagent-vm run docker compose up',
       },
       {
@@ -299,7 +299,6 @@ export const fr: Dictionary = {
       ['AGENT_VM_HOST_SHARE', 'CPU et mémoire par VM sont plafonnés à ceux de l\'hôte divisés par ce nombre. `1` : tout l\'hôte.', '2'],
       ['AGENT_VM_BIN_DIR', 'Où `install` place le lien `agent-vm`.', '~/.local/bin'],
       ['AGENT_VM_SSHFS_CACHE', '`1` : sshfs met aussi en cache les partages modifiables, plus rapide sur beaucoup de fichiers (`git status`, `find`) ; la VM peut alors voir un fichier tel qu\'il était jusqu\'à 20 secondes avant, et le réécrire ainsi. S\'applique au prochain démarrage d\'une VM.', 'non définie'],
-      ['AGENT_VM_NOTIFY', '`0` : pas de notification quand un port est redirigé, ou laissé à un de tes programmes.', 'non définie'],
       ['AGENT_VM_GUARDED_WRITES', '`deny` : refuse sans demander les écritures de la VM dans les [fichiers surveillés](#guarded-files), pour une machine sans personne devant l\'écran.', 'non définie'],
       ['AGENT_VM_UNSAFE_OPEN_NETWORK', '`1` : pas d\'[isolation réseau](#network-and-ports) : les VM atteignent ta machine et tes réseaux locaux. S\'applique au prochain démarrage d\'une VM.', 'non définie'],
       ['AGENT_VM_UNSAFE_WRITABLE_GIT', '`1` : équivaut à `--unsafe-writable-git`.', 'non définie'],
@@ -609,7 +608,7 @@ export const fr: Dictionary = {
               'Une VM atteint Internet, pas ta machine : sa boucle locale (où sont redirigés les ports des autres VM), ses propres adresses et tes réseaux locaux (plages privées, link-local et CGNAT) sont refusés, sur ta machine, par la pile réseau qu\'agent-vm fait tourner pour chaque VM. Root dans la VM ne peut pas le lever.',
               'Il n\'y a pas de `~/.agent-vm/network` par défaut, et il n\'en faut pas : sans lui, les VM atteignent tout Internet et rien de ta machine ni de tes réseaux locaux. Écris-en un pour ouvrir des passages, lu au démarrage d\'une VM, une ligne chacun : `allow` une adresse (`192.168.1.20`), une adresse et un port (`192.168.1.20:5432`, `[fd00::5]:80`), un réseau (`10.8.0.0/16`), ou un service de la boucle locale de ta machine, `localhost:PORT` (`localhost` seul ouvre tous les ports), que la VM atteint à `192.168.5.2`. Une ligne `allow` vaut pour TCP et UDP.',
               'Les lignes `domain` restreignent Internet lui-même : ces domaines et leurs sous-domaines (`domain github.com` couvre `api.github.com` ; `*.github.com` revient au même) deviennent les seuls noms que les VM résolvent, et une adresse n\'est joignable qu\'une fois donnée par le DNS d\'agent-vm pour l\'un d\'eux. Les lignes `allow` s\'appliquent toujours. Une ligne illisible arrête le démarrage, en la nommant ; `doctor` vérifie le fichier. `AGENT_VM_UNSAFE_OPEN_NETWORK=1` dans ton shell désactive l\'isolation.',
-              'Chaque port qu\'écoute une VM est redirigé vers ton `127.0.0.1`, et une notification le signale, sauf 32768-60999 : l\'invité les attribue aux programmes qui demandent un port libre quelconque (le port DevTools de Chromium, les serveurs de langage), et ils restent dans la VM. Un port sur lequel écoute un de tes programmes lui est laissé, avec une notification aussi : sous macOS, une VM qui écouterait la première sur 5432 recevrait sinon les connexions, et les mots de passe, destinés à ton Postgres local. Sur un port libre, ce que tu y envoies va à la VM : regarde la notification.',
+              'Chaque port qu\'écoute une VM est redirigé vers ton `127.0.0.1`, sauf 32768-60999 : l\'invité les attribue aux programmes qui demandent un port libre quelconque (le port DevTools de Chromium, les serveurs de langage), et ils restent dans la VM. Un port sur lequel écoute un de tes programmes lui est laissé : sous macOS, une VM qui écouterait la première sur 5432 recevrait sinon les connexions, et les mots de passe, destinés à ton Postgres local. Sur un port libre, ce que tu y envoies va à la VM.',
               'Aucune VM n\'atteint plus l\'éditeur d\'une autre, mais `agent-vm code` donne toujours à chacune son propre mot de passe, créé dans cette VM, et son propre nom d\'hôte, `<nom-de-vm>.localhost`. Une VM peut servir une page sur un port redirigé et envoyer ton navigateur au nom d\'hôte d\'une autre VM sur ce port ; les navigateurs rangent les cookies par nom d\'hôte et non par port, donc le navigateur lui remet le cookie de cet éditeur. La VM ne peut pas s\'en servir contre l\'éditeur lui-même, puisque ta boucle locale lui est refusée, mais arrête `agent-vm code` (Ctrl-C) quand tu ne t\'en sers pas. Chrome et Firefox résolvent `*.localhost` eux-mêmes ; Safari peut ne pas le faire, et `127.0.0.1` dans une fenêtre privée réservée à l\'éditeur fait alors la même chose.',
             ],
             list: [],

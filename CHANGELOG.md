@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Removed
+
+- The desktop notifications for forwarded ports, and `AGENT_VM_NOTIFY`.
+  Forwarding itself is unchanged.
+
 ## 0.3.1
 
 ### Added
